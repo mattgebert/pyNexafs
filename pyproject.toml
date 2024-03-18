@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyNexafs"
+version = "0.0.1"
+dependencies = [
+    "scipy",
+    "numpy",
+    "pandas",
+    "overrides",
+]
+    
+[tool.setuptools.packages.find] # All the following settings are optional:
+where = ["."]  # Root directory
+include = ["pyNexafs*"] 
+exclude = []  
+
+# namespaces = true  # true by default
+
+### Example dependency usage
+# example <= 0.4
+# allowed operators <, >, <=, >=, == or !=, 
+
+### Example inlcude
+# ["*"] by default
+
+### Example exclude
+# [] by default
+# "pyNexafs.tests*",
+# "pyNexafs.test_data*,
