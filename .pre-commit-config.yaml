@@ -1,0 +1,4 @@
+- repo: https://github.com/numpy/numpydoc
+  rev: 1.7
+  hooks:
+    - id: numpydoc-validation
