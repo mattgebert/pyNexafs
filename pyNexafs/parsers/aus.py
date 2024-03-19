@@ -3,7 +3,20 @@ import overrides
     
 class AusSync(parser_base):
     
-    ALLOWED_EXTENSIONS = ['.asc'] #ascii files exported from the binary .mda files generated.
+    @overrides.overrides
+    @property
+    def ALLOWED_EXTENSIONS():
+        return ['.asc'] #ascii files exported from the binary .mda files generated.
+    
+    @overrides.overrides
+    @property  
+    def COLUMN_ASSIGNMENTS():
+        return {
+            "x" :            "SR14ID01PGM_CALC_ENERGY_MONITOR.P",
+            "y" :           ["I0", "It", "Ir"],
+            "y_errs" :      ["I0_err", "It_err", "Ir_err"],
+            "x_errs" :       None
+        }
     
     @classmethod
     @overrides.overrides
@@ -30,7 +43,7 @@ class AusSync(parser_base):
         """
         
         # Init vars
-        data, labels, params = super().file_parser(file)
+        data, labels, units, params = super().file_parser(file)
         
         # Check file type
         if not file.name.endswith('.asc'):
@@ -119,9 +132,19 @@ class AusSync(parser_base):
                 raise ValueError(f"Invalid column type {desc_type} in line {line}") 
 
             # Take info
-            desc_info = line[29:].strip().split(", ")
+            desc_info = line[29:].split(", ")
             column_descriptions[index] = desc_info
-            labels += [desc_info[0]] if not index_line else ["Index"]
+            
+            # Add to labels and units to lists
+            labels += [desc_info[0].strip()] if not index_line else ["Index"]
+            if "Positioner" in desc_type:
+                pUnit = desc_info[3].strip() #hardcoded 'unit' position
+                units += [pUnit]
+            elif "Detector" in desc_type:
+                dUnit = desc_info[2].strip() #hardcoded 'unit' position
+                units += [dUnit if dUnit != "" else None]
+            elif index_line:
+                units += [None]
             
             # read next line
             line = file.readline()
@@ -140,6 +163,20 @@ class AusSync(parser_base):
             #     for line in lines]
         data = np.array(data)
             
-        return data, labels, params
+        return data, labels, units, params
     
-    
+    @overrides.overrides
+    def to_scan(self) -> base_scan:
+        """Converts the parser object to a base_scan object.
+
+        Returns
+        -------
+        base_scan
+            Returns a base_scan object.
+        """
+        return base_scan(self.data[:,0], # Assign photon eV column to x.
+                         self.data[:,1:], # Assign other data to y.
+                         x_errs=None, 
+                         y_errs=None, 
+                         y_labels=self.labels[1:], 
+                         y_units=self.units[1:])
