@@ -40,7 +40,7 @@ class viewerWidget(QVBoxLayout):
 
         # Attributes
         self._dataseries_list_view.setSelectionMode(
-            QListWidget.SelectionMode.MultiSelection
+            QListWidget.SelectionMode.ExtendedSelection
         )
 
         # Connections
