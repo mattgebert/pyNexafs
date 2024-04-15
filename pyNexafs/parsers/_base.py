@@ -4,83 +4,107 @@ import matplotlib.pyplot as plt
 import abc
 import sys, io, os
 from io import TextIOWrapper
-from typing import Any, TypeVar, Type
+from typing import Any, TypeVar, Type, Self
 from numpy.typing import NDArray
-from ..nexafs.scan import base_scan
+from pyNexafs.nexafs.scan import scan_base
 
-PARSER = TypeVar("PARSER", bound="parser_base") #typing hint for parser_base class inheritance.
 
-class parser_base(metaclass=abc.ABCMeta):
-    """ 
-    General class that parses raw datafiles to acquire useful data information. 
-    Requires implementation of file_parser method,
-    
-
+class parser_meta(abc.ABCMeta):
     """
-    
-    @property
-    @abc.abstractmethod
-    @staticmethod
-    def ALLOWED_EXTENSIONS() -> list[str]:
-        """
-        Allowable extensions for the parser.
-        'parser_base.file_parser' will check validity of file extensions.
-        """
-        return []
-    
-    @property
-    @abc.abstractmethod
-    @staticmethod
-    def COLUMN_ASSIGNMENTS() -> dict[str, str | list[str] | None]:
-        """
-        Assignments of scan input variables to column names.
-        'parser_base.to_scan' will use construct the scan parameters.
-        
-        Assignments can be a single column name, or a list of column names.
-        y_errs and x_errs can be None if not present in the data.
-        """
-        
-        return {
-            "x" :            "Data_Column_1_Label",
-            "y" :           ["Data_Column_2_Label",
-                             "Data_Column_3_Label",
-                             "Data_Column_4_Label"], # or "Data_Column_2_Label"
-            "y_errs" :      ["Data_Column_5_Label",
-                             "Data_Column_6_Label",
-                             "Data_Column_7_Label"], # or "Data_Column_5_Label" or None
-            "x_errs" :       None # or "Data_Column_8_Label"
-        }
-    
-    def __init__(self, filepath: str | None = None) -> None:
-        
-        # ABC super.
-        super().__init__()
-        # Initialise variables
-        self.filepath = filepath
-        self.data = None
-        self.labels = []
-        self.units = []
-        self.params = {}
-        
-        if filepath is None:
-            return
-        elif type(filepath) is str:
-            self.load() # Load data
-        else:
-            raise TypeError(f'Filepath is {type(filepath)}, not str.') 
+    Metaclass to implement class properties for parser classes.
 
-    def _validated_assignments(self) -> dict[str, str | list[str] | None]:
+    Defines getter/setter/deleter methods for class properties such as
+    `RELABELS`, `COLUMN_ASSIGNMENTS`, and `ALLOWED_EXTENSIONS`.
+    """
+
+    _COLUMN_ASSIGNMENTS = {}
+    _ALLOWED_EXTENSIONS = []
+    _SUMMARY_PARAM_RAW_NAMES = []
+    _RELABELS = {}
+    _relabel = False
+
+    def __new__(
+        __mcls: type[Self],
+        __name: str,
+        __bases: tuple[type, ...],
+        __namespace: dict[str, Any],
+        **kwargs: Any,
+    ) -> Self:
+
+        # Perform checks on parsers that implement parser_base.
+        if __name != "parser_base":
+            # If class does not define the important parameters, then set to empty list.
+            if "SUMMARY_PARAM_RAW_NAMES" not in __namespace:
+                __namespace["SUMMARY_PARAM_RAW_NAMES"] = []
+            if "RELABELS" not in __namespace:
+                __namespace["RELABELS"] = {}
+
+            # Raise error if necessary variables are not defined.
+            for name in ["ALLOWED_EXTENSIONS", "COLUMN_ASSIGNMENTS"]:
+                if name not in __namespace:
+                    raise ValueError(f"Class {__name} does not define {name}.")
+
+            # Rename attributes, avoid overriding property.
+            for name in [
+                "ALLOWED_EXTENSIONS",
+                "COLUMN_ASSIGNMENTS",
+                "SUMMARY_PARAM_RAW_NAMES",
+                "RELABELS",
+            ]:
+                __namespace[f"_{name}"] = __namespace[name]
+                del __namespace[name]
+
+            # Validate column assignments
+            __namespace["_COLUMN_ASSIGNMENTS"] = parser_meta.__validate_assignments(
+                __namespace["_COLUMN_ASSIGNMENTS"]
+            )
+        return super().__new__(__mcls, __name, __bases, __namespace, **kwargs)
+
+    @property
+    def ALLOWED_EXTENSIONS(cls) -> list[str]:
         """
-        Returns the validated column assignments for the parser.
-        See 'parser_base.COLUMN_ASSIGNMENTS' for more information.
+        Returns the allowed extensions for the parser.
+
+        'parser_base.file_parser' will check validity of file extensions.
+        Inheriting parser instance will need to deal with each filetype
+        in the file_parser method.
+
+        Returns
+        -------
+        list[str]
+            List of allowed extensions. Read only.
+
+
+        Examples
+        --------
+        synchrotron_parser.ALLOWED_EXTENSIONS = [".dat", ".txt", ".csv"]
+
+        """
+        return cls._ALLOWED_EXTENSIONS
+
+    @staticmethod
+    def __validate_assignments(
+        assignments: dict[str, str | list[str] | None]
+    ) -> dict[str, str | list[str] | None]:
+        """
+        Validation method for column assignments for a parser.
+
+        Validates by checking the custom string label entries for assigning data columns to a scan object.
+        Requires 'x', 'y' keys, and can optionally contain 'y_errs', and 'x_errs' keys which are defaulted to None.
+
+        Parameters
+        ----------
+        assignments : dict[str, str | list[str] | None]
+            Dictionary of column assignments.
 
         Returns
         -------
         dict[str, str | list[str] | None]
-            See 'parser_base.COLUMN_ASSIGNMENTS' for more information.
 
         Raises
         ------
+        ValueError
+            'x' assignment not found in assignments.
         ValueError
             'x' assignment is not a string.
         ValueError
@@ -96,75 +120,408 @@ class parser_base(metaclass=abc.ABCMeta):
         ValueError
             'x_errs' assignment is not a string or None.
         """
-        
-        assignments = self.COLUMN_ASSIGNMENTS
+        # X
+        if not "x" in assignments:
+            raise ValueError("'x' assignment not found in assignments.")
         if not isinstance(assignments["x"], str):
-            raise ValueError(f"X assignment {assignments['x']} is not a string.")
+            raise ValueError(f"'x' assignment {assignments['x']} is not a string.")
+        # Y
+        if not "y" in assignments:
+            raise ValueError("'y' assignment not found in assignments.")
         if not isinstance(assignments["y"], (list, str)):
-            raise ValueError(f"Y assignment {assignments['y']} is not a list or string.")
+            raise ValueError(
+                f"'y' assignment {assignments['y']} is not a list or string."
+            )
         if isinstance(assignments["y"], list):
             for y in assignments["y"]:
                 if not isinstance(y, str):
-                    raise ValueError(f"Y list assignment {y} is not a string.")
+                    raise ValueError(f"'y' list element {y} is not a string.")
+        # Yerrs
+        if "y_errs" not in assignments:
+            assignments["y_errs"] = None  # set a default value.
         if not isinstance(assignments["y_errs"], (list, str, type(None))):
-            raise ValueError(f"Y errors assignment {assignments['y_errs']} is not a list, string, or None.")
+            raise ValueError(
+                f"'y_errs' assignment {assignments['y_errs']} is not a list, string, or None."
+            )
         if isinstance(assignments["y_errs"], list):
             if len(assignments["y_errs"]) != len(assignments["y"]):
-                raise ValueError(f"Y errors list assignment {assignments['y_errs']}\n does not match length of Y list assignment {assignments['y']}.")
+                raise ValueError(
+                    f"'y_errs' list assignment {assignments['y_errs']}\n does not match length of 'y' list assignment {assignments['y']}."
+                )
             for y in assignments["y_errs"]:
                 if not isinstance(y, str):
-                    raise ValueError(f"Y errors list assignment {y} is not a string.")
+                    raise ValueError(f"'y_errs' list assignment {y} is not a string.")
+        # Xerrs
+        if "x_errs" not in assignments:
+            assignments["x_errs"] = None
         if not isinstance(assignments["x_errs"], (str, type(None))):
-            raise ValueError(f"X errors assignment {assignments['x_errs']} is not a string or None.")
+            raise ValueError(
+                f"'x_errs' assignment {assignments['x_errs']} is not a string or None."
+            )
         return assignments
 
-    def to_scan(self) -> Type[base_scan] | base_scan:
+    @property
+    def COLUMN_ASSIGNMENTS(cls) -> dict[str, str | list[str] | None]:
         """
-        Converts the parser object to a base_scan object.
+        Assignments of scan input variables to column names.
+
+        'parser_base.to_scan' will use construct the scan parameters.
+        Assignments can be a single column name, or a list of column names.
+        y_errs and x_errs can be None if not present in the data.
+        Use '|' to separate equivalent column names. Scan_base will use the first column name found.
 
         Returns
         -------
-        type[base_scan]
-            Returns a base_scan object.
+        dict[str, str | list[str] | None]
+            A dictionary of column assignments.
+            Requires 'x', 'y', 'y_errs', and 'x_errs' keys.
+
+        Examples
+        --------
+        synchrotron_parser.COLUMN_ASSIGNMENTS ={
+            "x": "Data_Column_1_Label",
+            "y": [
+                "Data_Column_2_Label",
+                "Data_Column_3_Label|Alternative_Column_3_Label",
+                "Data_Column_4_Label",
+            ],  # or "Data_Column_2_Label"
+            "y_errs": [
+                "Data_Column_5_Label",
+                "Data_Column_6_Label",
+                "Data_Column_7_Label",
+            ],  # or "Data_Column_5_Label" or None
+            "x_errs": None,  # or "Data_Column_8_Label"
+        }
         """
-        scan_obj = base_scan(parser=self)
-        return scan_obj
-        
+        return cls._COLUMN_ASSIGNMENTS
+
+    @COLUMN_ASSIGNMENTS.setter
+    def COLUMN_ASSIGNMENTS(cls, assignments: dict[str, str | list[str] | None]) -> None:
+        """
+        Setter for the COLUMN_ASSIGNMENTS property.
+
+        Parameters
+        ----------
+        assignments : dict[str, str | list[str] | None]
+            Dictionary of column assignments.
+        """
+        cls._COLUMN_ASSIGNMENTS = cls.__validate_assignments(assignments)
+
+    @property
+    def SUMMARY_PARAM_RAW_NAMES(cls) -> list[str]:
+        """
+        A list of important parameters, for displaying file summary information.
+
+        Used by GUI methods for displaying summary file information.
+
+        Returns
+        -------
+        list[str]
+            List of important parameter strings, matching keys in 'parser_base.params'.
+        """
+        return cls._SUMMARY_PARAM_RAW_NAMES
+
+    @SUMMARY_PARAM_RAW_NAMES.setter
+    def SUMMARY_PARAM_RAW_NAMES(cls, summary_params: list[str]) -> None:
+        """
+        Setter for the SUMMARY_PARAM_RAW_NAMES property.
+
+        Parameters
+        ----------
+        summary_params : list[str]
+            List of important parameter strings, matching keys in 'parser_base.params'.
+        """
+        cls._SUMMARY_PARAM_RAW_NAMES = summary_params
+
+    @property
+    def summary_param_names(cls) -> list[str]:
+        """
+        Returns a list of important parameter names of the data file.
+
+        Sources from cls.SUMMARY_PARAM_RAW_NAMES.
+        If names are defined in cls.RELABELS, then the relabelled names are returned.
+
+        Returns
+        -------
+        list[str]
+            List of important parameter names.
+        """
+        return [
+            cls.RELABELS[name] if (name in cls.RELABELS and cls.relabel) else name
+            for name in cls.SUMMARY_PARAM_RAW_NAMES
+        ]
+
+    @property
+    def RELABELS(cls) -> dict[str, str]:
+        """
+        Renames labels to more useful names (optional property).
+
+        'parser_base.to_scan' will use this to relabel the scan params or column labels.
+        Assignments should be dict entries in the form of 'old_label' : 'new_label'.
+
+        Returns
+        -------
+        dict[str, str]
+            Dictionary of old labels to new labels, matching names in 'parser_base.labels' or 'parser_base.params'.
+        """
+        return cls._RELABELS
+
+    @RELABELS.setter
+    def RELABELS(cls, relabels: dict[str, str]) -> None:
+        """
+        Setter for the RELABELS property.
+
+        Parameters
+        ----------
+        relabels : dict[str,str]
+            Dictionary of old labels to new labels, matching names in 'parser_base.labels' or 'parser_base.params'.
+        """
+        cls._RELABELS = relabels
+
+    @property
+    def relabel(cls) -> bool:
+        """
+        Whether the parser object returns relabelled defined in cls.RELABELS.
+
+        If True, by the provided params-names and column-headers are relabelled.
+        If False, then the original params-names and column-headers are used by the class.
+
+        Returns
+        -------
+        bool
+            True if the parser object returns relabelled params/column-headers.
+        """
+        return cls._relabel
+
+    @relabel.setter
+    def relabel(cls, value) -> None:
+        """
+        Setter for the relabel property.
+
+        Parameters
+        ----------
+        value : bool
+            True if the parser object returns relabelled params/column-headers.
+        """
+        cls._relabel = value
+
+
+class parser_base(metaclass=parser_meta):
+    """
+    General class that parses raw files to acquire data/meta information.
+
+    Requires implementation of `file_parser` method, as well as the property
+    methods `ALLOWED_EXTENSIONS`, `COLUMN_ASSIGNMENTS` and (optional) `RELABELS`.
+    These properties modify the behaviour of the parser object.
+
+    Parameters
+    ----------
+    filepath : str | None, optional
+        The filepath of the data file, by default None
+    load_head_only : bool, optional
+        If True, then only the header of the file loaded, by default False
+    relabel : bool, optional
+        If True, then column and parameter labels are returned as more useful
+        names defined in 'parser_base.RELABELS', by default False
+
+    Attributes
+    ----------
+    filepath : str | None
+        The filepath of the data file.
+    data : NDArray | None
+        The data array of the file.
+    units : list[str] | None
+        The units of the data columns.
+
+    Properties
+    ----------
+    labels : list[str] | None
+        The labels of the data columns. Affected by relabel.
+    params : dict[str, Any]
+        Additional parameters of the data file. Affected by relabel.
+    ALLOWED_EXTENSIONS : list[str]
+        Allowable extensions for the parser.
+    COLUMN_ASSIGNMENTS : dict[str, str | list[str] | None]
+        Assignments of scan input variables to column names.
+    SUMMARY_PARAM_RAW_NAMES : list[str]
+        A list of important parameters, for displaying file summary information.
+    RELABELS : dict[str, str]
+        Renames labels to more useful names (optional property) when calling to_scan().
+    summary_params : dict[str, Any]
+        Returns a dictionary of important parameters of the data file.
+
+    """
+
+    # Set attributes to class properties. Necessary for calling class properties on the instance.
+    ALLOWED_EXTENSIONS = parser_meta.ALLOWED_EXTENSIONS
+    COLUMN_ASSIGNMENTS = parser_meta.COLUMN_ASSIGNMENTS
+    SUMMARY_PARAM_RAW_NAMES = parser_meta.SUMMARY_PARAM_RAW_NAMES
+    RELABELS = parser_meta.RELABELS
+    # summary_param_names_with_units = parser_meta.summary_param_names_with_units
+    summary_param_names = parser_meta.summary_param_names
+
+    def __init__(
+        self,
+        filepath: str | None = None,
+        load_head_only: bool = False,
+        relabel: bool | None = None,
+    ) -> None:
+
+        # ABC super.
+        super().__init__()
+
+        # Initialise variables
+        self._filepath = filepath  # filepath of the data file
+        self.data = None
+        self._labels = []
+        self.units = []
+        self.params = {}
+
+        if filepath is None:
+            return
+        elif type(filepath) is str:
+            self.load(header_only=load_head_only)  # Load data
+        else:
+            raise TypeError(f"Filepath is {type(filepath)}, not str.")
+
+        # Copy class value at initialisation if None
+        self._relabel = relabel
+
+    @property
+    def relabel(self) -> bool:
+        """
+        Whether the parser object returns relabelled defined in cls.RELABELS.
+
+        If True, by the provided params-names and column-headers are relabelled.
+        If False, then the original params-names and column-headers are used by the class.
+
+        Returns
+        -------
+        bool
+            True if the parser object returns relabelled params/column-headers.
+        """
+        if self._relabel is None:
+            return type(self)._relabel
+        else:
+            return self._relabel
+
+    @relabel.setter
+    def relabel(self, value: bool) -> None:
+        """
+        Setter for the relabel property.
+
+        Parameters
+        ----------
+        value : bool
+            True if the parser object returns relabelled params/column-headers.
+        """
+        self._relabel = value
+
+    @relabel.deleter
+    def relabel(self) -> None:
+        """
+        Deleter for the relabel property. Resets to class default behaviour.
+        """
+        self._relabel = None
+
+    @property
+    def filepath(self) -> str:
+        """
+        Returns the filepath of the data file.
+
+        There is no setter for the filepath attribute, a new instance needs to be created
+        which also allows the header_only boolean option.
+
+        Returns
+        -------
+        str
+            Filepath of the data file.
+        """
+        return self._filepath
+
+    @property
+    def labels(self) -> list[str]:
+        """
+        Returns the labels of the data columns.
+
+        If relabel is True, then the labels are returned as more useful names defined in 'parser_base.RELABELS'.
+
+        Returns
+        -------
+        list[str]
+            Labels of the data columns.
+        """
+        if not self.relabel:
+            return self._labels
+        else:
+            # Collect labels if they exist.
+            relabels = []
+            for label in self._labels:
+                relabels.append(
+                    self.RELABELS[label] if label in self.RELABELS else label
+                )
+            return relabels
+
+    def to_scan(self, load_all_columns: bool = False) -> Type[scan_base] | scan_base:
+        """
+        Converts the parser object to a scan_base object.
+
+        Parameters
+        ----------
+        load_all_columns : bool, optional
+            If True, then columns unreferenced by COLUMN_ASSIGNMENTS are also
+            loaded into the y attribute of the scan object. By default False.
+
+        Returns
+        -------
+        type[scan_base]
+            Returns a scan_base object.
+        """
+        if self.data is None:
+            raise ValueError(
+                "No data loaded into the parser object, only header information. Use parser.load() to load data."
+            )
+        return scan_base(parser=self, load_all_columns=load_all_columns)
+
     @classmethod
     @abc.abstractmethod
-    def file_parser(cls, file: TextIOWrapper) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
+    def file_parser(
+        cls, file: TextIOWrapper, header_only: bool = False
+    ) -> tuple[NDArray | None, list[str], list[str], dict[str, Any]]:
         """
         Abstract method that generates data, labels, and params from a given file.
+
         Overridden method should be initially called to check for valid filetype (super().file_parser(file)).
 
         Parameters
         ----------
         file : TextIOWrapper
             TextIOWapper of the datafile (i.e. file=open('file.csv', 'r'))
+        header_only : bool, optional
+            If True, then only the header of the file is read and NDArray is returned as None, by default False
 
         Returns
         -------
-        tuple[NDArray, 
+        tuple[NDArray | None,
             list[str] | None,
             list[str] | None,
             dict]
             A tuple of the data (NDArray), labels (list), units (list) and parameters (dict) of the datafile.
         """
-        valid_filepath = False
-        for ext in cls.ALLOWED_EXTENSIONS:
-            if file.name.endswith(ext):
-                valid_filepath = True
-                break
-        if not valid_filepath:
-            raise ValueError(f"File {file.name} is not a valid file type for {cls.__name__}.")
-        
+        if not file.name.endswith(tuple(cls.ALLOWED_EXTENSIONS)):
+            raise ValueError(
+                f"File {file.name} is not a valid file type for {cls.__name__}."
+            )
+
         data = None
         labels = []
         units = []
         params = {}
         return data, labels, units, params
 
-    def load(self, file: str | TextIOWrapper | None = None) -> None:
+    def load(
+        self, file: str | TextIOWrapper | None = None, header_only: bool = False
+    ) -> None:
         """
         Loads data from the specified file, and attaches it to the object.
         Additionally rewrites filepath attribute if a new file is loaded.
@@ -175,6 +532,9 @@ class parser_base(metaclass=abc.ABCMeta):
             File information can be passed as a string or a TextIOWrapper object.
             If None, then the object filepath attribute is used to load the data.
             If filepath is also None, then a ValueError is raised.
+        header_only : bool, optional
+            If True, then only the header of the file is read, by default False
+            Consequently loads labels, units and params, but sets the data as None.
 
         Raises
         ------
@@ -182,72 +542,100 @@ class parser_base(metaclass=abc.ABCMeta):
             Raised if no file is provided and the object filepath attribute is None.
         """
         # Load object filepath
-        load_filepath = self.filepath # Might be None
-        
+        load_filepath = self._filepath  # Might be None
+
         # Check if file parameter is provided:
         if type(file) is TextIOWrapper:
             # File already loaded
-            self.data, self.labels, self.params = self.file_parser(file)
+            self.data, self._labels, self.params = self.file_parser(
+                file, header_only=header_only
+            )
             # If a file is provided override filepath.
-            self.filepath = file.name
+            self._filepath = file.name
             return
         elif type(file) is str:
             # Update filepath
             load_filepath = file
-            
+
         # Try to load filepath
         if load_filepath is None:
-            raise ValueError('No file/filepath provided to load data.')
+            raise ValueError("No file/filepath provided to load data.")
         else:
-            with open(load_filepath, 'r') as load_file:
-                data, labels, units, params = self.file_parser(load_file)
-        
-        # Pull column length of data to compare to units and labels.
-        col_len = data.shape[1]
-        if labels is not None and len(labels) != col_len:
-            raise ValueError(f'Labels length {len(labels)} does not match data columns {col_len}.')
-        if units is not None and len(units) != col_len:
-            raise ValueError(f'Units length {len(units)} does not match data columns {col_len}.')
-        
+            with open(load_filepath, "r") as load_file:
+                data, labels, units, params = self.file_parser(
+                    load_file, header_only=header_only
+                )
+
+        if data is not None or self.data is not None:
+            # Use existing data to check consistency if only loading header.
+            if data is None and self.data is not None:
+                data = self.data
+            # Pull column length of data to compare to units and labels.
+            col_len = data.shape[1]
+            if labels is not None and len(labels) != col_len:
+                raise ValueError(
+                    f"Labels length {len(labels)} does not match data columns {col_len}."
+                )
+            if units is not None and len(units) != col_len:
+                raise ValueError(
+                    f"Units length {len(units)} does not match data columns {col_len}."
+                )
+
         # Assign data, labels, units, and params to object.
-        self.data, self.labels, self.units, self.params = data, labels, units, params
-        
+        self.data, self._labels, self.units, self.params = data, labels, units, params
+
         # Update filepath after data load
-        self.filepath = load_filepath
+        self._filepath = load_filepath
         return
-    
-    def copy(self) -> type[PARSER]:
+
+    def copy(self, clone: type[Self] | None = None) -> type[Self]:
         """
         Generates a copy of the parser object.
+
+        Parameters
+        ----------
+        clone : type[PARSER] | None, optional
+            If a clone instance is provide, then properties are copied to the clone.
+            If None, then a new copy is made from the current object.
 
         Returns
         -------
         type[PARSER]
             A copy of the parser object.
-        """    
-        
-        newobj = type(self)(None)
+        """
+        # Use the provided clone, otherwise create newobj.
+        newobj = type(self)(None) if clone is not None else clone
+
         # Perform deep copy of data, labels, and params.
-        newobj.filepath = self.filepath #str copy
-        newobj.data = self.data.copy() #numpy copy
-        newobj.labels = self.labels.copy() #str list copy
-        newobj.units = self.units.copy() #str list copy
-        for key in self.params: #dict key str - value Any copy
+        newobj.filepath = self._filepath  # str copy
+        newobj.data = self.data.copy()  # numpy copy
+        newobj.labels = self._labels.copy()  # str list copy
+        newobj.units = self.units.copy()  # str list copy
+        for key in self.params:  # dict key str - value Any copy
             value = self.params[key]
-            newobj.params[key] = value if isinstance(value, (int, str, float, bool)) else value.copy()
+            newobj.params[key] = (
+                value if isinstance(value, (int, str, float, bool)) else value.copy()
+            )
         return newobj
-            
+
+    @property
     def filesize(self) -> int:
         """Returns the size of the file in bytes."""
-        
-        if self.filepath is None:
-            raise ValueError('No file loaded.')
-        return os.path.getsize(self.filepath)
-    
+
+        if self._filepath is None:
+            raise ValueError("No file loaded.")
+        return os.path.getsize(self._filepath)
+
+    @property
     def memorysize(self) -> int:
         """Returns the size of the object (and it's attributes) in memory bytes."""
-        return sys.getsizeof(self) + sys.getsizeof(self.data) + sys.getsizeof(self.labels) + sys.getsizeof(self.params)
-    
+        return (
+            sys.getsizeof(self)
+            + sys.getsizeof(self.data)
+            + sys.getsizeof(self._labels)
+            + sys.getsizeof(self.params)
+        )
+
     def to_DataFrame(self) -> pd.DataFrame:
         """
         Converts the data to a pandas DataFrame.
@@ -257,16 +645,19 @@ class parser_base(metaclass=abc.ABCMeta):
         pd.DataFrame
             A pandas DataFrame of the data and labels.
         """
-        return pd.DataFrame(self.data, columns=self.labels)
+        return pd.DataFrame(
+            self.data, columns=self._labels if len(self._labels) > 0 else None
+        )
 
     def search_label_index(self, search: str) -> int:
         """
         Returns the index of the label in the labels list.
-        
+
         Parameters
         ----------
         search : str
             String label to search for in the labels list.
+            Can also accomodate the '|' character to search for multiple labels, in priority of the left-right order .
 
         Returns
         -------
@@ -278,9 +669,84 @@ class parser_base(metaclass=abc.ABCMeta):
         AttributeError
             Raised if the label is not found in the labels list.
         """
-        for i in range(len(self.labels)):
-            if self.labels[i] == search:
-                return i
-        
+        queries = search.split("|")
+        for query in queries:
+            for i in range(len(self._labels)):
+                if self._labels[i] == query:
+                    return i
+
+            # Also check relabel if relabel is True.
+            if self.relabel:
+                if query in self.RELABELS:
+                    for i, label in enumerate(self._labels):
+                        if self.RELABELS[query] == label:
+                            return i
+                if query in self.RELABELS.values():
+                    for i, label in enumerate(self._labels):
+                        if query == label:
+                            return i
+
         raise AttributeError(f"Label {search} not found in labels.")
-        
+
+    @property
+    def summary_params(self) -> dict[str, Any]:
+        """
+        Returns a dictionary of important parameters of the data file.
+
+        Returns
+        -------
+        dict
+            Dictionary of important parameters.
+        """
+        return {key: self.params[key] for key in self.SUMMARY_PARAM_RAW_NAMES}
+
+    @property
+    def summary_param_names(self) -> list[str]:
+        """
+        Returns a list of important parameter names of the data file.
+
+        Sources from cls.SUMMARY_PARAM_RAW_NAMES.
+        If names are defined in cls.RELABELS, then the relabelled names are returned.
+
+        Returns
+        -------
+        list[str]
+            List of important parameter names.
+        """
+        return [
+            self.RELABELS[name] if (name in self.RELABELS and self.relabel) else name
+            for name in self.SUMMARY_PARAM_RAW_NAMES
+        ]
+
+    @property
+    def summary_param_values(self) -> list[Any]:
+        """
+        Returns a list of important parameter values of the data file.
+
+        Returns
+        -------
+        list
+            List of important parameter values.
+        """
+        return [
+            self.params[key] if key in self.params else None
+            for key in self.SUMMARY_PARAM_RAW_NAMES
+        ]
+
+    @property
+    def summary_param_names_with_units(self) -> list[str]:
+        """
+        Returns a list of important parameter names with units.
+
+        Requires a loaded dataset to return the units of the parameters.
+        Not a pre-defined class method.
+
+        Returns
+        -------
+        list
+            List of important parameter names with units.
+        """
+        raise NotImplementedError(
+            f"Method 'summary_param_names_with_units' not implemented for {type(self)}."
+        )
+        return self.SUMMARY_PARAM_RAW_NAMES

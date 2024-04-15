@@ -1,27 +1,52 @@
 [build-system]
-requires = ["setuptools"]
+requires = [
+    "setuptools>=60",
+    "setuptools-scm>=8.0"
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyNexafs"
-version = "0.0.1"
+# https://packaging.python.org/en/latest/specifications/version-specifiers/#version-specifiers
+# Use Major.Minor.Micro versioning.
+# version = "0.1.0"
+# https://pypi.org/project/setuptools-scm/ Generate a dynamic version based on .git information.
+dynamic = ["version"]
 dependencies = [
     "scipy",
     "numpy",
     "pandas",
     "overrides",
 ]
-    
+description = "A package for processing and analyzing NEXAFS data."
+license = {file = "LICENSE"}
+authors = [
+    {name = "Matthew Gebert", email="matthew.gebert@monash.edu"},
+    ]
+maintainers = [
+    {name = "Matthew Gebert", email="matthew.gebert@monash.edu"},
+]
+readme = "README.md"
+keywords = ["NEXAFS", "XAS", "synchrotron"]
+
 [tool.setuptools.packages.find] # All the following settings are optional:
 where = ["."]  # Root directory
-include = ["pyNexafs*"] 
-exclude = []  
+include = ["pyNexafs*"]
+exclude = []
+
+[tool.numpydoc_validation]
+checks = [
+    "all",   # report on all checks, except the below
+    "EX01",
+    "SA01",
+    "ES01",
+]
 
 # namespaces = true  # true by default
 
 ### Example dependency usage
 # example <= 0.4
-# allowed operators <, >, <=, >=, == or !=, 
+# allowed operators <, >, <=, >=, == or !=,
 
 ### Example inlcude
 # ["*"] by default

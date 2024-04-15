@@ -163,3 +163,4 @@ cython_debug/
 .asc
 
 test*
+.vscode*

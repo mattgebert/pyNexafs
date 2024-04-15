@@ -1,0 +1,2 @@
+[MASTER]
+load-plugins=pylint.extensions.docparams # load numpydoc plugin for pylint checking.
