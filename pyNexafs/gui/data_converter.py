@@ -103,10 +103,14 @@ class viewerWidget(QVBoxLayout):
         """
         self._selected_files = names
         if names is not None:
-            # Find common labels:
+            # Find common labels in scan objects:
             scans = self.scans
             if len(names) > 1:
-                labels = set(scans[names[0]]._y_labels)
+                # Look through all scan objects
+                scan = scans[names[0]]
+                labels = (
+                    set(scan._y_labels) if scan is not None else []
+                )  # set to empty list if scan object is None.
                 for name in names[1:]:
                     if name in scans:
                         labels = labels.intersection(set(scans[name]._y_labels))
