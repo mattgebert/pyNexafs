@@ -379,7 +379,7 @@ class SXR_NEXAFS(parser_base):
 
         # Use specific parser based on file extension.
         if file.name.endswith(".asc"):
-            data, labels, units, params = cls._parse_asc(file, header_only=header_only)
+                data, labels, units, params = cls._parse_asc(file, header_only=header_only)
         elif file.name.endswith(".mda"):
             data, labels, units, params = cls._parse_mda(file, header_only=header_only)
         else:
@@ -637,10 +637,11 @@ class SXR_NEXAFS(parser_base):
         pUnits = [
             self.params[pName][2]
             if (
-                pName in self.params
-                and hasattr(self.params[pName], "__len__")
-                and len(self.params[pName]) == 3
-                and self.params[pName][2] != ""
+                self.params is not None # Params loaded
+                and pName in self.params # Parameter listed
+                and hasattr(self.params[pName], "__len__") #Parameter has a list of values
+                and len(self.params[pName]) == 3 # 3 params for value, description, unit
+                and self.params[pName][2] != "" # Unit value is not empty.
             )
             else None
             for pName in pNames

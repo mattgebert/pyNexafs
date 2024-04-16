@@ -544,42 +544,47 @@ class parser_base(metaclass=parser_meta):
         # Load object filepath
         load_filepath = self._filepath  # Might be None
 
-        # Check if file parameter is provided:
-        if type(file) is TextIOWrapper:
-            # File already loaded
-            self.data, self._labels, self.params = self.file_parser(
-                file, header_only=header_only
-            )
-            # If a file is provided override filepath.
-            self._filepath = file.name
-            return
-        elif type(file) is str:
-            # Update filepath
-            load_filepath = file
+        try:
+            # Check if file parameter is provided:
+            if type(file) is TextIOWrapper:
+                load_filepath = file.name
+                # File already loaded
+                self.data, self._labels, self.params = self.file_parser(
+                    file, header_only=header_only
+                )
+                # If a file is provided override filepath.
+                self._filepath = file.name
+                return
+            elif type(file) is str:
+                # Update filepath
+                load_filepath = file
 
-        # Try to load filepath
-        if load_filepath is None:
-            raise ValueError("No file/filepath provided to load data.")
-        else:
-            with open(load_filepath, "r") as load_file:
-                data, labels, units, params = self.file_parser(
-                    load_file, header_only=header_only
-                )
+            # Try to load filepath
+            if load_filepath is None:
+                raise ValueError("No file/filepath provided to load data.")
+            else:
+                with open(load_filepath, "r") as load_file:
+                    data, labels, units, params = self.file_parser(
+                        load_file, header_only=header_only
+                    )
 
-        if data is not None or self.data is not None:
-            # Use existing data to check consistency if only loading header.
-            if data is None and self.data is not None:
-                data = self.data
-            # Pull column length of data to compare to units and labels.
-            col_len = data.shape[1]
-            if labels is not None and len(labels) != col_len:
-                raise ValueError(
-                    f"Labels length {len(labels)} does not match data columns {col_len}."
-                )
-            if units is not None and len(units) != col_len:
-                raise ValueError(
-                    f"Units length {len(units)} does not match data columns {col_len}."
-                )
+            if data is not None or self.data is not None:
+                # Use existing data to check consistency if only loading header.
+                if data is None and self.data is not None:
+                    data = self.data
+                # Pull column length of data to compare to units and labels.
+                col_len = data.shape[1]
+                if labels is not None and len(labels) != col_len:
+                    raise ValueError(
+                        f"Labels length {len(labels)} does not match data columns {col_len}."
+                    )
+                if units is not None and len(units) != col_len:
+                    raise ValueError(
+                        f"Units length {len(units)} does not match data columns {col_len}."
+                    )
+        except AssertionError:
+            # Assume file cannot be loaded using the parser methods. Raise loading error.
+            raise ImportError(f"{load_filepath} encountered an assertion error while loading using the parse methods of {type(self)}.")
 
         # Assign data, labels, units, and params to object.
         self.data, self._labels, self.units, self.params = data, labels, units, params

@@ -149,8 +149,8 @@ class nexafs_fileloader(QWidget):
         # Disable filter signalling while parser is changed.
         self.filter._changing_parser = True
         # Update directory viewer and filter parser selection
-        self.directory_viewer.parser = new_parser
         self.filter.parser = new_parser
+        self.directory_viewer.parser = new_parser
         self.filter._changing_parser = False
         self._log_entry()
         return
@@ -497,16 +497,16 @@ class table_model(QAbstractTableModel):
 class directory_viewer_table(QTableView):
 
     selectionLoaded = pyqtSignal(bool)  # For emitting after selection change is loaded.
-    default_headers = ["#", "Filename"]  # index and filename
+    
+    __default_headers_list = ["#", "Filename"]  # index and filename
+    __default_parsed_headers_list = ["#", "Filename", "Loaded"]
 
     def __init__(self, init_dir=None):
         super().__init__()
 
         # Instance properties
         self.files = []  # list[str]
-        self._filtered_files = []  # list[str]
         self._header_names = None  # list[str]
-
         ## WE KEEP A DICT OF PARSERS, AND THEN USE THE PARSERS TO GENERATE THE TABLE.
         self._parser_headers = {}  # dict[str, Type[base_parser]]
         self._parser_files = {}  # dict[str, Type[base_parser]]
@@ -540,6 +540,19 @@ class directory_viewer_table(QTableView):
         # Initialise viewing directory
         if init_dir is not None:
             self.directory = init_dir
+
+    @property
+    def _default_headers(self) -> list[str]:
+        """
+        Returns a copy of the default headers depending on if a parser is defined (adds a loading column).
+
+        Returns
+        -------
+        list[str]
+            List of the default headers
+        """
+        obj = self.__default_headers_list if self.parser is None else self.__default_parsed_headers_list
+        return obj.copy()
 
     @property
     def header(self) -> list[str] | None:
@@ -677,11 +690,11 @@ class directory_viewer_table(QTableView):
             # self.proxy_model.setFilterFixedString(str_filter)
 
         # Check if filetype filter is changed:
-        if filetype_filters is not None:
+        if filetype_filters is not None and isinstance(filetype_filters, list):
             # Check if filetype filter is changed:
-            if self._filetype_filters is not None and np.all(
+            if self._filetype_filters is not None and len(self._filetype_filters) == len(filetype_filters) and np.all(
                 [
-                    self._filetype_filters[i] == filetype_filters[i]
+                    (filetype_filters[i] == self._filetype_filters[i] or filetype_filters[i] in self._filetype_filters)
                     for i in range(len(filetype_filters))
                 ]
             ):
@@ -690,6 +703,12 @@ class directory_viewer_table(QTableView):
             else:
                 self._filetype_filters = filetype_filters
                 self.update_table()
+        elif filetype_filters is None:
+            self._filetype_filters = (
+                self._parser.ALLOWED_EXTENSIONS if self._parser is not None else None
+            )
+        else:
+            raise AttributeError(f"filters[1] '{filetype_filters}' is not a list of filetype strings or None.")
 
     @filters.deleter
     def filters(self):
@@ -700,39 +719,30 @@ class directory_viewer_table(QTableView):
         self.update_table()
 
     def relabel_header(self):
+        # Setup default header columns
+        header = self._default_headers
+        # Add list values if parser is defined, and header objects allow unit calls.
         if self.parser is not None and self._parser_headers is not None:
-            header = None  # intially set to None, to assign default value if no headers are found.
             if self._parser_headers is not None and len(self._parser_headers) > 0:
                 for key, val in self._parser_headers.items():
                     # Collect first key, val where val is not None.
                     if val is not None:
                         # Attempt to use 'summary_param_names_with_units' if available.
                         try:
-                            header = (
-                                self.default_headers
-                                + val.summary_param_names_with_units
-                            )
+                            header += val.summary_param_names_with_units
                         except NotImplementedError as e:
                             warnings.warn(
                                 f"{self.parser.__name__} has not implemented 'summary_param_names_with_units'. Defaulting to 'summary_param_names'."
                             )
-                            header = (
-                                self.default_headers + val.summary_param_names
-                            )  # without units.
+                            header += val.summary_param_names # without units.
                         break  # end for loop prematurely.
             # Assign default value if None.
             if header is None:
-                header = self.default_headers + self.parser.SUMMARY_PARAM_RAW_NAMES
-            self._header_names = header  # internal header object
-        else:
-            if self.parser is None:
-                # Default for no parser
-                self._header_names = self.default_headers
-            else:
-                # Parser exists, but names not initialised.
-                self._header_names = (
-                    self.default_headers + self.parser.SUMMARY_PARAM_RAW_NAMES
-                )
+                header += self.parser.SUMMARY_PARAM_RAW_NAMES
+        elif self.parser is not None:
+            header += self.summary_param_names 
+                
+        self._header_names = header  # internal header object
 
         # Model header update
         if self.files_model is not None:
@@ -781,27 +791,30 @@ class directory_viewer_table(QTableView):
         self.relabel_header()
 
         # Get header data for table:
-        data = []
+        data = [] #list of file header lists.
         excess = [
-            "" for _ in range(len(self._header_names) - len(self.default_headers))
+            "" for _ in range(len(self._header_names) - len(self._default_headers))
         ]  # empty columns for invalid file headers.
         for i in range(len(files)):
             file = files[i]
+            filedata = [i + 1, file] # add index (1, ...) and filename to data.
+            # If parser specified (for loading) add field for successful loading.
+            if self.parser:
+                filedata.append(True if file in self._parser_headers and self._parser_headers[file] is not None else False)
 
-            filedata = [i + 1, file]  # add index (1, ...) and filename to data.
-            if len(filedata) != len(self.default_headers):
+            # Raise an error if mismatch between info and header variables.            
+            if len(filedata) != len(self._default_headers):
                 raise AttributeError("Default headers do not match filedata.")
 
-            if self._parser_headers is not None:
-                if self._parser_headers[file] is not None:
-                    # Match indexing of parser.SUMMARY_PARAM_RAW_NAMES
-                    spv = self._parser_headers[file].summary_param_values
-                    for j in range(len(self._header_names) - len(self.default_headers)):
-                        filedata.append(spv[j])
-                else:
-                    filedata.extend(excess)
+            # Add parameter values
+            if self._parser_headers is not None and self._parser_headers[file] is not None:
+                # Match indexing of parser.SUMMARY_PARAM_RAW_NAMES
+                spv = self._parser_headers[file].summary_param_values
+                for j in range(len(self._header_names) - len(self._default_headers)):
+                    filedata.append(spv[j])
             else:
                 filedata.extend(excess)
+            # Add header data to data list.
             data.append(filedata)
 
         # Add files to table if exists
