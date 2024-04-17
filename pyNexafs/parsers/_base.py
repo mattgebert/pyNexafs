@@ -51,14 +51,28 @@ class parser_meta(abc.ABCMeta):
                 "SUMMARY_PARAM_RAW_NAMES",
                 "RELABELS",
             ]:
-                __namespace[f"_{name}"] = __namespace[name]
-                del __namespace[name]
+                __namespace[f"_{name}"] = __namespace[name] # Adjust assignments to an internal variable i.e. _ALLOWED_EXTENSIONS
+                del __namespace[name] # Remove old assignment
 
             # Validate column assignments
             __namespace["_COLUMN_ASSIGNMENTS"] = parser_meta.__validate_assignments(
                 __namespace["_COLUMN_ASSIGNMENTS"]
             )
+            
         return super().__new__(__mcls, __name, __bases, __namespace, **kwargs)
+
+    def __init__(name, bases, dict, kwds):
+        super().__init__(name, bases, dict, **kwds)
+        
+        # Gather internal parser methods for using in file loading.
+        name.parser_functions = []
+        for fn_name in dir(name):
+            if fn_name.startswith("parser_"):
+                val = getattr(name, fn_name)
+                if callable(val):
+                    name.parser_functions.append(val)
+        print(f"Recognised the parser methods in {name.__name__} class:", name.parser_functions)
+        return
 
     @property
     def ALLOWED_EXTENSIONS(cls) -> list[str]:
@@ -367,7 +381,7 @@ class parser_base(metaclass=parser_meta):
         relabel: bool | None = None,
     ) -> None:
 
-        # ABC super.
+        # parser_meta super
         super().__init__()
 
         # Initialise variables
