@@ -65,13 +65,17 @@ class parser_meta(abc.ABCMeta):
         super().__init__(name, bases, dict, **kwds)
         
         # Gather internal parser methods for using in file loading.
-        name.parser_functions = []
+        name.parse_functions = []
         for fn_name in dir(name):
-            if fn_name.startswith("parser_"):
+            if fn_name.startswith("parse_"):
                 val = getattr(name, fn_name)
                 if callable(val):
-                    name.parser_functions.append(val)
-        print(f"Recognised the parser methods in {name.__name__} class:", name.parser_functions)
+                    # Check the parameters of each function match requirements.
+                    ## TODO: Add checks for positional arguments: cls, file. 
+                    if not isinstance(val, ):
+                        raise TypeError(f"{val.__name__} is not a class method of {name.__name__}. Use the @classmethod decorator when defining.")
+                    print(dir(val))
+                    name.parse_functions.append(val)
         return
 
     @property
@@ -498,14 +502,11 @@ class parser_base(metaclass=parser_meta):
         return scan_base(parser=self, load_all_columns=load_all_columns)
 
     @classmethod
-    @abc.abstractmethod
     def file_parser(
         cls, file: TextIOWrapper, header_only: bool = False
     ) -> tuple[NDArray | None, list[str], list[str], dict[str, Any]]:
         """
-        Abstract method that generates data, labels, and params from a given file.
-
-        Overridden method should be initially called to check for valid filetype (super().file_parser(file)).
+        Class method that tries to call cls.parse_functions methods.
 
         Parameters
         ----------

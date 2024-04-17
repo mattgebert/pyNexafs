@@ -99,9 +99,9 @@ class MEX2_NEXAFS(parser_base):
 
         # Use specific parser based on file extension.
         if file.name.endswith(".xdi"):
-            data, labels, units, params = cls._parse_xdi(file, header_only=header_only)
+            data, labels, units, params = cls.parse_xdi(file, header_only=header_only)
         elif file.name.endswith(".mda"):
-            data, labels, units, params = cls._parse_mda(file, header_only=header_only)
+            data, labels, units, params = cls.parse_mda(file, header_only=header_only)
         else:
             raise NotImplementedError(
                 f"File {file.name} is not yet supported by the {cls.__name__} parser."
@@ -113,7 +113,7 @@ class MEX2_NEXAFS(parser_base):
         return data, labels, units, params
 
     @classmethod
-    def _parse_xdi(
+    def parse_xdi(
         cls, file: TextIOWrapper, header_only: bool = False
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
         """Reads Australian Synchrotron .xdi files.
@@ -219,7 +219,7 @@ class MEX2_NEXAFS(parser_base):
         return data, labels, units, params
 
     @classmethod
-    def _parse_mda(
+    def parse_mda(
         cls, file: TextIOWrapper, header_only: bool = False
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
         """Reads Australian Synchrotron .mda files.
@@ -379,9 +379,9 @@ class SXR_NEXAFS(parser_base):
 
         # Use specific parser based on file extension.
         if file.name.endswith(".asc"):
-                data, labels, units, params = cls._parse_asc(file, header_only=header_only)
+                data, labels, units, params = cls.parse_asc(file, header_only=header_only)
         elif file.name.endswith(".mda"):
-            data, labels, units, params = cls._parse_mda(file, header_only=header_only)
+            data, labels, units, params = cls.parse_mda(file, header_only=header_only)
         else:
             raise NotImplementedError(
                 f"File {file.name} is not yet supported by the {cls.__name__} parser."
@@ -393,7 +393,7 @@ class SXR_NEXAFS(parser_base):
         return data, labels, units, params
 
     @classmethod
-    def _parse_asc(
+    def parse_asc(
         cls, file: TextIOWrapper, header_only: bool = False
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
         """Reads Australian Synchrotron .asc files.
@@ -562,7 +562,7 @@ class SXR_NEXAFS(parser_base):
         return data, labels, units, params
 
     @classmethod
-    def _parse_mda(
+    def parse_mda(
         cls, file: TextIOWrapper, header_only: bool = False
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
         """Reads Australian Synchrotron .mda files.
