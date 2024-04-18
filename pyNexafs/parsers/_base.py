@@ -65,26 +65,30 @@ class parser_meta(abc.ABCMeta):
     def __init__(name, bases, dict, **kwds):
         super().__init__(name, bases, dict, kwds)
         
-        # Gather internal parser methods for using in file loading.
+        # Gather internal parser methods at class creation for use in file loading.
         name.parse_functions = []
         for fn_name in dir(name):
             if fn_name.startswith("parse_"):
                 fn = getattr(name, fn_name)
-                if type(fn) == types.MethodType and callable(fn): #is callable enough?
-                    # Check the parameters of each function match requirements.
-                    ## TODO: Add checks for positional arguments: cls, file. 
+                if callable(fn):
                     arg_names = fn.__code__.co_varnames[:fn.__code__.co_argcount]
-                    if len(arg_names) < 2 or len(arg_names) > 3:
-                        raise TypeError(f"Parser method must only have 2-3 arguments: 'cls', 'file' and (optional) 'header_only'. Has {arg_names}")
-                    if arg_names[0] != "cls":
-                        raise TypeError(f"First argument of parser method must be 'cls'. Is {arg_names[0]}.")
-                    if arg_names[1] != "file":
-                        raise TypeError(f"Second argument of parser method must be 'file'. Is {arg_names[1]}.")
-                    if len(arg_names) == 3 and arg_names[2] != "header_only":
-                        raise TypeError(f"Third (optional) argument of parser method must be 'header_only'. Is {arg_names[2]}.")
-                    
-                    
-                    name.parse_functions.append(fn)
+                    # Check the parameters of each function match requirements.
+                    if type(fn) == types.FunctionType: #Static methods
+                        if arg_names[0] != "file":
+                            raise TypeError(f"First argument of static parser method must be 'file'. Is {arg_names[0]}.")
+                        if len(arg_names) == 2 and arg_names[1] != "header_only":
+                            raise TypeError(f"Second (optional) argument of static parser method must be 'header_only'. Is {arg_names[2]}.")
+                        name.parse_functions.append(fn)
+                    elif type(fn) == types.MethodType: #Class methods
+                        if len(arg_names) < 2 or len(arg_names) > 3:
+                            raise TypeError(f"Parser method must only have 2-3 arguments: 'cls', 'file' and (optional) 'header_only'. Has {arg_names}")
+                        if arg_names[0] != "cls":
+                            raise TypeError(f"First argument of parser method must be 'cls', i.e. the class. It is instead {arg_names[0]}.")
+                        if arg_names[1] != "file":
+                            raise TypeError(f"Second argument of parser method must be 'file'. Is {arg_names[1]}.")
+                        if len(arg_names) == 3 and arg_names[2] != "header_only":
+                            raise TypeError(f"Third (optional) argument of parser method must be 'header_only'. Is {arg_names[2]}.")
+                        name.parse_functions.append(fn)
         return
 
     @property
