@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import abc
 import sys, io, os
+import types
 from io import TextIOWrapper
 from typing import Any, TypeVar, Type, Self
 from numpy.typing import NDArray
@@ -61,21 +62,29 @@ class parser_meta(abc.ABCMeta):
             
         return super().__new__(__mcls, __name, __bases, __namespace, **kwargs)
 
-    def __init__(name, bases, dict, kwds):
-        super().__init__(name, bases, dict, **kwds)
+    def __init__(name, bases, dict, **kwds):
+        super().__init__(name, bases, dict, kwds)
         
         # Gather internal parser methods for using in file loading.
         name.parse_functions = []
         for fn_name in dir(name):
             if fn_name.startswith("parse_"):
-                val = getattr(name, fn_name)
-                if callable(val):
+                fn = getattr(name, fn_name)
+                if type(fn) == types.MethodType and callable(fn): #is callable enough?
                     # Check the parameters of each function match requirements.
                     ## TODO: Add checks for positional arguments: cls, file. 
-                    if not isinstance(val, ):
-                        raise TypeError(f"{val.__name__} is not a class method of {name.__name__}. Use the @classmethod decorator when defining.")
-                    print(dir(val))
-                    name.parse_functions.append(val)
+                    arg_names = fn.__code__.co_varnames[:fn.__code__.co_argcount]
+                    if len(arg_names) < 2 or len(arg_names) > 3:
+                        raise TypeError(f"Parser method must only have 2-3 arguments: 'cls', 'file' and (optional) 'header_only'. Has {arg_names}")
+                    if arg_names[0] != "cls":
+                        raise TypeError(f"First argument of parser method must be 'cls'. Is {arg_names[0]}.")
+                    if arg_names[1] != "file":
+                        raise TypeError(f"Second argument of parser method must be 'file'. Is {arg_names[1]}.")
+                    if len(arg_names) == 3 and arg_names[2] != "header_only":
+                        raise TypeError(f"Third (optional) argument of parser method must be 'header_only'. Is {arg_names[2]}.")
+                    
+                    
+                    name.parse_functions.append(fn)
         return
 
     @property
