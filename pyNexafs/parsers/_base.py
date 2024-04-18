@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import abc
 import sys, io, os
 import types
+import warnings
 from io import TextIOWrapper
 from typing import Any, TypeVar, Type, Self
 from numpy.typing import NDArray
@@ -62,8 +63,8 @@ class parser_meta(abc.ABCMeta):
             
         return super().__new__(__mcls, __name, __bases, __namespace, **kwargs)
 
-    def __init__(name, bases, dict, **kwds):
-        super().__init__(name, bases, dict, kwds)
+    def __init__(name, bases, dict, kwds):
+        super().__init__(name, bases, dict, **kwds)
         
         # Gather internal parser methods at class creation for use in file loading.
         name.parse_functions = []
@@ -536,16 +537,34 @@ class parser_base(metaclass=parser_meta):
             dict]
             A tuple of the data (NDArray), labels (list), units (list) and parameters (dict) of the datafile.
         """
+        
+        # Check if allowed extension
         if not file.name.endswith(tuple(cls.ALLOWED_EXTENSIONS)):
             raise ValueError(
                 f"File {file.name} is not a valid file type for {cls.__name__}."
             )
-
-        data = None
-        labels = []
-        units = []
-        params = {}
-        return data, labels, units, params
+        
+        if len(cls.parse_functions) > 0:
+            # Check if any parse functions match the file type.
+            for parse_fn in cls.parse_functions:
+                # Attempt to use parse functions that contain a string that matches the extension
+                if parse_fn.__name__ in file.name.split(".")[-1]:
+                    try:
+                        arg_names = parse_fn.__code__.co_varnames[:parse_fn.__code__.co_argcount]
+                        if type(parse_fn) == types.FunctionType: #staticmethod
+                            return parse_fn(file, header_only) if "header_only" in arg_names else parse_fn(file)
+                        else: #classmethod
+                            # type(parse_fn == types.MethodType)
+                            return parse_fn(cls, file, header_only) if "header_only" in arg_names else parse_fn(cls, file)
+                    except:
+                        # Method failed, continue to next method.
+                        warnings.warn(f"Attempted method {parse_fn.__name__} failed to load {file.name} from {cls.__name__}.", UserWarning)
+                        continue
+                    
+            # If no parse functions successfully import the file type,
+            raise ImportError(f"No parser method in {cls.__name__} succeeded on {file.name}.")
+        # If no parse functions match the file type, raise an error.
+        raise ImportError(f"No parser method in {cls.__name__} found for {file.name}.")
 
     def load(
         self, file: str | TextIOWrapper | None = None, header_only: bool = False

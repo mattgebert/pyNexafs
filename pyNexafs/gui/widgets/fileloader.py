@@ -9,14 +9,13 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QComboBox,
     QTableView,
-)
-from PyQt6.QtWidgets import (
     QApplication,
     QLabel,
     QTextEdit,
     QCheckBox,
     QAbstractItemView,
     QHeaderView,
+    QSplitter
 )
 
 # from PyQt6.QtWidgets import QScrollBar, QHeaderView, QMainWindow, QTableWidget, QFrame, QGridLayout, QSizeGrip
@@ -79,15 +78,24 @@ class nexafs_fileloader(QWidget):
         dir_parser_layout.addWidget(self.nexafs_parser_selector)
         dir_parser_layout.addWidget(QLabel("Relabel:"))
         dir_parser_layout.addWidget(self.filter_relabelling)
+        
+        ## Qsplitter for expandable log
+        draggable = QSplitter(Qt.Orientation.Vertical)
+        draggable.addWidget(self.directory_viewer)
+        draggable_log_widget = QWidget()
+        draggable_log = QVBoxLayout()
+        draggable_log.addWidget(QLabel("Log:"))
+        draggable_log.addWidget(self.log)
+        draggable_log_widget.setLayout(draggable_log)
+        draggable_log_widget.setContentsMargins(0, 0, 0, 0)
+        draggable.addWidget(draggable_log_widget)
 
         ## Directory Layout
         dir_layout = QVBoxLayout()
         dir_layout.addLayout(dir_parser_layout)
         dir_layout.addLayout(self.filter)
-        dir_layout.addWidget(self.directory_viewer)
-        dir_layout.addWidget(QLabel("Log:"))
-        dir_layout.addWidget(self.log)
-
+        dir_layout.addWidget(draggable)
+        
         # Assign viewer layout to widget.
         self.setLayout(dir_layout)
 
@@ -96,8 +104,8 @@ class nexafs_fileloader(QWidget):
         self.directory_viewer.directory = (
             self.directory_selector.folder_path
         )  # Match initial value.
-        dir_layout.setStretch(2, 3)  # viewer stretch 3x
-        dir_layout.setStretch(4, 1)  # log stretch 1x
+        draggable.setStretchFactor(0,5)
+        draggable.setStretchFactor(1,1)
 
         ## Element Connections
         # Reload directory upon path change.
@@ -187,14 +195,8 @@ class nexafs_fileloader(QWidget):
 
         # Log parser selection
         parser = self.nexafs_parser_selector.current_parser  # current parser selection
-        if parser is None:
-            self._log_text += (
-                ". "  # no whitespace, assuming log files will be called next.
-            )
-            return
-
-        # If parser selected, continue!
-        self.log_text += f" using parser '{parser.__name__}'"
+        if parser is not None:
+            self.log_text += f" using parser '{parser.__name__}'"
 
         # Log Filetype Selection?
         filetypes = self.filter.filetypes_selection
@@ -203,7 +205,7 @@ class nexafs_fileloader(QWidget):
 
         # Log Filter Selection
         filter_text = self.filter.filter_text
-        if filter_text != "":
+        if filter_text != "" and filter_text is not None:
             self.log_text += f" with filter '{filter_text}'"
 
         # End line
@@ -358,6 +360,7 @@ class directory_selector(QHBoxLayout):
         self.folder_path_edit.accessibleName = "Directory"
         self.folder_path_edit.accessibleDescription = "Path to load NEXAFS data from."
         self.folder_path_edit.editingFinished.connect(self.validate_path)
+        self.folder_path_edit_default_stylesheet = self.folder_path_edit.styleSheet()
         # Folder select button
         self.folder_select_button = QPushButton("Browse")
         self.folder_select_button.clicked.connect(self.select_path)
@@ -415,7 +418,7 @@ class directory_selector(QHBoxLayout):
             if editable_path != self.folder_path:
                 # if path has changed, perform extra functions...
                 new_path = True
-            self.folder_path_edit.setStyleSheet("background-color: white;")
+            self.folder_path_edit.setStyleSheet(self.folder_path_edit_default_stylesheet)
             self.folder_path = editable_path
             self.folder_path_edit.setText(editable_path)
 
@@ -921,7 +924,7 @@ class directory_filters(QHBoxLayout):
         self.addWidget(self.filter_filetype_select)
 
         # Widget Attributes
-        self.filter_text_edit.setPlaceholderText("Filter filename by text")
+        self.filter_text_edit.setPlaceholderText("Filter filename|header by text")
 
         # Connections
         self.filter_text_edit.editingFinished.connect(self.on_filter_text_edit)
