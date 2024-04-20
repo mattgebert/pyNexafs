@@ -548,17 +548,19 @@ class parser_base(metaclass=parser_meta):
             # Check if any parse functions match the file type.
             for parse_fn in cls.parse_functions:
                 # Attempt to use parse functions that contain a string that matches the extension
-                if parse_fn.__name__ in file.name.split(".")[-1]:
+                if file.name.split(".")[-1] in parse_fn.__name__:
                     try:
                         arg_names = parse_fn.__code__.co_varnames[:parse_fn.__code__.co_argcount]
                         if type(parse_fn) == types.FunctionType: #staticmethod
                             return parse_fn(file, header_only) if "header_only" in arg_names else parse_fn(file)
                         else: #classmethod
                             # type(parse_fn == types.MethodType)
-                            return parse_fn(cls, file, header_only) if "header_only" in arg_names else parse_fn(cls, file)
-                    except:
+                            # cls is the first argument of the method, already incorporated into the function call.
+                            return parse_fn(file, header_only) if "header_only" in arg_names else parse_fn(file)
+                    except Exception as e:
                         # Method failed, continue to next method.
                         warnings.warn(f"Attempted method {parse_fn.__name__} failed to load {file.name} from {cls.__name__}.", UserWarning)
+                        print("Failure: ", e)
                         continue
                     
             # If no parse functions successfully import the file type,

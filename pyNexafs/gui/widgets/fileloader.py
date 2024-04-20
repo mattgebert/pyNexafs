@@ -15,7 +15,8 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QAbstractItemView,
     QHeaderView,
-    QSplitter
+    QSplitter,
+    QStyle,
 )
 
 # from PyQt6.QtWidgets import QScrollBar, QHeaderView, QMainWindow, QTableWidget, QFrame, QGridLayout, QSizeGrip
@@ -27,7 +28,11 @@ from PyQt6.QtCore import (
     QRegularExpression,
     QSize,
 )
-from PyQt6.QtGui import QColor, QPalette
+from PyQt6.QtGui import (
+    QColor,
+    QPalette,
+    QIcon,
+)
 import os, sys
 from pyNexafs.parsers import parser_loaders, parser_base
 from pyNexafs.nexafs import scan_base
@@ -462,6 +467,16 @@ class table_model(QAbstractTableModel):
         # if header is not None:
         #     for i in range(len(header)):
         #         self.setHeaderData(i, Qt.Orientation.Horizontal, header[i])
+        
+        # Initalise graphics for loaded / unloaded files.
+        # self._icon_error =  QStyle.StandardPixmap.SP_DialogCancelButton
+        # self._icon_success = QStyle.StandardPixmap.SP_DialogApplyButton
+        self._icon_error = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton)
+        self._icon_success = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)
+        
+        # self._icon_error = QIcon.fromTheme("dialog-error")
+        # self._icon_success = QIcon.fromTheme("sync-synchronizing")
+        # self._icon_success = QIcon.fromTheme("dialog-error")
 
     def headerData(self, section, orientation, role):
         if (
@@ -472,7 +487,23 @@ class table_model(QAbstractTableModel):
         else:
             return super().headerData(section, orientation, role)
 
-    def data(self, index, role):
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        # Check that second column is being indexed for "loaded" status, to display icons.
+        if len(self._header) > 2 and self._header[2] == "Loaded" and index.column() == 2:
+            if role == Qt.ItemDataRole.DecorationRole:
+                # Icons
+                val = (
+                    self._icon_success
+                    if self._data[index.row()][index.column()]
+                    else self._icon_error
+                )
+                print(index.row(), val)
+                return val
+            else:
+                # val = "T" if self._data[index.row()][index.column()] else "F")
+                return None
+            
+        # General data accessing
         if role == Qt.ItemDataRole.DisplayRole:
             # See below for the nested-list data structure.
             # .row() indexes into the outer list,
@@ -503,7 +534,7 @@ class directory_viewer_table(QTableView):
     
     __default_headers_list = ["#", "Filename"]  # index and filename
     __default_parsed_headers_list = ["#", "Filename", "Loaded"]
-
+    
     def __init__(self, init_dir=None):
         super().__init__()
 
@@ -543,6 +574,7 @@ class directory_viewer_table(QTableView):
         # Initialise viewing directory
         if init_dir is not None:
             self.directory = init_dir
+            
 
     @property
     def _default_headers(self) -> list[str]:
@@ -803,7 +835,8 @@ class directory_viewer_table(QTableView):
             filedata = [i + 1, file] # add index (1, ...) and filename to data.
             # If parser specified (for loading) add field for successful loading.
             if self.parser:
-                filedata.append(True if file in self._parser_headers and self._parser_headers[file] is not None else False)
+                status = True if file in self._parser_headers and self._parser_headers[file] is not None else False
+                filedata.append(status)
 
             # Raise an error if mismatch between info and header variables.            
             if len(filedata) != len(self._default_headers):

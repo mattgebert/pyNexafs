@@ -67,50 +67,50 @@ class MEX2_NEXAFS(parser_base):
         "ifluor": "Fluorescence",
     }
 
-    @classmethod
-    @overrides.overrides
-    def file_parser(
-        cls, file: TextIOWrapper, header_only: bool = False
-    ) -> tuple[NDArray | None, list[str], list[str], dict[str, Any]]:
-        """Reads Australian Synchrotron Medium Energy Xray2 (MEX2) Spectroscopy files.
+    # @classmethod
+    # @overrides.overrides
+    # def file_parser(
+    #     cls, file: TextIOWrapper, header_only: bool = False
+    # ) -> tuple[NDArray | None, list[str], list[str], dict[str, Any]]:
+    #     """Reads Australian Synchrotron Medium Energy Xray2 (MEX2) Spectroscopy files.
 
-        Parameters
-        ----------
-        file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.asc', 'r'))
-        header_only : bool, optional
-            If True, then only the header of the file is read and NDArray is returned as None, by default False
+    #     Parameters
+    #     ----------
+    #     file : TextIOWrapper
+    #         TextIOWrapper of the datafile (i.e. open('file.asc', 'r'))
+    #     header_only : bool, optional
+    #         If True, then only the header of the file is read and NDArray is returned as None, by default False
 
-        Returns
-        -------
-        tuple[NDArray | None, list[str], dict[str, Any]]
-            Returns a set of data as a numpy array,
-            labels as a list of strings,
-            units as a list of strings,
-            and parameters as a dictionary.
+    #     Returns
+    #     -------
+    #     tuple[NDArray | None, list[str], dict[str, Any]]
+    #         Returns a set of data as a numpy array,
+    #         labels as a list of strings,
+    #         units as a list of strings,
+    #         and parameters as a dictionary.
 
-        Raises
-        ------
-        ValueError
-            If the file is not a valid filetype.
-        """
-        # Init vars, check file type using super method.
-        data, labels, units, params = super().file_parser(file)
+    #     Raises
+    #     ------
+    #     ValueError
+    #         If the file is not a valid filetype.
+    #     """
+    #     # Init vars, check file type using super method.
+    #     data, labels, units, params = super().file_parser(file)
 
-        # Use specific parser based on file extension.
-        if file.name.endswith(".xdi"):
-            data, labels, units, params = cls.parse_xdi(file, header_only=header_only)
-        elif file.name.endswith(".mda"):
-            data, labels, units, params = cls.parse_mda(file, header_only=header_only)
-        else:
-            raise NotImplementedError(
-                f"File {file.name} is not yet supported by the {cls.__name__} parser."
-            )
+    #     # Use specific parser based on file extension.
+    #     if file.name.endswith(".xdi"):
+    #         data, labels, units, params = cls.parse_xdi(file, header_only=header_only)
+    #     elif file.name.endswith(".mda"):
+    #         data, labels, units, params = cls.parse_mda(file, header_only=header_only)
+    #     else:
+    #         raise NotImplementedError(
+    #             f"File {file.name} is not yet supported by the {cls.__name__} parser."
+    #         )
 
-        # Add filename to params at the end, to avoid incorrect filename from copy files internal params.
-        params["filename"] = file.name
+    #     # Add filename to params at the end, to avoid incorrect filename from copy files internal params.
+    #     params["filename"] = file.name
 
-        return data, labels, units, params
+    #     return data, labels, units, params
 
     @classmethod
     def parse_xdi(
