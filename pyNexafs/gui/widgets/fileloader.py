@@ -460,6 +460,10 @@ class directory_selector(QHBoxLayout):
 
 # Construct the Table Model
 class table_model(QAbstractTableModel):
+    
+    _status_index = 0 # index for loaded status column.
+    _status_header = "" # string header for the loaded status column.
+    
     def __init__(self, data, header=None):
         super(table_model, self).__init__()
         self._data = data
@@ -489,7 +493,7 @@ class table_model(QAbstractTableModel):
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         # Check that second column is being indexed for "loaded" status, to display icons.
-        if len(self._header) > 2 and self._header[2] == "Loaded" and index.column() == 2:
+        if len(self._header) > self._status_index and self._header[self._status_index] == self._status_header and index.column() == self._status_index:
             if role == Qt.ItemDataRole.DecorationRole:
                 # Icons
                 val = (
@@ -497,7 +501,6 @@ class table_model(QAbstractTableModel):
                     if self._data[index.row()][index.column()]
                     else self._icon_error
                 )
-                print(index.row(), val)
                 return val
             else:
                 # val = "T" if self._data[index.row()][index.column()] else "F")
@@ -531,9 +534,7 @@ class table_model(QAbstractTableModel):
 class directory_viewer_table(QTableView):
 
     selectionLoaded = pyqtSignal(bool)  # For emitting after selection change is loaded.
-    
     __default_headers_list = ["#", "Filename"]  # index and filename
-    __default_parsed_headers_list = ["#", "Filename", "Loaded"]
     
     def __init__(self, init_dir=None):
         super().__init__()
@@ -561,12 +562,12 @@ class directory_viewer_table(QTableView):
         self.setSortingEnabled(True)  # enabled by proxymodel.
         self.proxy_model.setSourceModel(None)
         self.proxy_model.setFilterRegularExpression(None)
-        self.proxy_model.setFilterKeyColumn(
-            -1
-        )  # use all columns for filtering instead of just first.
+        self.proxy_model.setFilterKeyColumn(-1)  # use all columns for filtering instead of just first.
         self.proxy_model.sort(0, Qt.SortOrder.AscendingOrder)
         # self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.resizeColumnToContents(0)
+        self.setMinimumWidth(1)
+        self.horizontalHeader().setMinimumSectionSize(10)
 
         # Event connections
         self.selectionModel().selectionChanged.connect(self.load_selection)
@@ -575,6 +576,23 @@ class directory_viewer_table(QTableView):
         if init_dir is not None:
             self.directory = init_dir
             
+        # Setup default header columns if parser is defined. Use header/index definition in table_model.
+        self.__default_parsed_headers_list = self.__default_headers_list.copy()
+        self.__default_parsed_headers_list.insert(self._status_index(), self._status_header())
+            
+    @classmethod 
+    def _status_index(cls) -> int:
+        """
+        Returns the index of the loaded status column, an attribute of the abstract table model class.
+        """
+        return table_model._status_index
+    
+    @classmethod
+    def _status_header(cls) -> str:
+        """
+        Returns the string header of the loaded status column, an attribute of the abstract table model class.
+        """
+        return table_model._status_header
 
     @property
     def _default_headers(self) -> list[str]:
@@ -783,6 +801,13 @@ class directory_viewer_table(QTableView):
         if self.files_model is not None:
             self.files_model._header = self._header_names
             self.files_model.layoutChanged.emit()
+        
+        # Update column widths with header update.
+        for i in range(0, len(self._header_names)):
+            # If the current column width is larger than the size hint, resize to fit for all columns.
+            if self.columnWidth(i) > self.sizeHintForColumn(i):
+                self.resizeColumnToContents(i)
+        
         return
 
     def update_table(self):
@@ -836,7 +861,7 @@ class directory_viewer_table(QTableView):
             # If parser specified (for loading) add field for successful loading.
             if self.parser:
                 status = True if file in self._parser_headers and self._parser_headers[file] is not None else False
-                filedata.append(status)
+                filedata.insert(self._status_index(), status)
 
             # Raise an error if mismatch between info and header variables.            
             if len(filedata) != len(self._default_headers):
@@ -865,10 +890,12 @@ class directory_viewer_table(QTableView):
             self.files_model._header = self._header_names
             self.files_model.layoutChanged.emit()
         self.resizeColumnToContents(0)
-        for i in range(1, len(self._header_names)):
-            # If the current column width is larger than the size hint, resize to fit.
+        for i in range(0, len(self._header_names)):
+            # If the current column width is larger than the size hint, resize to fit for all columns.
             if self.columnWidth(i) > self.sizeHintForColumn(i):
                 self.resizeColumnToContents(i)
+        # if self.parser is not None:
+        #     # self.setColumnWidth(self._status_index(), 1)
         return
 
     def load_selection(self) -> None:
@@ -882,7 +909,7 @@ class directory_viewer_table(QTableView):
         sm = self.selectionModel()
         # Require selection and parser to trigger load data.
         if sm.hasSelection() and self.parser is not None:
-            rows = sm.selectedRows(column=1)  # get filename, not index.
+            rows = sm.selectedRows(column=1 if self._status_index() > 1 else 2)  # get filename, not index.
             for row in rows:
                 filename = self.proxy_model.data(row, Qt.ItemDataRole.DisplayRole)
                 # Initialize parser_files if not already defined.
