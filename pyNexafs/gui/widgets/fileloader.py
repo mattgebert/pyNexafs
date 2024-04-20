@@ -950,12 +950,23 @@ class directory_viewer_table(QTableView):
         """
         sm = self.selectionModel()
         if sm.hasSelection():
-            rows = sm.selectedRows(column=1)  # Filename in second column.
+            rows = sm.selectedRows(column=self._index_filename)  # Filename in second column.
             # return self.files_model.data(rows, Qt.ItemDataRole.DisplayRole)
             return [
                 self.files_model.data(row, Qt.ItemDataRole.DisplayRole) for row in rows
             ]
         return []
+    
+    @property
+    def _index_filename(self) -> int:
+        """
+        Returns the index of the filename column in the table model.
+        """
+        if self.parser is None:
+            return 1
+        else:
+            return 2 if self._status_index() < 2 else 1
+
 
 
 class directory_filters(QHBoxLayout):
