@@ -139,26 +139,44 @@ class viewerWidget(QVBoxLayout):
         list[str]
             List of strings of the data series selected.
         """
-        return self._dataseries_list.copy()
+        selected_items = self._dataseries_list_view.selectedItems()
+        if len(selected_items) > 0:
+            return [item.text() for item in selected_items]
+        else:
+            return None
 
     def on_label_selection_change(self) -> None:
         """
         Callback for when the selected labels change.
         """
-        scans_subset = {
-            name: scan
-            for name, scan in self.scans.items()
-            if name in self._selected_files
-        }
-        self.graph_selection(scans_subset)
+        # Get the current scan object selection.
+        if self._selected_files is not None and len(self._selected_files) > 0:
+            scans_subset = {
+                name: scan
+                for name, scan in self.scans.items()
+                if name in self._selected_files
+            }
+            # Get the selected fields.
+            ds_list = self.selected_dataseries
+            if ds_list is not None and len(ds_list) > 0: 
+                # Plot onto a graph
+                self.graph_selection(scans_subset, ds_list)
 
-    def graph_selection(self, names: dict[str, scan_base]) -> None:
+    def graph_selection(self, scans: dict[str, scan_base], dataseries_list: list[str]) -> None:
         self._figure.clear()
         ax = self._figure.add_subplot(111)
-        for name, scan in names.items():
-            x = scan.x
-            y = scan.y
-            ax.plot(x, y, label=name)
+        # Iterate over dataseries first:
+        for ds in dataseries_list:
+            # Then iterate over each scan object.
+            for name, scan in scans.items():
+                try:
+                    ind = scan._y_labels.index(ds)
+                    x = scan.x
+                    y = scan.y[:, ind]
+                    ax.plot(x, y, label=name + ":" + ds)
+                except ValueError:
+                    # Catch Value errors if the label is not found.
+                    continue
         self._figure.legend()
         self._canvas.draw()
         # self._canvas.
