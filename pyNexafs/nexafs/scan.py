@@ -69,6 +69,22 @@ class scan_base:
 
         return
 
+    @property
+    def x(self):
+        return self._x
+    
+    @property
+    def y(self):
+        return self._y
+    
+    @property
+    def y_errs(self):
+        return self._y_errs
+
+    @property
+    def x_errs(self):
+        return self._x_errs    
+
     def reload(self) -> None:
         """
         Reload data from the parser object.

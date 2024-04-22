@@ -17,6 +17,7 @@ import matplotlib.figure
 from pyNexafs.gui.widgets.graphing.mpl_graphs import FigureCanvas
 from pyNexafs.gui.widgets.fileloader import nexafs_fileloader
 from pyNexafs.nexafs.scan import scan_base
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavTB
 
 import numpy as np
 
@@ -29,13 +30,17 @@ class viewerWidget(QVBoxLayout):
         self._selected_files = None
         self._dataseries_list = []  # List of common labels in current selection.
         self._dataseries_list_view = QListWidget()
-        self._canvas = FigureCanvas(matplotlib.figure.Figure())  # use empty canvas.
+        self._figure = matplotlib.figure.Figure()
+        self._canvas = FigureCanvas(self._figure)  # use empty canvas.
+        self._navtoolbar = NavTB(self._canvas)
+        
         self._scan_objects = None
         self._selected_dataseries = None
 
         # Add to layout
         self.addWidget(QLabel("Data Series"))
         self.addWidget(self._dataseries_list_view)
+        self.addWidget(self._navtoolbar)
         self.addWidget(self._canvas)
 
         # Attributes
@@ -145,18 +150,19 @@ class viewerWidget(QVBoxLayout):
             for name, scan in self.scans.items()
             if name in self._selected_files
         }
+        self.graph_selection(scans_subset)
 
-    def graph_selection(self, names: list[str]):
-        print(names)
-        print(self.canvas_figure)
-        ax = self.canvas_figure.add_subplot(111)
-
-        x = np.linspace(0, 10, 100)
-        rand_y = np.random.rand(100)
-
-        ax.plot(x, rand_y)
-        pass
-
+    def graph_selection(self, names: dict[str, scan_base]) -> None:
+        self._figure.clear()
+        ax = self._figure.add_subplot(111)
+        for name, scan in names.items():
+            x = scan.x
+            y = scan.y
+            ax.plot(x, y, label=name)
+        self._figure.legend()
+        self._canvas.draw()
+        # self._canvas.
+        
 
 class mainWidget(QWidget):
     def __init__(self):
