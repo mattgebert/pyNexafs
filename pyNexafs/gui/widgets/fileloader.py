@@ -534,7 +534,7 @@ class table_model(QAbstractTableModel):
 class directory_viewer_table(QTableView):
 
     selectionLoaded = pyqtSignal(bool)  # For emitting after selection change is loaded.
-    __default_headers_list = ["#", "Filename"]  # index and filename
+    __default_headers_list = ["#", "Filename"] # index and filename #TODO: Add "Created", "Modified" when implemented in parser_base. 
     
     def __init__(self, init_dir=None):
         super().__init__()
@@ -771,31 +771,47 @@ class directory_viewer_table(QTableView):
         self._str_filter, self._filetype_filters = None, None
         self.update_table()
 
-    def relabel_header(self):
+    def relabel_header(self) -> None:
+        """
+        Generates the column headers using default parser important parameters.
+        
+        First attempts to call `summary_param_names_with_units` on the first non-None 
+        header-loaded parser object, to load the column labels and their appropriate units.
+        Alternatively calls `summary_param_names` on the object, which doesn't require unit labels.
+        These two methods take into account the parser `relabel` property.
+        If no headers are loaded then calls the class SUMMARY_PARAM_RAW_NAMES, which doesn't take into 
+        
+        
+        """
         # Setup default header columns
-        header = self._default_headers
+        header = self._default_headers #Get defaults
+        
         # Add list values if parser is defined, and header objects allow unit calls.
-        if self.parser is not None and self._parser_headers is not None:
-            if self._parser_headers is not None and len(self._parser_headers) > 0:
-                for key, val in self._parser_headers.items():
-                    # Collect first key, val where val is not None.
-                    if val is not None:
-                        # Attempt to use 'summary_param_names_with_units' if available.
-                        try:
-                            header += val.summary_param_names_with_units
-                        except NotImplementedError as e:
-                            warnings.warn(
-                                f"{self.parser.__name__} has not implemented 'summary_param_names_with_units'. Defaulting to 'summary_param_names'."
-                            )
-                            header += val.summary_param_names # without units.
-                        break  # end for loop prematurely.
-            # Assign default value if None.
-            if header is None:
-                header += self.parser.SUMMARY_PARAM_RAW_NAMES
+        if self.parser is not None and self._parser_headers is not None and len(self._parser_headers) > 0:
+            obj_head = None
+            for val in self._parser_headers.values():
+                # Collect val (parser objects), where val is not None.
+                if val is not None:
+                    # Attempt to use 'summary_param_names_with_units' if available.
+                    try:
+                        obj_head = val.summary_param_names_with_units
+                    except NotImplementedError as e:
+                        warnings.warn(
+                            f"{self.parser.__name__} has not implemented 'summary_param_names_with_units'. Defaulting to 'summary_param_names'."
+                        )
+                        obj_head = val.summary_param_names # without units.
+                    break  # end for loop prematurely.
+            # If all parser headers are None, then use parser default values.
+            if obj_head is None:
+                obj_head = self.parser.summary_param_names
+            # Add obj_head to header
+            header += obj_head
+        # If _parser_headers are not defined but the parser is. 
         elif self.parser is not None:
-            header += self.summary_param_names 
-                
-        self._header_names = header  # internal header object
+            header += self.parser.summary_param_names 
+            
+        # Update internal header names
+        self._header_names = header 
 
         # Model header update
         if self.files_model is not None:
@@ -807,7 +823,6 @@ class directory_viewer_table(QTableView):
             # If the current column width is larger than the size hint, resize to fit for all columns.
             if self.columnWidth(i) > self.sizeHintForColumn(i):
                 self.resizeColumnToContents(i)
-        
         return
 
     def update_table(self):
@@ -841,7 +856,8 @@ class directory_viewer_table(QTableView):
                         self._parser_headers[file] = self.parser(
                             os.path.join(self.directory, file), load_head_only=True
                         )
-                    except NotImplementedError as e:
+                    #Catch unimplemented and import errors.
+                    except (NotImplementedError, ImportError) as e: 
                         self._parser_headers[file] = None
         else:
             # If parser is None, empty the existing data.
@@ -950,7 +966,7 @@ class directory_viewer_table(QTableView):
         """
         sm = self.selectionModel()
         if sm.hasSelection():
-            rows = sm.selectedRows(column=self._index_filename)  # Filename in second column.
+            rows = sm.selectedRows(column=self._index_filename_column)  # Filename in second column.
             # return self.files_model.data(rows, Qt.ItemDataRole.DisplayRole)
             return [
                 self.files_model.data(row, Qt.ItemDataRole.DisplayRole) for row in rows
@@ -958,7 +974,7 @@ class directory_viewer_table(QTableView):
         return []
     
     @property
-    def _index_filename(self) -> int:
+    def _index_filename_column(self) -> int:
         """
         Returns the index of the filename column in the table model.
         """

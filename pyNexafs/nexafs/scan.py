@@ -107,7 +107,6 @@ class scan_base:
             Load all columns from the parser object, by default False.
 
         """
-        print(self.parser._filepath)
         # Get assignments from parser object.
         assignments = self.parser.COLUMN_ASSIGNMENTS  # Validated column assignments.
 

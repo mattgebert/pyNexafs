@@ -285,7 +285,10 @@ class SXR_NEXAFS(parser_base):
 
     COLUMN_ASSIGNMENTS = {
         "x": "SR14ID01PGM_CALC_ENERGY_MONITOR.P",
-        "y": ["I0", "It", "Ir"],
+        "y": [
+            "SR14ID01PGM:LOCAL_SP",
+            "SR14ID01IOC68:scaler1.S20",
+        ],
         "y_errs": None,
         "x_errs": None,
     }
@@ -346,51 +349,51 @@ class SXR_NEXAFS(parser_base):
         "SR14ID01NEX01:Y_MTR.RBV": "Y",
     }
 
-    @classmethod
-    @overrides.overrides
-    def file_parser(
-        cls, file: TextIOWrapper, header_only: bool = False
-    ) -> tuple[NDArray | None, list[str], list[str], dict[str, Any]]:
-        """Reads Australian Synchrotron Soft X-ray Spectroscopy files.
+    # @classmethod
+    # @overrides.overrides
+    # def file_parser(
+    #     cls, file: TextIOWrapper, header_only: bool = False
+    # ) -> tuple[NDArray | None, list[str], list[str], dict[str, Any]]:
+    #     """Reads Australian Synchrotron Soft X-ray Spectroscopy files.
 
-        Parameters
-        ----------
-        file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.asc', 'r'))
-        header_only : bool, optional
-            If True, then only the header of the file is read and NDArray is returned as None, by default False
+    #     Parameters
+    #     ----------
+    #     file : TextIOWrapper
+    #         TextIOWrapper of the datafile (i.e. open('file.asc', 'r'))
+    #     header_only : bool, optional
+    #         If True, then only the header of the file is read and NDArray is returned as None, by default False
 
-        Returns
-        -------
-        tuple[NDArray | None, list[str], dict[str, Any]]
-            Returns a set of data as a numpy array,
-            labels as a list of strings,
-            units as a list of strings,
-            and parameters as a dictionary.
+    #     Returns
+    #     -------
+    #     tuple[NDArray | None, list[str], dict[str, Any]]
+    #         Returns a set of data as a numpy array,
+    #         labels as a list of strings,
+    #         units as a list of strings,
+    #         and parameters as a dictionary.
 
-        Raises
-        ------
-        ValueError
-            If the file is not a valid filetype.
-        """
+    #     Raises
+    #     ------
+    #     ValueError
+    #         If the file is not a valid filetype.
+    #     """
 
-        # Init vars, check file type using super method.
-        data, labels, units, params = super().file_parser(file)
+    #     # Init vars, check file type using super method.
+    #     data, labels, units, params = super().file_parser(file)
 
-        # Use specific parser based on file extension.
-        if file.name.endswith(".asc"):
-                data, labels, units, params = cls.parse_asc(file, header_only=header_only)
-        elif file.name.endswith(".mda"):
-            data, labels, units, params = cls.parse_mda(file, header_only=header_only)
-        else:
-            raise NotImplementedError(
-                f"File {file.name} is not yet supported by the {cls.__name__} parser."
-            )
+    #     # Use specific parser based on file extension.
+    #     if file.name.endswith(".asc"):
+    #             data, labels, units, params = cls.parse_asc(file, header_only=header_only)
+    #     elif file.name.endswith(".mda"):
+    #         data, labels, units, params = cls.parse_mda(file, header_only=header_only)
+    #     else:
+    #         raise NotImplementedError(
+    #             f"File {file.name} is not yet supported by the {cls.__name__} parser."
+    #         )
 
-        # Add filename to params at the end, to avoid incorrect filename from copy files internal params.
-        params["filename"] = file.name
+    #     # Add filename to params at the end, to avoid incorrect filename from copy files internal params.
+    #     params["filename"] = file.name
 
-        return data, labels, units, params
+    #     return data, labels, units, params
 
     @classmethod
     def parse_asc(
@@ -505,14 +508,10 @@ class SXR_NEXAFS(parser_base):
         while line != "\n":
             # Take index info
             index = int(line[1:6].strip())
-            index_line = (
-                index == 1
-            )  # Boolean to determine if on index description line.
+            index_line = index == 1 # Boolean to determine if on index description line.
             # Take coltype info
             desc_type = line[8:26]
-            assert (
-                desc_type[0] == "[" and desc_type[-1] == "]"
-            )  # Check parenthesis of the line parameters
+            assert desc_type[0] == "[" and desc_type[-1] == "]" # Check parenthesis of the line parameters
             desc_type = desc_type[1:-1].strip()
             # Check if valid col type
             valid = False if not index_line else True
@@ -524,9 +523,11 @@ class SXR_NEXAFS(parser_base):
                 raise ValueError(f"Invalid column type {desc_type} in line {line}")
 
             # Take info
-            desc_info = line[29:].split(", ")
+            desc_info = line[28:].split(", ")
             column_descriptions[index] = desc_info
-
+            # Check that the initial parameter begins with the Instrument descriptor.
+            if not index_line:
+                assert desc_info[0].startswith("SR14ID01") #code for initial 
             # Add to labels and units to lists
             labels += [desc_info[0].strip()] if not index_line else ["Index"]
             if "Positioner" in desc_type:
