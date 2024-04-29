@@ -33,7 +33,7 @@ class viewerWidget(QVBoxLayout):
         self._figure = matplotlib.figure.Figure()
         self._canvas = FigureCanvas(self._figure)  # use empty canvas.
         self._navtoolbar = NavTB(self._canvas)
-        
+
         self._scan_objects = None
         self._selected_dataseries = None
 
@@ -158,11 +158,13 @@ class viewerWidget(QVBoxLayout):
             }
             # Get the selected fields.
             ds_list = self.selected_dataseries
-            if ds_list is not None and len(ds_list) > 0: 
+            if ds_list is not None and len(ds_list) > 0:
                 # Plot onto a graph
                 self.graph_selection(scans_subset, ds_list)
 
-    def graph_selection(self, scans: dict[str, scan_base], dataseries_list: list[str]) -> None:
+    def graph_selection(
+        self, scans: dict[str, scan_base], dataseries_list: list[str]
+    ) -> None:
         self._figure.clear()
         ax = self._figure.add_subplot(111)
         # Iterate over dataseries first:
@@ -180,7 +182,7 @@ class viewerWidget(QVBoxLayout):
         self._figure.legend()
         self._canvas.draw()
         # self._canvas.
-        
+
 
 class mainWidget(QWidget):
     def __init__(self):

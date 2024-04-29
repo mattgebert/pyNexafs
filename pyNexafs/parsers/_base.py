@@ -53,42 +53,56 @@ class parser_meta(abc.ABCMeta):
                 "SUMMARY_PARAM_RAW_NAMES",
                 "RELABELS",
             ]:
-                __namespace[f"_{name}"] = __namespace[name] # Adjust assignments to an internal variable i.e. _ALLOWED_EXTENSIONS
-                del __namespace[name] # Remove old assignment
+                __namespace[f"_{name}"] = __namespace[
+                    name
+                ]  # Adjust assignments to an internal variable i.e. _ALLOWED_EXTENSIONS
+                del __namespace[name]  # Remove old assignment
 
             # Validate column assignments
             __namespace["_COLUMN_ASSIGNMENTS"] = parser_meta.__validate_assignments(
                 __namespace["_COLUMN_ASSIGNMENTS"]
             )
-            
+
         return super().__new__(__mcls, __name, __bases, __namespace, **kwargs)
 
     def __init__(name, bases, dict, kwds):
         super().__init__(name, bases, dict, **kwds)
-        
+
         # Gather internal parser methods at class creation for use in file loading.
         name.parse_functions = []
         for fn_name in dir(name):
             if fn_name.startswith("parse_"):
                 fn = getattr(name, fn_name)
                 if callable(fn):
-                    arg_names = fn.__code__.co_varnames[:fn.__code__.co_argcount]
+                    arg_names = fn.__code__.co_varnames[: fn.__code__.co_argcount]
                     # Check the parameters of each function match requirements.
-                    if type(fn) == types.FunctionType: #Static methods
+                    if type(fn) == types.FunctionType:  # Static methods
                         if arg_names[0] != "file":
-                            raise TypeError(f"First argument of static parser method must be 'file'. Is {arg_names[0]}.")
+                            raise TypeError(
+                                f"First argument of static parser method must be 'file'. Is {arg_names[0]}."
+                            )
                         if len(arg_names) == 2 and arg_names[1] != "header_only":
-                            raise TypeError(f"Second (optional) argument of static parser method must be 'header_only'. Is {arg_names[2]}.")
+                            raise TypeError(
+                                f"Second (optional) argument of static parser method must be 'header_only'. Is {arg_names[2]}."
+                            )
                         name.parse_functions.append(fn)
-                    elif type(fn) == types.MethodType: #Class methods
+                    elif type(fn) == types.MethodType:  # Class methods
                         if len(arg_names) < 2 or len(arg_names) > 3:
-                            raise TypeError(f"Parser method must only have 2-3 arguments: 'cls', 'file' and (optional) 'header_only'. Has {arg_names}")
+                            raise TypeError(
+                                f"Parser method must only have 2-3 arguments: 'cls', 'file' and (optional) 'header_only'. Has {arg_names}"
+                            )
                         if arg_names[0] != "cls":
-                            raise TypeError(f"First argument of parser method must be 'cls', i.e. the class. It is instead {arg_names[0]}.")
+                            raise TypeError(
+                                f"First argument of parser method must be 'cls', i.e. the class. It is instead {arg_names[0]}."
+                            )
                         if arg_names[1] != "file":
-                            raise TypeError(f"Second argument of parser method must be 'file'. Is {arg_names[1]}.")
+                            raise TypeError(
+                                f"Second argument of parser method must be 'file'. Is {arg_names[1]}."
+                            )
                         if len(arg_names) == 3 and arg_names[2] != "header_only":
-                            raise TypeError(f"Third (optional) argument of parser method must be 'header_only'. Is {arg_names[2]}.")
+                            raise TypeError(
+                                f"Third (optional) argument of parser method must be 'header_only'. Is {arg_names[2]}."
+                            )
                         name.parse_functions.append(fn)
         return
 
@@ -537,34 +551,49 @@ class parser_base(metaclass=parser_meta):
             dict]
             A tuple of the data (NDArray), labels (list), units (list) and parameters (dict) of the datafile.
         """
-        
+
         # Check if allowed extension
         if not file.name.endswith(tuple(cls.ALLOWED_EXTENSIONS)):
             raise ValueError(
                 f"File {file.name} is not a valid file type for {cls.__name__}."
             )
-        
+
         if len(cls.parse_functions) > 0:
             # Check if any parse functions match the file type.
             for parse_fn in cls.parse_functions:
                 # Attempt to use parse functions that contain a string that matches the extension
                 if file.name.split(".")[-1] in parse_fn.__name__:
                     try:
-                        arg_names = parse_fn.__code__.co_varnames[:parse_fn.__code__.co_argcount]
-                        if type(parse_fn) == types.FunctionType: #staticmethod
-                            return parse_fn(file, header_only) if "header_only" in arg_names else parse_fn(file)
-                        else: #classmethod
+                        arg_names = parse_fn.__code__.co_varnames[
+                            : parse_fn.__code__.co_argcount
+                        ]
+                        if type(parse_fn) == types.FunctionType:  # staticmethod
+                            return (
+                                parse_fn(file, header_only)
+                                if "header_only" in arg_names
+                                else parse_fn(file)
+                            )
+                        else:  # classmethod
                             # type(parse_fn == types.MethodType)
                             # cls is the first argument of the method, already incorporated into the function call.
-                            return parse_fn(file, header_only) if "header_only" in arg_names else parse_fn(file)
+                            return (
+                                parse_fn(file, header_only)
+                                if "header_only" in arg_names
+                                else parse_fn(file)
+                            )
                     except Exception as e:
                         # Method failed, continue to next method.
-                        warnings.warn(f"Attempted method {parse_fn.__name__} failed to load {file.name} from {cls.__name__}.", UserWarning)
+                        warnings.warn(
+                            f"Attempted method {parse_fn.__name__} failed to load {file.name} from {cls.__name__}.",
+                            UserWarning,
+                        )
                         print("Failure: ", e)
                         continue
-                    
+
             # If no parse functions successfully import the file type,
-            raise ImportError(f"No parser method in {cls.__name__} succeeded on {file.name}.")
+            raise ImportError(
+                f"No parser method in {cls.__name__} succeeded on {file.name}."
+            )
         # If no parse functions match the file type, raise an error.
         raise ImportError(f"No parser method in {cls.__name__} found for {file.name}.")
 
@@ -633,7 +662,9 @@ class parser_base(metaclass=parser_meta):
                     )
         except AssertionError:
             # Assume file cannot be loaded using the parser methods. Raise loading error.
-            raise ImportError(f"{load_filepath} encountered an assertion error while loading using the parse methods of {type(self)}.")
+            raise ImportError(
+                f"{load_filepath} encountered an assertion error while loading using the parse methods of {type(self)}."
+            )
 
         # Assign data, labels, units, and params to object.
         self.data, self._labels, self.units, self.params = data, labels, units, params
