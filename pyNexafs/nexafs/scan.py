@@ -17,7 +17,9 @@ import matplotlib as mpl
 import matplotlib.figure
 import matplotlib.axes
 import matplotlib.pyplot as plt
+import abc
 import warnings
+import overrides
 from types import NoneType
 from typing import Type, TypeVar, TYPE_CHECKING, Self
 
@@ -272,12 +274,18 @@ class scan_base:
             ax[i].set_title(self._y_labels[i])
         return fig
     
+class scan_abstract_normalised(scan_base, abc.ABCMeta):
+    
+    def __init__():
+    
+    
 class scan_normalised(scan_base):
     """
     General class for a normalised scan_base.
     
-    normalisation is usually performed in reference to some flux measurement,
+    Normalisation is usually performed in reference to some flux measurement,
     such as the current of a mesh or photodiode.
+    
     Requires `norm_channel` or `norm_data` to be defined, but not both.
 
     Parameters
@@ -322,6 +330,7 @@ class scan_normalised(scan_base):
                 self._y = np.delete(scan.y, ind, 1) #copy data, removing the index from the existing set of data.
                 self._y_errs = np.delete(scan.y_errs, ind, 1) if scan.y_errs is not None else None
                 self._y_labels = scan.y_labels[0:ind] + scan.y_labels[ind+1:]
+                self._y_units = scan.y_units[0:ind] + scan.y_units[ind+1:]
                 
             elif len(norm_data) == len(scan.y):
                 # Copy normalisation data
@@ -332,18 +341,23 @@ class scan_normalised(scan_base):
                 self._y = scan.y.copy()
                 self._y_errs = scan.y_errs.copy() if scan.y_errs is not None else None
                 self._y_labels = scan.y_labels.copy()
+                self._y_units = scan.y_units.copy()
             else:
                 raise ValueError(f"Normalisation data with shape {norm_data.shape} doesn't match length of scan y-data with shape {scan.y.shape}")
+            
+            # Copy x data.
+            self._x = scan.x.copy()
+            self._x_errs = scan.x_errs.copy() if scan.x_errs is not None else None
+            self._x_label = scan.x_label
+            self._x_unit = scan.x_unit
+            
             
             # Set reference for original scan object
             self._origin = scan
             self._norm_channel = norm_channel
             
-            ## Load other y-data.
-            self._load_from_origin()
-            
             ## Perform normalisation on data.
-            self._scale_from_norm_data()
+            self._scale_from_normalisation_data()
                 
             return
     
@@ -413,14 +427,16 @@ class scan_normalised(scan_base):
         """
         return self._norm_data_errs    
     
-    def _scale_from_norm_data(self) -> None:
+    def _scale_from_normalisation_data(self) -> None:
         """
-        normalises the y data (and y_err data if present).
+        Normalises the y data (and y_err data if present).
         
         If errors provided for normalisation data, incorporates into calculating new y_err data,
         using a sum of squares as follows:
-            y = f(x, z) = x/z, x = data, z = normalisation data
-            u(y) = sqrt( (df/dx * unc(x)) ^2 + (df/dz * unc(z) )^2)
+            x = data, 
+            z = normalisation data
+            y = f(x, z) = x/z,
+            unc_y = u(y) = sqrt( (df/dx * unc(x)) ^2 + (df/dz * unc(z) )^2)
             df/dx = 1/z
             df/dz = -x/z**2
         """
@@ -441,8 +457,8 @@ class scan_normalised(scan_base):
                 # No norm data errors
                 self._y_errs /= scaled_norm
         elif self._norm_data_errs is not None:
-                # Create y_errs from norm_data_errors.
-                self._y_errs = self.y / scaled_norm**2 * scaled_norm_errs
+            # Create y_errs from norm_data_errors.
+            self._y_errs = self.y / scaled_norm**2 * scaled_norm_errs
         # pass for no definition of errors.
         return
             
@@ -472,4 +488,86 @@ class scan_normalised(scan_base):
             self._y_labels = self._origin.y_labels.copy()
             self._y_units = self._origin.y_units.copy()
             
-#class scan_normalised_subset(scan_normalised):
+class scan_normalised_edges(scan_base):
+    """
+    Normalising a scan_base across pre &/ post edges.
+
+    Uses two band definitions to normalise the y data centred around a chemical resonant edge
+    such as the K-edge of carbon.
+
+    Parameters
+    ----------
+    scan : Type[scan_base] | scan_base
+        The initial scan object to collect and normalise y dataseries.
+    pre_edge_domain : _type_, optional
+        Data to define the domain of pre-edge normalisation. Can take the following data forms:
+        - A list of indices (integers) to subset the y data.
+        - A tuple of floats to define the inclusive-domain of the x data.
+        - None, to not perform pre-edge normalisation. Overrides pre_edge_normalisation enumerate.
+    post_edge_domain : _type_, optional
+        Data to define the domain of post-edge normalisation. Same format as pre-edge. 
+        If None overrides post_edge_normalisation enumerate.
+    pre_edge_normalisation : EDGE_NORMALISATION_TYPE, optional
+        Normalisation type for pre-edge, by default EDGE_NORMALISATION_TYPE.LINEAR
+    pre_edge_level : float, optional
+        Normalisation level for pre-edge, by default 0.1.
+    post_edge_normalisation : EDGE_NORMALISATION_TYPE, optional
+        Normalisation type for post-edge, by default EDGE_NORMALISATION_TYPE.LINEAR
+    post_edge_level : float, optional
+        Normalisation level for post-edge, by default 1.0.
+        
+    Attributes
+    ----------
+    EDGE_NORMALISATION_TYPE : enumerate
+        Enumerate types for edge normalisation.
+    
+    Raises
+    ------
+    ValueError
+        If both `norm_channel` and `norm_data` are simultaneously None or not-None. Only one can be defined.
+    ValueError
+        If `norm_channel` is not found in y_labels.
+
+    """
+        
+    class EDGE_NORMALISATION_TYPE(enumerate):
+        """
+        Enumerated types for edge normalisation.
+        
+        Attributes
+        ----------
+        NONE : int
+            No pre-edge normalisation.
+        LINEAR : int
+            Linear normalisation over the edge domain.
+        EXPONENTIAL : int
+            EXPONENTIAL normalisation over the edge domain.
+        """
+        NONE = 0
+        LINEAR = 1
+        EXPONENTIAL = 2
+    
+    def __init__(self, 
+                 scan: Type[scan_base] | scan_base,
+                 pre_edge_domain = list[int] | tuple[float, float] | None,
+                 post_edge_domain = list[int] | tuple[float, float] | None,
+                 pre_edge_normalisation : EDGE_NORMALISATION_TYPE = EDGE_NORMALISATION_TYPE.LINEAR,
+                 pre_edge_level: float = 0.1,
+                 post_edge_normalisation : EDGE_NORMALISATION_TYPE = EDGE_NORMALISATION_TYPE.LINEAR,
+                 post_edge_level: float = 1.0,
+    ) -> None:
+        
+        
+        
+        
+        return
+        
+        
+    @overrides.overrides
+    def _scale_from_normalisation_data(self) -> None:
+        """
+        
+        """
+        
+        return
+        
