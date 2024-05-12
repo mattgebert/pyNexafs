@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 import abc
 import warnings
 import overrides
+from scipy import optimize as sopt
 from enum import Enum
 from types import NoneType
 from typing import Type, TypeVar, TYPE_CHECKING, Self
@@ -29,12 +30,9 @@ if TYPE_CHECKING:
 
 class scan_abstract(metaclass=abc.ABCMeta):
     """
-    _summary_
-
-    Parameters
-    ----------
-    parser : _type_, optional
-        _description_, by default abc.ABCMeta
+    Abstract class for defining properties of a scan object.
+    
+    Base abstract class includes x,y attributes for data, errors, labels and units.
     """
     def __init__(
         self
@@ -52,35 +50,230 @@ class scan_abstract(metaclass=abc.ABCMeta):
     
     @property
     def x(self) -> npt.NDArray:
+        """
+        Property for the 1D X data (beam energy) of the scan.
+        
+        Parameters
+        ----------
+        val: npt.NDArray | list[int|float]
+            A new 1D array to define beam energies. Removes x_errs if new dimensions don't match.
+
+        Returns
+        -------
+        npt.NDArray
+            The beam energies of the scan.
+        """
         return self._x
+    
+    @x.setter
+    def x(self, val: npt.NDArray | list[int|float]) -> None:
+        if isinstance(val, np.ndarray):
+            self._x = val.copy()
+        elif isinstance(val, list):
+            self._x = np.array(val)
+        else:
+            raise ValueError("Is not a list or a np.ndarray.")
+        # Remove errors if dimensions have changed.
+        if self._x_errs is not None and self._x_errs.shape != self._x.shape:
+            self._x_errs = None
     
     @property
     def y(self) -> npt.NDArray:
+        """
+        Property for the Y data of the scan.
+        
+        Parameters
+        ----------
+        val: npt.NDArray | list[int|float]
+            A numpy array of data or a list of datapoints.
+
+        Returns
+        -------
+        npt.NDArray
+            The beam energies of the scan.
+        """
         return self._y
     
+    @y.setter
+    def y(self, vals: npt.NDArray | list[list[int|float]] | list[int|float]) -> None:
+        if isinstance(vals, np.ndarray):
+            if len(vals.shape) == 2:
+                self._y = vals.copy()
+            else:
+                # Add additional axis to make y 2D instead of 1D
+                self._y = vals.copy()[:, np.newaxis]
+        elif isinstance(vals, list):
+            if isinstance(vals[0], list):
+                self._y = np.array(vals)
+            else:
+                # Assuming int/floats, add additional axis as well.
+                self._y = np.array(vals)[:, np.newaxis]   
+        else:
+            raise ValueError("Is not a list or a np.ndarray.")
+        
+        # Remove attributes if dimensions have changed.
+        if self.y_errs is not None and self.y_errs.shape != self._y.shape:
+            self.y_errs = None
+        if len(self.y_labels) != len(self._y.shape[1]):
+            self.y_labels = None
+        if len(self.y_units) != len(self._y.shape[1]):
+            self.y_units = None    
+    
     @property
-    def y_errs(self) -> npt.NDArray:
+    def y_errs(self) -> npt.NDArray | None:
+        """
+        Property for error data corresponding to the Y values. 
+
+        Parameters
+        ----------
+        errs : np.NDArray | None
+            Error values in a numpy array matching y shape, or None to remove errors.
+
+        Returns
+        -------
+        np.NDArray | None
+            Errors corresponding to y values or None if not defined.
+        """
         return self._y_errs
+    
+    @y_errs.setter
+    def y_errs(self, errs: npt.NDArray | None) -> None:
+        if errs is None:
+            self._y_errs = None  
+        elif isinstance(errs, np.ndarray) and self.y.shape == errs.shape:
+            self._y_errs = errs.copy()
+        else:
+            raise ValueError(f"Shape of errors {errs.shape} doesn't match existing y shape {self.y.shape}.")
+        return
 
     @property
     def x_errs(self) -> npt.NDArray:
+        """
+        Property for error data corresponding to the X values. 
+
+        Parameters
+        ----------
+        errs : np.NDArray | None
+            Error values in a numpy array matching x shape, or None to remove errors.
+
+        Returns
+        -------
+        np.NDArray | None
+            Errors corresponding to x values or None if not defined.
+        """
         return self._x_errs    
     
+    @x_errs.setter
+    def x_errs(self, errs: npt.NDArray | None) -> None:
+        if errs is None:
+            self._x_errs = None
+        elif isinstance(errs, npt.NDArray) and errs.shape == self.x.shape:
+            self._x_errs = errs.copy()
+        else:
+            raise ValueError(f"Shape of errors {errs.shape} doesn't match existing x shape {self.x.shape}.")
+  
     @property
     def x_label(self) -> str:
+        """
+        Property for the label of the x axis.
+
+        Parameters
+        ----------
+        label : str
+            String to replace existing x label.
+
+        Returns
+        -------
+        str
+            The x label.
+        """
         return self._x_label
+    
+    @x_label.setter
+    def x_label(self, label: str):
+        if isinstance(label, str):
+            self._x_label = label
+        else:
+            raise ValueError(f"New label `{label}` is not string.")
     
     @property
     def y_labels(self) -> list[str]:
-        return self._y_labels
+        """
+        Property for the labels of the y axis.
+        
+        In the event new y data is supplied and doesn't match number of existing y_labels,
+        generic y_labels are created in the form 'Data Col. N' where N is the column index.
+
+        Parameters
+        ----------
+        label : list[str]
+            String to replace existing y labels. Must match number of columns in the y attribute.
+
+        Returns
+        -------
+        list[str]
+            The y labels. If y data has been redefined without redefining y_labels, y labels are 
+            generated in the form 'Data Col. N'.
+        """
+        if self._y_labels is not None:
+            return self._y_labels
+        else:
+            chars_col_len = np.ceil(np.log10(self.y.shape[1]+1)) # Gets number of characters for a given number.
+            ylabel_fmt_str = "Data Col. {:" + str(chars_col_len) + "d}"
+            return [ylabel_fmt_str.format(i+1) for i in range(self.y.shape[1])]
+    
+    @y_labels.setter
+    def y_labels(self, labels : list[str]) -> None:
+        if isinstance(labels, list) and np.all([isinstance(label, str) for label in labels]):
+            if len(labels) == self.y.shape[1]:
+                self._y_labels = labels.copy()
+            else:
+                raise ValueError(f"Number of labels ({len(labels)}) does not match y data columns ({self.y.shape[1]}).")
+        else:
+            raise ValueError(f"Provided `labels` {labels} is not a list of only strings.")
+        return 
     
     @property
     def x_unit(self) -> str:
+        """
+        Property for the unit of the x data.
+
+        Parameters
+        ----------
+        unit : str
+            New string for the x data unit.
+
+        Returns
+        -------
+        str
+            The label of the x data.
+        """
         return self._x_unit
+    
+    @x_unit.setter
+    def x_unit(self, unit : str) -> None:
+        if isinstance(unit, str):
+            self._x_unit = unit
+        else:
+            raise ValueError(f"Provided `unit` {unit} is not a string.")
+        return
     
     @property
     def y_units(self) -> list[str]:
         return self._y_units
+    
+    @y_units.setter
+    def y_units(self, units: list[str] | None):
+        if units is None:
+            self._y_units = None
+        elif isinstance(units, list) and np.all([isinstance(unit, str) for unit in units]):
+            if len(units) == self.y.shape[1]:
+                self._y_units = units.copy()
+            else:
+                raise ValueError(f"Shape of 'units' ({len(units)}) does not match shape of y data ({self.y.shape[1]}).")
+        else:
+            raise ValueError(f"Provided 'units' {units} is not a list of strings.")
+        return
     
     def copy(self, *args, **kwargs) -> Type[Self]:
         """
@@ -287,8 +480,9 @@ class scan_base(scan_abstract):
             else None
         )
         return
+
+
     
-# Remove scan_base because it doesn't include _load_from_parser method....
 class scan_abstract_normalised(scan_abstract):
     """
     Abstract class to define the common methods used in all normalized scans.
@@ -298,7 +492,7 @@ class scan_abstract_normalised(scan_abstract):
     scan_base : Type[scan_base]
         A scan object. Could be already normalised scan or a scan_base object.
     """
-    def __init__(self, scan: Type[scan_base] | scan_base):
+    def __init__(self, scan: Type[scan_abstract]):
         self._origin = scan
         return
     
@@ -347,21 +541,50 @@ class scan_abstract_normalised(scan_abstract):
             The original scan object.
         """
         return self._origin
+
+class scan_background_subtracted(scan_abstract_normalised):
+    def __init__(self, 
+                 scan: Type[scan_abstract],
+                 scan_background: Type[scan_abstract],
+                 ) -> None:
+        if scan.x != scan_background.x:
+            raise ValueError("X data for scan and background scan do not match.")
+        if scan.y.shape != scan_background.y.shape:
+            raise ValueError("Y data for scan and background scan do not match.")
+        self._origin = scan
+        self._background = scan_background
+        return
     
-    @origin.setter
-    def origin(self, val) -> None:
-        # Should a property without a setter offer a raise error?
-        raise AttributeError("Cannot set origin value after instantiation.")
-    
-    
+    @overrides.overrides
+    def _scale_from_normalisation_data(self) -> None:
+        """
+        Subtracts the background data from the y data.
+        """
+        # Determine if normalisation can occur over all signals.
+        if set(self._background.y_labels) == set(self.y_labels):
+            if self._background.y_labels == self.y_labels:
+                #Order matches.
+                self.y -= self._background.y
+                if self.y_errs is not None and self._background.y_errs is not None:
+                    self.y_errs = np.sqrt(np.square(self._y_errs) + np.square(self._background.y_errs))
+            else:
+                #Requires re-matching of background indexes.
+                for i, label in enumerate(self.y_labels):
+                    ind = self._background.y_labels.
+                    
+                
+                
+        else:
+            raise ValueError(f"Scan Y labels {self.y_labels} don't match background Y labels {self._background.y_labels}")
+        return
+
 class scan_normalised(scan_abstract_normalised):
     """
-    General class for a normalised scan_base.
+    General class for a normalisation of a scan_base.
     
     Normalisation is usually performed in reference to some flux measurement,
-    such as the current of a mesh or photodiode.
-    
-    Requires `norm_channel` or `norm_data` to be defined, but not both.
+    such as the current of a mesh or photodiode. This class requires 
+    `norm_channel` or `norm_data` to be defined, but not both.
 
     Parameters
     ----------
@@ -452,7 +675,7 @@ class scan_normalised(scan_abstract_normalised):
         elif isinstance(values, np.ndarray):
             self._norm_data = values.copy()
         else:
-            raise TypeError("`values` parameter is not tuple[] or numpy array.")
+            raise TypeError("`values` parameter is not a single numpy array or a tuple of 2 numpy arrays.")
         self.load_and_normalise()
         
     @property
@@ -595,9 +818,12 @@ class scan_normalised_edges(scan_abstract_normalised):
             EXPONENTIAL normalisation over the edge domain.
         """
         NONE = 0
-        LINEAR = 1
-        EXPONENTIAL = 2
-        
+        CONSTANT = 1
+        LINEAR = 2
+        EXPONENTIAL = 3
+    
+    DEFAULT_PRE_EDGE_LEVEL_CONSTANT = 0.0
+    DEFAULT_POST_EDGE_LEVEL_CONSTANT = 1.0
     DEFAULT_PRE_EDGE_LEVEL_LINEAR = 0.0
     DEFAULT_POST_EDGE_LEVEL_LINEAR = 1.0
     DEFAULT_PRE_EDGE_LEVEL_EXP = 0.1
@@ -608,26 +834,88 @@ class scan_normalised_edges(scan_abstract_normalised):
                  pre_edge_domain = list[int] | tuple[float, float] | None,
                  post_edge_domain = list[int] | tuple[float, float] | None,
                  pre_edge_normalisation : EDGE_NORM_TYPE = EDGE_NORM_TYPE.LINEAR,
-                 pre_edge_level: float = 0.0,
                  post_edge_normalisation : EDGE_NORM_TYPE = EDGE_NORM_TYPE.LINEAR,
-                 post_edge_level: float = 1.0,
+                 pre_edge_level: float = DEFAULT_PRE_EDGE_LEVEL_LINEAR,
+                 post_edge_level: float = DEFAULT_POST_EDGE_LEVEL_LINEAR,
     ) -> None:
         
         super().__init__(scan)
-        self._pre_edge_domain = pre_edge_domain
-        self._post_edge_domain = post_edge_domain
-        self._pre_edge_normalisation = pre_edge_normalisation
-        self._post_edge_normalisation = post_edge_normalisation
-        self._pre_edge_level = pre_edge_level
-        self._post_edge_level = post_edge_level
+        # Use properties to define the values.
+        self.pre_edge_domain = pre_edge_domain
+        self.post_edge_domain = post_edge_domain
+        self.pre_edge_normalisation = pre_edge_normalisation
+        self.post_edge_normalisation = post_edge_normalisation
+        # Level defined after normalisation.
+        self.pre_edge_level = pre_edge_level
+        self.post_edge_level = post_edge_level
+        # Define variables for edge fitting
+        self.pre_edge_fit_params = None
+        self.post_edge_fit_params = None
+        # Perform normalisation
+        self._scale_from_normalisation_data()
         return
         
         
     @overrides.overrides
     def _scale_from_normalisation_data(self) -> None:
         """
-        
+        Scales y data by the normalisation regions.
         """
+        # Perform dual normalisation
+        if (self.pre_edge_normalisation is not scan_normalised_edges.EDGE_NORM_TYPE.NONE and 
+            self.post_edge_normalisation is not scan_normalised_edges.EDGE_NORM_TYPE.NONE and
+            self._pre_edge_domain is not None and self._post_edge_domain is not None):
+            # Collect pre-edge indexes
+            if isinstance(self.pre_edge_domain, list):
+                pre_inds = self.pre_edge_domain
+            elif isinstance(self.pre_edge_domain, tuple):
+                pre_inds = np.where((self.x >= self.pre_edge_domain[0]) & (self.x <= self.pre_edge_domain[1]))
+            else:
+                raise AttributeError("Pre-edge domain is not defined correctly.")
+            # Collect post-edge indexes:
+            if isinstance(self.post_edge_domain, list):
+                post_inds = self.post_edge_domain
+            elif isinstance(self.post_edge_domain, tuple):
+                post_inds = np.where((self.x >= self.post_edge_domain[0]) & (self.x <= self.post_edge_domain[1]))
+            else:
+                raise AttributeError("Post-edge domain is not defined correctly.")
+            
+            # Calculate pre-edge and normalise
+            match self.pre_edge_normalisation:
+                case scan_normalised_edges.EDGE_NORM_TYPE.CONSTANT:
+                    mean = np.mean(self.y[pre_inds])
+                    self.y -= mean + self.DEFAULT_PRE_EDGE_LEVEL_CONSTANT
+                    self.pre_edge_fit_params = mean.tolist()
+                case scan_normalised_edges.EDGE_NORM_TYPE.LINEAR:
+                    lin_fn = lambda x, m, c: m*x + c
+                    popt, pcov = sopt.curve_fit(lin_fn, self.x[pre_inds], self.y[pre_inds])
+                    self.pre_edge_fit_params = popt
+                    self.y -= lin_fn(popt) + self.DEFAULT_PRE_EDGE_LEVEL_LINEAR
+                case scan_normalised_edges.EDGE_NORM_TYPE.EXPONENTIAL:
+                    exp_fn = lambda x, a, b, c: a*np.exp(b*x) + c
+                    popt, pcov = sopt.curve_fit(exp_fn, self.x[pre_inds], self.y[pre_inds])
+                    self.y = self.y - exp_fn(popt) + self.DEFAULT_PRE_EDGE_LEVEL_EXP
+                case _:
+                    raise ValueError("Pre-edge normalisation type not defined.")
+                    
+            raise NotImplemented("Imcomplete function.")
+                
+            # Calculate post-edge and normalise
+            postave = np.mean(self.y[post_inds])
+            
+            # Normalise data.
+            
+            
+        # Perform single normalisation
+        elif self.pre_edge_normalisation is not scan_normalised_edges.EDGE_NORM_TYPE.NONE:
+            
+        # Perform single normalisation            
+        elif self.post_edge_normalisation is not scan_normalised_edges.EDGE_NORM_TYPE.NONE:
+            
+        # No normalisation specified, do nothing.
+        else:
+            
+            pass
         return
     
     @property
@@ -689,7 +977,10 @@ class scan_normalised_edges(scan_abstract_normalised):
     
     @pre_edge_normalisation.setter
     def pre_edge_normalisation(self, vals: scan_normalised_edges.EDGE_NORM_TYPE) -> None:
-        self._pre_edge_normalisation = vals
+        if vals in scan_normalised_edges.EDGE_NORM_TYPE:
+            self._pre_edge_normalisation = vals
+        else:
+            raise ValueError(f"{vals} not in {scan_normalised_edges.EDGE_NORM_TYPE}.")
         # Change pre-edge level by default to a reasonable value if setting exponential.
         if vals is scan_normalised_edges.EDGE_NORM_TYPE.EXPONENTIAL and self.pre_edge_level <= 0:
             self._pre_edge_level = scan_normalised_edges.DEFAULT_PRE_EDGE_LEVEL_EXP
@@ -790,7 +1081,10 @@ class scan_normalised_edges(scan_abstract_normalised):
     
     @post_edge_normalisation.setter
     def post_edge_normalisation(self, vals: scan_normalised_edges.EDGE_NORM_TYPE) -> None:
-        self._post_edge_normalisation = vals
+        if vals in scan_normalised_edges.EDGE_NORM_TYPE:
+            self._post_edge_normalisation = vals
+        else:
+            raise ValueError(f"{vals} not in {scan_normalised_edges.EDGE_NORM_TYPE}.")
         
     @post_edge_normalisation.deleter
     def post_edge_normalisation(self) -> None:
