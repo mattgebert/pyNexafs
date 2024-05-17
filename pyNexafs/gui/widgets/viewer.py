@@ -16,10 +16,15 @@ from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QTextEdit
 from PyQt6.QtGui import QColor, QPalette
 import os, sys
+import matplotlib
 
 from pyNexafs.parsers import parser_loaders, parser_base
+from pyNexafs.nexafs.scan import scan_abstract
 from pyNexafs.gui.widgets.graphing.plotly_graphs import PlotlyGraph
+from pyNexafs.gui.widgets.graphing.mpl_graphs import FigureCanvas, NavTB
 from pyNexafs.gui.widgets.fileloader import nexafs_fileloader
+
+from typing import Type
 
 import random
 
@@ -69,19 +74,19 @@ class nexafsViewer(QVBoxLayout):
         return self._dataseries_list
 
     @property
-    def scans(self) -> dict[str, scan_base]:
+    def scans(self) -> dict[str, scan_abstract]:
         """
         Scan objects loaded into the viewer.
 
         Returns
         -------
-        dict[str, scan_base]
+        dict[str, scan_abstract]
             A shallow copy of the dictionary object containing scans.
         """
         return self._scan_objects.copy() if self._scan_objects is not None else None
 
     @scans.setter
-    def scans(self, scans: dict[str, scan_base]):
+    def scans(self, scans: dict[str, scan_abstract]):
         """
         Setter for the scan objects.
 
@@ -89,7 +94,7 @@ class nexafsViewer(QVBoxLayout):
 
         Parameters
         ----------
-        scans : dict[str, scan_base]
+        scans : dict[str, scan_abstract]
             A dictionary of filename and corresponding scan objects.
         """
         if self._scan_objects is None:
@@ -169,7 +174,7 @@ class nexafsViewer(QVBoxLayout):
                 # Plot onto a graph
                 self.graph_selection(scans_subset, ds_list)
 
-    def graph_selection(self, scans: dict[str, scan_base], dataseries_list: list[str]) -> None:
+    def graph_selection(self, scans: dict[str, scan_abstract], dataseries_list: list[str]) -> None:
         self._figure.clear()
         ax = self._figure.add_subplot(111)
         # Iterate over dataseries first:

@@ -567,13 +567,21 @@ class scan_background_subtracted(scan_abstract_normalised):
                 self.y -= self._background.y
                 if self.y_errs is not None and self._background.y_errs is not None:
                     self.y_errs = np.sqrt(np.square(self._y_errs) + np.square(self._background.y_errs))
+                elif self.y_errs is not None:
+                    warnings.warn("No errors in background data to subtract.")
+                elif self._background.y_errs is not None:
+                    warnings.warn("No errors in scan data to subtract from.")
             else:
                 #Requires re-matching of background indexes.
                 for i, label in enumerate(self.y_labels):
-                    ind = self._background.y_labels.
-                    
-                
-                
+                    ind = self._background.y_labels.index(label)
+                    self.y[:, i] -= self._background.y[:, ind]
+                    if self.y_errs is not None and self._background.y_errs is not None:
+                        self.y_errs[:, i] = np.sqrt(np.square(self._y_errs[:, i]) + np.square(self._background.y_errs[:, ind]))
+                    elif self.y_errs is not None:
+                        warnings.warn("No errors in background data to subtract.")
+                    elif self._background.y_errs is not None:
+                        warnings.warn("No errors in scan data to subtract from.")
         else:
             raise ValueError(f"Scan Y labels {self.y_labels} don't match background Y labels {self._background.y_labels}")
         return
@@ -861,10 +869,19 @@ class scan_normalised_edges(scan_abstract_normalised):
         """
         Scales y data by the normalisation regions.
         """
+        # Define fitting functions
+        lin_fn = lambda x, m, c: m*x + c
+        exp_fn = lambda x, a, b, c: a*np.exp(b*x) + c
         # Perform dual normalisation
-        if (self.pre_edge_normalisation is not scan_normalised_edges.EDGE_NORM_TYPE.NONE and 
+        if ((self.pre_edge_normalisation is not scan_normalised_edges.EDGE_NORM_TYPE.NONE and 
             self.post_edge_normalisation is not scan_normalised_edges.EDGE_NORM_TYPE.NONE and
-            self._pre_edge_domain is not None and self._post_edge_domain is not None):
+            self._pre_edge_domain is not None and self._post_edge_domain is not None)
+            or  # Temporary while post-edge normalisation isn't implemented.
+            (self.pre_edge_normalisation is not scan_normalised_edges.EDGE_NORM_TYPE.NONE)
+            ):
+            
+            raise NotImplemented("Incomplete function.")
+        
             # Collect pre-edge indexes
             if isinstance(self.pre_edge_domain, list):
                 pre_inds = self.pre_edge_domain
@@ -872,6 +889,7 @@ class scan_normalised_edges(scan_abstract_normalised):
                 pre_inds = np.where((self.x >= self.pre_edge_domain[0]) & (self.x <= self.pre_edge_domain[1]))
             else:
                 raise AttributeError("Pre-edge domain is not defined correctly.")
+            
             # Collect post-edge indexes:
             if isinstance(self.post_edge_domain, list):
                 post_inds = self.post_edge_domain
@@ -879,42 +897,62 @@ class scan_normalised_edges(scan_abstract_normalised):
                 post_inds = np.where((self.x >= self.post_edge_domain[0]) & (self.x <= self.post_edge_domain[1]))
             else:
                 raise AttributeError("Post-edge domain is not defined correctly.")
-            
+
             # Calculate pre-edge and normalise
             match self.pre_edge_normalisation:
                 case scan_normalised_edges.EDGE_NORM_TYPE.CONSTANT:
                     mean = np.mean(self.y[pre_inds])
-                    self.y -= mean + self.DEFAULT_PRE_EDGE_LEVEL_CONSTANT
                     self.pre_edge_fit_params = mean.tolist()
+                    self.y -= mean + self.DEFAULT_PRE_EDGE_LEVEL_CONSTANT
                 case scan_normalised_edges.EDGE_NORM_TYPE.LINEAR:
-                    lin_fn = lambda x, m, c: m*x + c
                     popt, pcov = sopt.curve_fit(lin_fn, self.x[pre_inds], self.y[pre_inds])
                     self.pre_edge_fit_params = popt
                     self.y -= lin_fn(popt) + self.DEFAULT_PRE_EDGE_LEVEL_LINEAR
                 case scan_normalised_edges.EDGE_NORM_TYPE.EXPONENTIAL:
-                    exp_fn = lambda x, a, b, c: a*np.exp(b*x) + c
                     popt, pcov = sopt.curve_fit(exp_fn, self.x[pre_inds], self.y[pre_inds])
                     self.y = self.y - exp_fn(popt) + self.DEFAULT_PRE_EDGE_LEVEL_EXP
                 case _:
+                    # Should never reach here, and dual normalisation excludes None type.
                     raise ValueError("Pre-edge normalisation type not defined.")
-                    
-            raise NotImplemented("Imcomplete function.")
                 
             # Calculate post-edge and normalise
             postave = np.mean(self.y[post_inds])
             
             # Normalise data.
             
-            
         # Perform single normalisation
         elif self.pre_edge_normalisation is not scan_normalised_edges.EDGE_NORM_TYPE.NONE:
+            # Collect pre-edge indexes
+            if isinstance(self.pre_edge_domain, list):
+                pre_inds = self.pre_edge_domain
+            elif isinstance(self.pre_edge_domain, tuple):
+                pre_inds = np.where((self.x >= self.pre_edge_domain[0]) & (self.x <= self.pre_edge_domain[1]))
+            else:
+                raise AttributeError("Pre-edge domain is not defined correctly.")
             
-        # Perform single normalisation            
+            # Calculate pre-edge and normalise
+            match self.pre_edge_normalisation:
+                case scan_normalised_edges.EDGE_NORM_TYPE.CONSTANT:
+                    mean = np.mean(self.y[pre_inds])
+                    self.pre_edge_fit_params = mean.tolist()
+                    self.y -= mean + self.DEFAULT_PRE_EDGE_LEVEL_CONSTANT
+                case scan_normalised_edges.EDGE_NORM_TYPE.LINEAR:
+                    popt, pcov = sopt.curve_fit(lin_fn, self.x[pre_inds], self.y[pre_inds])
+                    self.pre_edge_fit_params = popt
+                    self.y -= lin_fn(popt) + self.DEFAULT_PRE_EDGE_LEVEL_LINEAR
+                case scan_normalised_edges.EDGE_NORM_TYPE.EXPONENTIAL:
+                    popt, pcov = sopt.curve_fit(exp_fn, self.x[pre_inds], self.y[pre_inds])
+                    self.y = self.y - exp_fn(popt) + self.DEFAULT_PRE_EDGE_LEVEL_EXP
+                case _:
+                    # Should never reach here, and dual normalisation excludes None type.
+                    raise ValueError("Pre-edge normalisation type not defined.")
+            
+        # Perform single normalisation          
         elif self.post_edge_normalisation is not scan_normalised_edges.EDGE_NORM_TYPE.NONE:
+            raise NotImplemented("Incomplete function.")
             
         # No normalisation specified, do nothing.
         else:
-            
             pass
         return
     
