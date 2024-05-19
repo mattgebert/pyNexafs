@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 import matplotlib.figure
 
-from pyNexafs.gui.widgets.graphing.mpl_graphs import FigureCanvas
+from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas
 from pyNexafs.gui.widgets.fileloader import nexafs_fileloader
 from pyNexafs.gui.widgets.viewer import nexafsViewer
 from pyNexafs.nexafs.scan import scan_base

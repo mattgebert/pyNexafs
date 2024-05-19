@@ -21,7 +21,7 @@ import matplotlib
 from pyNexafs.parsers import parser_loaders, parser_base
 from pyNexafs.nexafs.scan import scan_abstract
 from pyNexafs.gui.widgets.graphing.plotly_graphs import PlotlyGraph
-from pyNexafs.gui.widgets.graphing.mpl_graphs import FigureCanvas, NavTB
+from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas, NavTB
 from pyNexafs.gui.widgets.fileloader import nexafs_fileloader
 
 from typing import Type
