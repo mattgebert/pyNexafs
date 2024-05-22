@@ -9,3 +9,4 @@ from . import parsers
 from . import nexafs
 from . import gui
 from . import utils
+from . import resources

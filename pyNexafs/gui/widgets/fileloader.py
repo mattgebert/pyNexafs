@@ -41,7 +41,7 @@ import warnings
 import numpy as np
 
 
-class nexafs_fileloader(QWidget):
+class nexafsFileLoader(QWidget):
     """
     Header-viewer and file loader for NEXAFS data.
 
@@ -55,15 +55,12 @@ class nexafs_fileloader(QWidget):
     selectionLoaded : pyqtSignal
         Signal for selection change and completion of consequent file loading.
         Does not trigger if selection changes while no parser is selected.
-
-
     """
 
     selectionLoaded = pyqtSignal(bool)
 
-    def __init__(self):
-        super().__init__()
-
+    def __init__(self, parent=None):
+        super().__init__(parent)
         ## Instance attributes
         self._log_text = ""
 
@@ -83,7 +80,7 @@ class nexafs_fileloader(QWidget):
         dir_parser_layout.addWidget(self.nexafs_parser_selector)
         dir_parser_layout.addWidget(QLabel("Relabel:"))
         dir_parser_layout.addWidget(self.filter_relabelling)
-        
+
         ## Qsplitter for expandable log
         draggable = QSplitter(Qt.Orientation.Vertical)
         draggable.addWidget(self.directory_viewer)
@@ -100,17 +97,20 @@ class nexafs_fileloader(QWidget):
         dir_layout.addLayout(dir_parser_layout)
         dir_layout.addLayout(self.filter)
         dir_layout.addWidget(draggable)
-        
+
         # Assign viewer layout to widget.
         self.setLayout(dir_layout)
+        if parent is not None:
+            self.setContentsMargins(0, 0, 0, 0)
+            dir_layout.setContentsMargins(0, 0, 0, 0)
 
         ## Element attributes
         self.log.setReadOnly(True)
         self.directory_viewer.directory = (
             self.directory_selector.folder_path
         )  # Match initial value.
-        draggable.setStretchFactor(0,5)
-        draggable.setStretchFactor(1,1)
+        draggable.setStretchFactor(0, 5)
+        draggable.setStretchFactor(1, 1)
 
         ## Element Connections
         # Reload directory upon path change.
@@ -423,7 +423,9 @@ class directory_selector(QHBoxLayout):
             if editable_path != self.folder_path:
                 # if path has changed, perform extra functions...
                 new_path = True
-            self.folder_path_edit.setStyleSheet(self.folder_path_edit_default_stylesheet)
+            self.folder_path_edit.setStyleSheet(
+                self.folder_path_edit_default_stylesheet
+            )
             self.folder_path = editable_path
             self.folder_path_edit.setText(editable_path)
 
@@ -460,10 +462,10 @@ class directory_selector(QHBoxLayout):
 
 # Construct the Table Model
 class table_model(QAbstractTableModel):
-    
-    _status_index = 0 # index for loaded status column.
-    _status_header = "" # string header for the loaded status column.
-    
+
+    _status_index = 0  # index for loaded status column.
+    _status_header = ""  # string header for the loaded status column.
+
     def __init__(self, data, header=None):
         super(table_model, self).__init__()
         self._data = data
@@ -471,13 +473,17 @@ class table_model(QAbstractTableModel):
         # if header is not None:
         #     for i in range(len(header)):
         #         self.setHeaderData(i, Qt.Orientation.Horizontal, header[i])
-        
+
         # Initalise graphics for loaded / unloaded files.
         # self._icon_error =  QStyle.StandardPixmap.SP_DialogCancelButton
         # self._icon_success = QStyle.StandardPixmap.SP_DialogApplyButton
-        self._icon_error = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton)
-        self._icon_success = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)
-        
+        self._icon_error = QApplication.style().standardIcon(
+            QStyle.StandardPixmap.SP_DialogCancelButton
+        )
+        self._icon_success = QApplication.style().standardIcon(
+            QStyle.StandardPixmap.SP_DialogApplyButton
+        )
+
         # self._icon_error = QIcon.fromTheme("dialog-error")
         # self._icon_success = QIcon.fromTheme("sync-synchronizing")
         # self._icon_success = QIcon.fromTheme("dialog-error")
@@ -493,7 +499,11 @@ class table_model(QAbstractTableModel):
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         # Check that second column is being indexed for "loaded" status, to display icons.
-        if len(self._header) > self._status_index and self._header[self._status_index] == self._status_header and index.column() == self._status_index:
+        if (
+            len(self._header) > self._status_index
+            and self._header[self._status_index] == self._status_header
+            and index.column() == self._status_index
+        ):
             if role == Qt.ItemDataRole.DecorationRole:
                 # Icons
                 val = (
@@ -505,7 +515,7 @@ class table_model(QAbstractTableModel):
             else:
                 # val = "T" if self._data[index.row()][index.column()] else "F")
                 return None
-            
+
         # General data accessing
         if role == Qt.ItemDataRole.DisplayRole:
             # See below for the nested-list data structure.
@@ -534,8 +544,11 @@ class table_model(QAbstractTableModel):
 class directory_viewer_table(QTableView):
 
     selectionLoaded = pyqtSignal(bool)  # For emitting after selection change is loaded.
-    __default_headers_list = ["#", "Filename"] # index and filename #TODO: Add "Created", "Modified" when implemented in parser_base. 
-    
+    __default_headers_list = [
+        "#",
+        "Filename",
+    ]  # index and filename #TODO: Add "Created", "Modified" when implemented in parser_base.
+
     def __init__(self, init_dir=None):
         super().__init__()
 
@@ -562,7 +575,9 @@ class directory_viewer_table(QTableView):
         self.setSortingEnabled(True)  # enabled by proxymodel.
         self.proxy_model.setSourceModel(None)
         self.proxy_model.setFilterRegularExpression(None)
-        self.proxy_model.setFilterKeyColumn(-1)  # use all columns for filtering instead of just first.
+        self.proxy_model.setFilterKeyColumn(
+            -1
+        )  # use all columns for filtering instead of just first.
         self.proxy_model.sort(0, Qt.SortOrder.AscendingOrder)
         # self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.resizeColumnToContents(0)
@@ -575,18 +590,20 @@ class directory_viewer_table(QTableView):
         # Initialise viewing directory
         if init_dir is not None:
             self.directory = init_dir
-            
+
         # Setup default header columns if parser is defined. Use header/index definition in table_model.
         self.__default_parsed_headers_list = self.__default_headers_list.copy()
-        self.__default_parsed_headers_list.insert(self._status_index(), self._status_header())
-            
-    @classmethod 
+        self.__default_parsed_headers_list.insert(
+            self._status_index(), self._status_header()
+        )
+
+    @classmethod
     def _status_index(cls) -> int:
         """
         Returns the index of the loaded status column, an attribute of the abstract table model class.
         """
         return table_model._status_index
-    
+
     @classmethod
     def _status_header(cls) -> str:
         """
@@ -604,7 +621,11 @@ class directory_viewer_table(QTableView):
         list[str]
             List of the default headers
         """
-        obj = self.__default_headers_list if self.parser is None else self.__default_parsed_headers_list
+        obj = (
+            self.__default_headers_list
+            if self.parser is None
+            else self.__default_parsed_headers_list
+        )
         return obj.copy()
 
     @property
@@ -745,11 +766,18 @@ class directory_viewer_table(QTableView):
         # Check if filetype filter is changed:
         if filetype_filters is not None and isinstance(filetype_filters, list):
             # Check if filetype filter is changed:
-            if self._filetype_filters is not None and len(self._filetype_filters) == len(filetype_filters) and np.all(
-                [
-                    (filetype_filters[i] == self._filetype_filters[i] or filetype_filters[i] in self._filetype_filters)
-                    for i in range(len(filetype_filters))
-                ]
+            if (
+                self._filetype_filters is not None
+                and len(self._filetype_filters) == len(filetype_filters)
+                and np.all(
+                    [
+                        (
+                            filetype_filters[i] == self._filetype_filters[i]
+                            or filetype_filters[i] in self._filetype_filters
+                        )
+                        for i in range(len(filetype_filters))
+                    ]
+                )
             ):
                 # Everything the same...
                 pass
@@ -761,7 +789,9 @@ class directory_viewer_table(QTableView):
                 self._parser.ALLOWED_EXTENSIONS if self._parser is not None else None
             )
         else:
-            raise AttributeError(f"filters[1] '{filetype_filters}' is not a list of filetype strings or None.")
+            raise AttributeError(
+                f"filters[1] '{filetype_filters}' is not a list of filetype strings or None."
+            )
 
     @filters.deleter
     def filters(self):
@@ -774,20 +804,24 @@ class directory_viewer_table(QTableView):
     def relabel_header(self) -> None:
         """
         Generates the column headers using default parser important parameters.
-        
-        First attempts to call `summary_param_names_with_units` on the first non-None 
+
+        First attempts to call `summary_param_names_with_units` on the first non-None
         header-loaded parser object, to load the column labels and their appropriate units.
         Alternatively calls `summary_param_names` on the object, which doesn't require unit labels.
         These two methods take into account the parser `relabel` property.
-        If no headers are loaded then calls the class SUMMARY_PARAM_RAW_NAMES, which doesn't take into 
-        
-        
+        If no headers are loaded then calls the class SUMMARY_PARAM_RAW_NAMES, which doesn't take into
+
+
         """
         # Setup default header columns
-        header = self._default_headers #Get defaults
-        
+        header = self._default_headers  # Get defaults
+
         # Add list values if parser is defined, and header objects allow unit calls.
-        if self.parser is not None and self._parser_headers is not None and len(self._parser_headers) > 0:
+        if (
+            self.parser is not None
+            and self._parser_headers is not None
+            and len(self._parser_headers) > 0
+        ):
             obj_head = None
             for val in self._parser_headers.values():
                 # Collect val (parser objects), where val is not None.
@@ -799,25 +833,25 @@ class directory_viewer_table(QTableView):
                         warnings.warn(
                             f"{self.parser.__name__} has not implemented 'summary_param_names_with_units'. Defaulting to 'summary_param_names'."
                         )
-                        obj_head = val.summary_param_names # without units.
+                        obj_head = val.summary_param_names  # without units.
                     break  # end for loop prematurely.
             # If all parser headers are None, then use parser default values.
             if obj_head is None:
                 obj_head = self.parser.summary_param_names
             # Add obj_head to header
             header += obj_head
-        # If _parser_headers are not defined but the parser is. 
+        # If _parser_headers are not defined but the parser is.
         elif self.parser is not None:
-            header += self.parser.summary_param_names 
-            
+            header += self.parser.summary_param_names
+
         # Update internal header names
-        self._header_names = header 
+        self._header_names = header
 
         # Model header update
         if self.files_model is not None:
             self.files_model._header = self._header_names
             self.files_model.layoutChanged.emit()
-        
+
         # Update column widths with header update.
         for i in range(0, len(self._header_names)):
             # If the current column width is larger than the size hint, resize to fit for all columns.
@@ -856,8 +890,8 @@ class directory_viewer_table(QTableView):
                         self._parser_headers[file] = self.parser(
                             os.path.join(self.directory, file), load_head_only=True
                         )
-                    #Catch unimplemented and import errors.
-                    except (NotImplementedError, ImportError) as e: 
+                    # Catch unimplemented and import errors.
+                    except (NotImplementedError, ImportError) as e:
                         self._parser_headers[file] = None
         else:
             # If parser is None, empty the existing data.
@@ -867,24 +901,32 @@ class directory_viewer_table(QTableView):
         self.relabel_header()
 
         # Get header data for table:
-        data = [] #list of file header lists.
+        data = []  # list of file header lists.
         excess = [
             "" for _ in range(len(self._header_names) - len(self._default_headers))
         ]  # empty columns for invalid file headers.
         for i in range(len(files)):
             file = files[i]
-            filedata = [i + 1, file] # add index (1, ...) and filename to data.
+            filedata = [i + 1, file]  # add index (1, ...) and filename to data.
             # If parser specified (for loading) add field for successful loading.
             if self.parser:
-                status = True if file in self._parser_headers and self._parser_headers[file] is not None else False
+                status = (
+                    True
+                    if file in self._parser_headers
+                    and self._parser_headers[file] is not None
+                    else False
+                )
                 filedata.insert(self._status_index(), status)
 
-            # Raise an error if mismatch between info and header variables.            
+            # Raise an error if mismatch between info and header variables.
             if len(filedata) != len(self._default_headers):
                 raise AttributeError("Default headers do not match filedata.")
 
             # Add parameter values
-            if self._parser_headers is not None and self._parser_headers[file] is not None:
+            if (
+                self._parser_headers is not None
+                and self._parser_headers[file] is not None
+            ):
                 # Match indexing of parser.SUMMARY_PARAM_RAW_NAMES
                 spv = self._parser_headers[file].summary_param_values
                 for j in range(len(self._header_names) - len(self._default_headers)):
@@ -925,7 +967,9 @@ class directory_viewer_table(QTableView):
         sm = self.selectionModel()
         # Require selection and parser to trigger load data.
         if sm.hasSelection() and self.parser is not None:
-            rows = sm.selectedRows(column=1 if self._status_index() > 1 else 2)  # get filename, not index.
+            rows = sm.selectedRows(
+                column=1 if self._status_index() > 1 else 2
+            )  # get filename, not index.
             for row in rows:
                 filename = self.proxy_model.data(row, Qt.ItemDataRole.DisplayRole)
                 # Initialize parser_files if not already defined.
@@ -966,13 +1010,15 @@ class directory_viewer_table(QTableView):
         """
         sm = self.selectionModel()
         if sm.hasSelection():
-            rows = sm.selectedRows(column=self._index_filename_column)  # Filename in second column.
+            rows = sm.selectedRows(
+                column=self._index_filename_column
+            )  # Filename in second column.
             # return self.files_model.data(rows, Qt.ItemDataRole.DisplayRole)
             return [
                 self.files_model.data(row, Qt.ItemDataRole.DisplayRole) for row in rows
             ]
         return []
-    
+
     @property
     def _index_filename_column(self) -> int:
         """
@@ -982,7 +1028,6 @@ class directory_viewer_table(QTableView):
             return 1
         else:
             return 2 if self._status_index() < 2 else 1
-
 
 
 class directory_filters(QHBoxLayout):
@@ -1092,7 +1137,7 @@ class directory_filters(QHBoxLayout):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = nexafs_fileloader()
+    window = nexafsFileLoader()
     window.show()
     window.setWindowTitle("pyNexafs File Loader")
     sys.exit(app.exec())

@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QSizeGrip,
+    QSplitter,
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QTextEdit
@@ -18,42 +19,57 @@ from PyQt6.QtGui import QColor, QPalette
 import os, sys
 import matplotlib
 
-from pyNexafs.parsers import parser_loaders, parser_base
+# from pyNexafs.parsers import parser_loaders, parser_base
 from pyNexafs.nexafs.scan import scan_abstract
-from pyNexafs.gui.widgets.graphing.plotly_graphs import PlotlyGraph
-from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas, NavTB
-from pyNexafs.gui.widgets.fileloader import nexafs_fileloader
+
+# from pyNexafs.gui.widgets.graphing.plotly_graphs import PlotlyGraph
+from pyNexafs.gui.widgets.graphing.matplotlib.graphs import (
+    FigureCanvas,
+    NavTBQT,
+    NEXAFS_NavQT,
+)
+from pyNexafs.gui.widgets.normaliser import NavTBQT_Norm
+from pyNexafs.gui.widgets.fileloader import nexafsFileLoader
 
 from typing import Type
-
 import random
 
 
-class nexafsViewer(QVBoxLayout):
+class nexafsViewer(QWidget):
     """
     General viewer for NEXAFS data.
 
     Includes various submodules, including directory browser, data viewer, and plot viewer.
     """
-    def __init__(self):
-        super().__init__()
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
         # Initialise elements
+        self._layout = QVBoxLayout()
+        self.setLayout(self._layout)
+        if parent is not None:
+            self.setContentsMargins(0, 0, 0, 0)
+            self._layout.setContentsMargins(0, 0, 0, 0)
+        self._draggable = QSplitter(Qt.Orientation.Vertical)
+
         self._selected_files = None
         self._dataseries_list = []  # List of common labels in current selection.
         self._dataseries_list_view = QListWidget()
         self._figure = matplotlib.figure.Figure()
         self._canvas = FigureCanvas(self._figure)  # use empty canvas.
-        self._navtoolbar = NavTB(self._canvas)
-        
+        self._navtoolbar = NavTBQT_Norm(self._canvas)
+        # self._navtoolbar = NEXAFS_NavQT(self._canvas)
+        # self._navtoolbar = NavTBQT(self._canvas)
+
         self._scan_objects = None
-        self._selected_dataseries = None
+        self._dataseries_selected = None
 
         # Add to layout
-        self.addWidget(QLabel("Data Series"))
-        self.addWidget(self._dataseries_list_view)
-        self.addWidget(self._navtoolbar)
-        self.addWidget(self._canvas)
+        self._draggable.addWidget(QLabel("Data Series"))
+        self._draggable.addWidget(self._dataseries_list_view)
+        self._draggable.addWidget(self._navtoolbar)
+        self._draggable.addWidget(self._canvas)
+        self._layout.addWidget(self._draggable)
 
         # Attributes
         self._dataseries_list_view.setSelectionMode(
@@ -64,13 +80,14 @@ class nexafsViewer(QVBoxLayout):
         self._dataseries_list_view.itemSelectionChanged.connect(
             self.on_label_selection_change
         )
+        self._navtoolbar.normalisationUpdate.connect(self.on_normalisation_change)
 
     @property
     def canvas_figure(self):
         return self._canvas.figure
 
     @property
-    def labels(self) -> list[str]:
+    def dataseries(self) -> list[str]:
         return self._dataseries_list
 
     @property
@@ -132,17 +149,26 @@ class nexafsViewer(QVBoxLayout):
                     if name in scans:
                         labels = labels.intersection(set(scans[name]._y_labels))
             elif len(names) == 1:
-                labels = scans[names[0]]._y_labels
+                scan = scans[names[0]]
+                labels = scan._y_labels
             else:
                 labels = []
-            # Update attributes
-            self._dataseries_list = list(labels)
+                scan = None
+            # Update attributes in order, keeping original appearance order.
+            ordered_intersection = []
+            if scan is not None:
+                for label in scan._y_labels:
+                    if label in labels:
+                        ordered_intersection.append(label)
+            else:
+                ordered_intersection = []
+            self._dataseries_list = ordered_intersection
             # Update graphics
             self._dataseries_list_view.clear()
             self._dataseries_list_view.addItems(self._dataseries_list)
 
     @property
-    def selected_dataseries(self) -> list[str]:
+    def dataseries_selected(self) -> list[str] | None:
         """
         The currently selected data series common to all scan objects.
 
@@ -157,6 +183,23 @@ class nexafsViewer(QVBoxLayout):
         else:
             return None
 
+    @dataseries_selected.setter
+    def dataseries_selected(self, labels: list[str]):
+        """
+        Setter for the selected data series.
+
+        Parameters
+        ----------
+        labels : list[str]
+            List of labels to select.
+        """
+        for i in range(self._dataseries_list_view.count()):
+            item = self._dataseries_list_view.item(i)
+            if item.text() in labels:
+                item.setSelected(True)
+            else:
+                item.setSelected(False)
+
     def on_label_selection_change(self) -> None:
         """
         Callback for when the selected labels change.
@@ -169,12 +212,20 @@ class nexafsViewer(QVBoxLayout):
                 if name in self._selected_files
             }
             # Get the selected fields.
-            ds_list = self.selected_dataseries
-            if ds_list is not None and len(ds_list) > 0: 
+            ds_list = self.dataseries_selected
+            if ds_list is not None and len(ds_list) > 0:
                 # Plot onto a graph
                 self.graph_selection(scans_subset, ds_list)
 
-    def graph_selection(self, scans: dict[str, scan_abstract], dataseries_list: list[str]) -> None:
+    def on_normalisation_change(self) -> None:
+        """
+        Callback for when the normalisation changes.
+        """
+        pass
+
+    def graph_selection(
+        self, scans: dict[str, scan_abstract], dataseries_list: list[str]
+    ) -> None:
         self._figure.clear()
         ax = self._figure.add_subplot(111)
         # Iterate over dataseries first:
@@ -192,7 +243,6 @@ class nexafsViewer(QVBoxLayout):
         self._figure.legend()
         self._canvas.draw()
         # self._canvas.
-        
 
 
 if __name__ == "__main__":

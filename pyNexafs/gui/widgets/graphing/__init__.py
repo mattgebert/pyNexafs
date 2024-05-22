@@ -1,1 +1,1 @@
-import pyNexafs.gui.widgets.graphing.mpl_graphs
+import pyNexafs.gui.widgets.graphing.matplotlib.graphs
