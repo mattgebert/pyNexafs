@@ -54,7 +54,7 @@ class mainWidget(QWidget):
         # Store existing viewer selection
         self._previousSelection = self.viewer.dataseries_selected
         # Load in the scan objects
-        selection_parse_objs = self.loader.loaded_selection
+        selection_parse_objs = self.loader.loaded_parser_files_selection
         scans_copy = self.viewer.scans
         if scans_copy is not None:
             for name, parser in selection_parse_objs.items():

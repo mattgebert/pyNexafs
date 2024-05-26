@@ -1,12 +1,15 @@
 import os, sys
-import matplotlib.figure
+import matplotlib.figure, matplotlib.axes
+import matplotlib.pyplot as plt
 import overrides
+import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.backend_bases import NavigationToolbar2 as NavTB
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavTBQT
 from matplotlib.backends.qt_compat import _to_int, __version__
 from PyQt6 import QtGui, QtWidgets, QtCore
 from PyQt6.QtWidgets import QStyle
+from PyQt6.QtCore import pyqtSignal, pyqtBoundSignal
 
 
 class FigureCanvas(FigureCanvasQTAgg):
@@ -15,7 +18,6 @@ class FigureCanvas(FigureCanvasQTAgg):
 
 
 class NEXAFS_NavQT(NavTBQT):
-    normalisationUpdate = QtCore.pyqtSignal(bool)
 
     toolitems = [*NavTBQT.toolitems]
 
@@ -47,9 +49,13 @@ class NEXAFS_NavQT(NavTBQT):
             if text is None:
                 self.addSeparator()
             else:
+                toolbar_palette = self.palette()
+                assert isinstance(toolbar_palette, QtGui.QPalette)
+                light_theme_bool = toolbar_palette.window().color().lightnessF() > 0.5
+
                 a = self.addAction(
                     self._icon(
-                        image_file
+                        image_file, light_theme=light_theme_bool
                     ),  # moved + ".png" to redefined '_icon' method.
                     text,
                     getattr(self, callback),
@@ -87,7 +93,42 @@ class NEXAFS_NavQT(NavTBQT):
         self._normalisation_options = None
 
     @overrides.overrides
-    def _icon(self, name: str | QtGui.QIcon | QStyle.StandardPixmap) -> QtGui.QIcon:
+    def _icon(
+        self,
+        name: str
+        | QtGui.QIcon
+        | QStyle.StandardPixmap
+        | tuple[
+            str | QtGui.QIcon | QStyle.StandardPixmap,
+            str | QtGui.QIcon | QStyle.StandardPixmap,
+        ],
+        light_theme: bool = True,
+    ) -> QtGui.QIcon:
+        """
+        Generates a QIcon object from a string, QIcon, or QStyle.StandardPixmap object.
+
+        Additionally allows use of a tuple to provide different icons for light and dark themes.
+
+        Parameters
+        ----------
+        name : str | QtGui.QIcon | QStyle.StandardPixmap | tuple[ QtGui.QIcon  |  QStyle.StandardPixmap, QtGui.QIcon  |  QStyle.StandardPixmap ]
+            A string, QIcon, or QStyle.StandardPixmap object to be converted to a QIcon. Can be a tuple of two corresponding to light and dark themes.
+        light_theme : bool, optional
+            Selector for light/dark tuples, by default True
+
+        Returns
+        -------
+        QtGui.QIcon
+            QIcon object for use in the toolbar.
+
+        Raises
+        ------
+        ValueError
+            Raised if the provided icon formatting is invalid.
+        """
+        if isinstance(name, tuple):
+            # Get theme specific icon.
+            return self._icon(name[0] if light_theme else name[1])
         if isinstance(name, QtGui.QIcon):
             # Provide your own icon
             return name
@@ -112,11 +153,13 @@ if __name__ == "__main__":
     layout = QtWidgets.QVBoxLayout()
 
     fig, ax = plt.subplots(1, 1)
-    ax.scatter(np.random.rand(10), np.random.rand(10), "Random scatters")
+    assert isinstance(ax, matplotlib.axes.Axes)
+    ax.scatter(np.random.rand(10), np.random.rand(10), label="Random scatters")
     graph = FigureCanvas(fig)
     nav = NEXAFS_NavQT(graph)
 
     main.setLayout(layout)
+    layout.addWidget(nav)
     layout.addWidget(graph)
     main.show()
 

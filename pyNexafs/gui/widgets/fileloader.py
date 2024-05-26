@@ -1,3 +1,4 @@
+from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtWidgets import (
     QWidget,
     QFileDialog,
@@ -17,6 +18,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QSplitter,
     QStyle,
+    QProgressBar,
 )
 
 # from PyQt6.QtWidgets import QScrollBar, QHeaderView, QMainWindow, QTableWidget, QFrame, QGridLayout, QSizeGrip
@@ -66,8 +68,8 @@ class nexafsFileLoader(QWidget):
 
         ## Initialise elements
         self.directory_selector = directory_selector()
-        # self.directory_viewer = directory_viewer_list()
-        self.directory_viewer = directory_viewer_table()
+        self._progress_bar = QProgressBar()
+        self.directory_viewer = directory_viewer_table(progress_bar=self._progress_bar)
         self.nexafs_parser_selector = nexafs_parser_selector()
         self.filter_relabelling = QCheckBox()
         self.filter = directory_filters()
@@ -92,10 +94,19 @@ class nexafsFileLoader(QWidget):
         draggable_log_widget.setContentsMargins(0, 0, 0, 0)
         draggable.addWidget(draggable_log_widget)
 
+        ## Dir loading progress bar
+        self._progress_bar.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.MinimumExpanding,
+            QtWidgets.QSizePolicy.Policy.Minimum,
+        )
+        self._progress_bar.setFixedHeight(15)
+        self._progress_bar.setTextVisible(False)
+
         ## Directory Layout
         dir_layout = QVBoxLayout()
         dir_layout.addLayout(dir_parser_layout)
         dir_layout.addLayout(self.filter)
+        dir_layout.addWidget(self._progress_bar)
         dir_layout.addWidget(draggable)
 
         # Assign viewer layout to widget.
@@ -281,13 +292,13 @@ class nexafsFileLoader(QWidget):
         return self.directory_viewer._parser_files
 
     @property
-    def loaded_selection(self) -> dict[str, Type[parser_base] | None]:
+    def loaded_parser_files_selection(self) -> dict[str, Type[parser_base] | None]:
         """
         Returns the selection subset of full-file parsers from the directory viewer.
 
         Returns
         -------
-        dict[str, Type[scan_base]]
+        dict[str, Type[parser_base]]
             A dictionary of filenames and their corresponding scan objects.
         """
         selected = self.directory_viewer.selected_filenames()
@@ -349,8 +360,12 @@ class directory_selector(QHBoxLayout):
 
     newPath = pyqtSignal(bool)
 
-    def __init__(self):
-        super().__init__()
+    # String constants for widget elements
+    edit_description = "Path to load NEXAFS data from."
+    dialog_caption = "Select NEXAFS Directory"
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
         # Instance attributes
         self.folder_path = os.path.expanduser("~")  # default use home path.
@@ -363,7 +378,7 @@ class directory_selector(QHBoxLayout):
         self.folder_path_edit = QLineEdit()
         self.folder_path_edit.setText(self.folder_path)
         self.folder_path_edit.accessibleName = "Directory"
-        self.folder_path_edit.accessibleDescription = "Path to load NEXAFS data from."
+        self.folder_path_edit.accessibleDescription = self.edit_description
         self.folder_path_edit.editingFinished.connect(self.validate_path)
         self.folder_path_edit_default_stylesheet = self.folder_path_edit.styleSheet()
         # Folder select button
@@ -380,7 +395,7 @@ class directory_selector(QHBoxLayout):
         """
         path = QFileDialog.getExistingDirectory(
             parent=None,
-            caption="Select NEXAFS Directory",
+            caption=self.dialog_caption,
             directory=self.folder_path,
             options=QFileDialog.Option.ShowDirsOnly,
         )
@@ -549,8 +564,13 @@ class directory_viewer_table(QTableView):
         "Filename",
     ]  # index and filename #TODO: Add "Created", "Modified" when implemented in parser_base.
 
-    def __init__(self, init_dir=None):
-        super().__init__()
+    def __init__(
+        self,
+        init_dir: str = None,
+        progress_bar: QProgressBar = None,
+        parent: QWidget = None,
+    ):
+        super().__init__(parent)
 
         # Instance properties
         self.files = []  # list[str]
@@ -586,6 +606,9 @@ class directory_viewer_table(QTableView):
 
         # Event connections
         self.selectionModel().selectionChanged.connect(self.load_selection)
+
+        # Progress bar
+        self._progress_bar = progress_bar
 
         # Initialise viewing directory
         if init_dir is not None:
@@ -859,6 +882,27 @@ class directory_viewer_table(QTableView):
                 self.resizeColumnToContents(i)
         return
 
+    @property
+    def progress_bar(self) -> QProgressBar:
+        """
+        Returns an associated progress bar widget if provided, else None.
+
+        Parameters
+        ----------
+        progress_bar: QProgressBar
+            The progress bar widget.
+
+        Returns
+        -------
+        QProgressBar
+            The progress bar widget.
+        """
+        return self._progress_bar
+
+    @progress_bar.setter
+    def progress_bar(self, progress_bar: QProgressBar):
+        self._progress_bar = progress_bar
+
     def update_table(self):
         """
         Update the directory view.
@@ -879,12 +923,22 @@ class directory_viewer_table(QTableView):
                 if file.endswith(tuple(self._filetype_filters))
             ]
 
+        # Set the progress bar to zero.
+        if self.progress_bar is not None:
+            self.progress_bar.setValue(0)
+            # Store number of files to be processed for progress bar
+            self.progress_bar.setRange(0, len(files))
+
+            # class percent_str(str):
+            #     def __format__(self, format_spec):
+            #         return f"{float(self) / files_len * 100:.2f}%"
+
         # Collect the new fileheader data.
         if self.parser is not None:
             if self._parser_headers is None:
                 self._parser_headers = {}
             # Get header data
-            for file in files:
+            for i, file in enumerate(files):
                 if file not in self._parser_headers:
                     try:
                         self._parser_headers[file] = self.parser(
@@ -893,6 +947,9 @@ class directory_viewer_table(QTableView):
                     # Catch unimplemented and import errors.
                     except (NotImplementedError, ImportError) as e:
                         self._parser_headers[file] = None
+                if self.progress_bar is not None:
+                    # self.progress_bar.setValue(int((i + 1) / files_len * 100))
+                    self.progress_bar.setValue(i + 1)
         else:
             # If parser is None, empty the existing data.
             self._parser_headers = None
@@ -954,6 +1011,9 @@ class directory_viewer_table(QTableView):
                 self.resizeColumnToContents(i)
         # if self.parser is not None:
         #     # self.setColumnWidth(self._status_index(), 1)
+
+        if self.progress_bar is not None:
+            self.progress_bar.setValue(0)
         return
 
     def load_selection(self) -> None:

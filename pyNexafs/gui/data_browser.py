@@ -30,7 +30,6 @@ import numpy as np
 class mainWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self._previousSelection = None
         # Initialise elements
         self.draggable = QSplitter(Qt.Orientation.Horizontal)
         self.main_layout = QHBoxLayout()
@@ -78,36 +77,20 @@ class mainWidget(QWidget):
         del self.viewer.scans
 
     def _on_load_selection(self):
-        # Store existing viewer selection
-        self._previousSelection = self.viewer.dataseries_selected
+        # Store existing viewer dataseries selection
+        previousSelection = self.viewer.dataseries_selected
         # Load in the scan objects
-        selection_parse_objs = self.loader.loaded_selection
-        scans_copy = self.viewer.scans
-        if scans_copy is not None:
-            for name, parser in selection_parse_objs.items():
-                if name not in scans_copy:
-                    self.viewer.scans = {name: parser.to_scan(True)}
-                else:
-                    # If parser object is not the same, reload the scan object.
-                    if scans_copy[name].parser is not parser:
-                        self.viewer.scans = {name: parser.to_scan(True)}
-        else:
-            self.viewer.scans = {
-                name: parser.to_scan(True)
-                for name, parser in selection_parse_objs.items()
-            }
+        selection_parse_objs = self.loader.loaded_parser_files_selection
+        self.viewer.add_parsers_to_scans(selection_parse_objs)
 
-        # Plot the scan objects
-        self.viewer.set_file_selection(self.loader.selected_filenames)
+        # Change the file selection in the viewer.
+        self.viewer.selected_filenames = self.loader.selected_filenames
 
-        if self._previousSelection is not None:
+        # Update the selected dataseries in the viewer to graph.
+        if previousSelection is not None:
             # Restore the previous selection if it exists.
-            if np.all(
-                [label in self.viewer.dataseries for label in self._previousSelection]
-            ):
-                self.viewer.dataseries_selected = self._previousSelection
-            # Reset the previous selection to None
-            self._previousSelection = None
+            if np.all([label in self.viewer.dataseries for label in previousSelection]):
+                self.viewer.dataseries_selected = previousSelection
 
 
 def gui():

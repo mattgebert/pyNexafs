@@ -1,16 +1,22 @@
 import numpy as np
 import matplotlib as mpl
 import matplotlib.figure as mpl_figure
+from enum import Enum
+from typing import Type
 from PyQt6 import QtWidgets, QtCore, QtGui
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtBoundSignal
+from pyNexafs.nexafs import (
+    scan_abstract,
+    scan_normalised_edges,
+    scan_normalised,
+    scan_background_subtraction,
+)
+from pyNexafs.resources import ICONS
 from pyNexafs.gui.widgets.graphing.matplotlib.graphs import (
     FigureCanvas,
     NEXAFS_NavQT,
     NavTBQT,
 )
-from enum import Enum
-from pyNexafs.nexafs.scan import *
-from pyNexafs.resources import ICONS
 
 
 class backgroundMethod(Enum):
@@ -112,6 +118,91 @@ class normaliserSettings:
         return self._post_edge_level
 
 
+class channelNormaliser(QtWidgets.QWidget):
+    """
+    Normaliser widget for choosing a scan object and corresponding channel to normalise by.
+
+    Parameters
+    ----------
+
+
+    Attributes
+    ----------
+
+    """
+
+    channelUpdated = pyqtBoundSignal(bool)
+
+    def __init__(
+        self,
+        channel_method: backgroundMethod = backgroundMethod.NONE,
+        channel_list: list[str] = [],
+        scan_list: list[Type[scan_abstract]] = [],
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._layout = QtWidgets.QVBoxLayout()
+        self.setLayout(self._layout)
+
+        ## Elements
+        # Channel method selection
+        self._channel_combobox = QtWidgets.QComboBox()
+        self._channel_combobox.addItems(
+            [
+                name.capitalize().replace("_", " ")
+                for name in backgroundMethod._member_names_
+            ]
+        )
+        self._channel_combobox.setCurrentIndex(channel_method.value)
+        # Scan object selection
+        self._scan_combobox = QtWidgets.QComboBox()
+        self._scan_combobox.addItems([scan.filename for scan in scan_list])
+        # Channel selection
+        self._channel_combobox = QtWidgets.QComboBox()
+        self._channel_combobox.addItems(channel_list)
+        # Selection Filter
+        self._filter = QtWidgets.QLineEdit()
+        self._filter.setPlaceholderText(
+            "Enter keyword or regular expression to match scan."
+        )
+
+        # Initialise properties
+        self.channel_method = channel_method
+        self.scan_list = scan_list
+        self.channel_list = channel_list
+
+    @property
+    def channel_method(self) -> backgroundMethod:
+        return self._channel_method
+
+    @channel_method.setter
+    def channel_method(self, method: backgroundMethod):
+        self._channel_method = method
+        if self._channel_combobox.currentIndex() != method.value:
+            self._channel_combobox.setCurrentIndex(method.value)
+
+    @property
+    def scan_list(self) -> list[Type[scan_abstract]]:
+        return self._scan_list
+
+    @scan_list.setter
+    def scan_list(self, scans: list[Type[scan_abstract]]):
+        self._scan_list = scans
+
+    @property
+    def channel_list(self) -> list[str]:
+        return self._channel_list
+
+    @channel_list.setter
+    def channel_list(self, channels: list[str]):
+        current_label = self._channel_combobox.currentText()
+        self._channel_list = channels
+        self._channel_combobox.clear()
+        self._channel_combobox.addItems(channels)
+        if current_label in channels:
+            self._channel_combobox.setCurrentIndex(channels.index(current_label))
+
+
 class scanNormaliser(QtWidgets.QWidget):
     def __init__(
         self,
@@ -169,7 +260,11 @@ class scanNormaliser(QtWidgets.QWidget):
         bkgd_layout_0.addWidget(self._background_scan_label, 2, 0, 1, 1)
         bkgd_layout_0.addWidget(self._background_scan_combobox, 2, 1, 1, 2)
 
-        # Normalisation elements
+        # Channel normalisation elements:
+        norm_layout_1 = QtWidgets.QGridLayout()
+        # self._
+
+        # Edge Normalisation elements
         norm_layout_0 = QtWidgets.QGridLayout()
         self._pre_edge_combobox = QtWidgets.QComboBox()
         self._post_edge_combobox = QtWidgets.QComboBox()
@@ -203,20 +298,12 @@ class scanNormaliser(QtWidgets.QWidget):
         self._pre_edge_domain_x0.setValidator(QtGui.QDoubleValidator())
         self._pre_edge_domain_x1.setPlaceholderText("x1")
         self._pre_edge_domain_x1.setValidator(QtGui.QDoubleValidator())
-        # self._pre_edge_domain_x0.setMinimumWidth(50)
-        # self._pre_edge_domain_x1.setMinimumWidth(50)
-        # self._pre_edge_domain_x0.setFixedWidth(50)
-        # self._pre_edge_domain_x1.setFixedWidth(50)
         # Postedge
         self._post_edge_level.setValidator(QtGui.QDoubleValidator())
         self._post_edge_domain_x0.setPlaceholderText("x0")
         self._post_edge_domain_x0.setValidator(QtGui.QDoubleValidator())
         self._post_edge_domain_x1.setPlaceholderText("x1")
         self._post_edge_domain_x1.setValidator(QtGui.QDoubleValidator())
-        # self._post_edge_domain_x0.setMinimumWidth(50)
-        # self._post_edge_domain_x1.setMinimumWidth(50)
-        # self._post_edge_domain_x0.setFixedWidth(50)
-        # self._post_edge_domain_x1.setFixedWidth(50)
 
         # Layout
         norm_layout_0.addWidget(
@@ -238,19 +325,19 @@ class scanNormaliser(QtWidgets.QWidget):
         norm_layout_0.addWidget(self._post_edge_level, 3, 4, 1, 2)
 
         # Settings layout
-        settings_layout = QtWidgets.QHBoxLayout()
-
         line = QtWidgets.QFrame()
         line.setFrameShape(QtWidgets.QFrame.Shape.HLine)
         line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         line.setLineWidth(1)
         line.setMinimumWidth(1)
+        line.setStyleSheet("background-color: black;")
         line.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Expanding
         )
-        line.setStyleSheet("background-color: black;")
-
+        settings_layout = QtWidgets.QHBoxLayout()
         settings_layout.addLayout(bkgd_layout_0)
+        settings_layout.addWidget(line)
+
         settings_layout.addWidget(line)
         settings_layout.addLayout(norm_layout_0)
         settings_layout.setStretch(0, 1)
@@ -603,13 +690,25 @@ class scanNormaliser(QtWidgets.QWidget):
 
 
 class scanNormaliserDialog(QtWidgets.QDialog):
-    def __init__(self, parent=None):
+    def __init__(
+        self,
+        graph_scans: list[scan_abstract],
+        dataseries_selection: list[str],
+        background_fixed_scans: list[scan_abstract] = [],
+        normalisation_settings: normaliserSettings = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self._layout = QtWidgets.QVBoxLayout()
         self.setLayout(self._layout)
 
         # Add normaliser widget
-        self._normaliser = scanNormaliser([], [])
+        self._normaliser = scanNormaliser(
+            graph_scans=graph_scans,
+            dataseries_selection=dataseries_selection,
+            background_fixed_scans=background_fixed_scans,
+            normalisation_settings=normalisation_settings,
+        )
         self._layout.addWidget(self._normaliser)
 
         # Add buttons
@@ -622,44 +721,127 @@ class scanNormaliserDialog(QtWidgets.QDialog):
         self._buttonBox.rejected.connect(self.reject)
         self._layout.addWidget(self._buttonBox)
 
-    def accept(self):
-        # Check if all settings are valid
+    def validate_settings(self) -> tuple[bool, str]:
         if self._normaliser.background_method == backgroundMethod.FIXED_SCAN:
             if self._normaliser.background_scan is None:
-                pass
-        super().accept()
+                return (False, "Background scan not selected.")
+        # TODO implement futher validation checks.
+        return (True, "")
+
+    def accept(self):
+        # Check if all settings are valid
+        valid, message = self.validate_settings()
+        if not valid:
+            dlg = QtWidgets.QMessageBox(self)
+            dlg.setWindowTitle("Normalisation Error")
+            dlg.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Ok)
+            dlg.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+            dlg.setText(message)
+            dlg.exec()
+        else:
+            super().accept()
 
     def reject(self):
         super().reject()
 
-    def get_settings(self) -> normaliserSettings:
+    @property
+    def norm_settings(self) -> normaliserSettings:
         return self._normaliser.settings
 
-    def set_settings(self, settings: normaliserSettings):
+    @norm_settings.setter
+    def norm_settings(self, settings: normaliserSettings):
         self._normaliser.settings = settings
 
-
-NavTB_divider = (None, None, None, None)
-NavTB_normalisation_option = (
-    "Normalisation",
-    "Allows use of normalisation and background subtraction options",
-    ICONS["normalisation"],
-    "norm_toolkit",
-)
+    @property
+    def figure(self) -> mpl_figure.Figure:
+        return self._normaliser._figure
 
 
 class NavTBQT_Norm(NEXAFS_NavQT):
+    normalisationUpdate = pyqtBoundSignal(bool)
+
+    NavTB_divider = (None, None, None, None)
+    NavTB_normalisation_option = (
+        "Normalisation",
+        "Allows use of normalisation and background subtraction options",
+        (ICONS["normalisation_light"], ICONS["normalisation_dark"]),
+        "norm_toolkit",
+    )
+
     # Update toolitems to include normalisation option.
     toolitems = [*NEXAFS_NavQT.toolitems]
     toolitems.append(NavTB_divider)
     toolitems.append(NavTB_normalisation_option)
 
-    def norm_toolkit(self):
-        normalisation_callback = scanNormaliserDialog()
+    def __init__(
+        self,
+        canvas,
+        parent=None,
+        coordinates=True,
+        graph_scans: list[scan_abstract] = [],
+        dataseries_selection: list[str] = [],
+        background_fixed_scans: list[scan_abstract] = [],
+        norm_settings: normaliserSettings = None,
+    ):
+        super().__init__(canvas, parent, coordinates)
+
+        self._graph_scans = graph_scans
+        self._dataseries_selection = dataseries_selection
+        self._background_fixed_scans = background_fixed_scans
+        self._norm_settings = norm_settings
+
+    @property
+    def graph_scans(self) -> list[scan_abstract]:
+        return self._graph_scans
+
+    @graph_scans.setter
+    def graph_scans(self, scans: list[scan_abstract]):
+        self._graph_scans = scans
+
+    @property
+    def dataseries_selection(self) -> list[str]:
+        return self._dataseries_selection
+
+    @dataseries_selection.setter
+    def dataseries_selection(self, labels: list[str]):
+        self._dataseries_selection = labels
+
+    @property
+    def background_fixed_scans(self) -> list[scan_abstract]:
+        return self._background_fixed_scans
+
+    @background_fixed_scans.setter
+    def background_fixed_scans(self, scans: list[scan_abstract]):
+        self._background_fixed_scans = scans
+
+    @property
+    def norm_settings(self) -> normaliserSettings:
+        return self._norm_settings
+
+    @norm_settings.setter
+    def norm_settings(self, settings: normaliserSettings):
+        self._norm_settings = settings
+
+    @property
+    def norm_figure(self) -> normaliserSettings:
+        return self._norm_settings
+
+    @norm_settings.setter
+    def norm_figure(self, figure: mpl_figure.Figure):
+        self._norm_figure = figure
+
+    def norm_toolkit(self) -> None:
+        normalisation_callback = scanNormaliserDialog(
+            graph_scans=self._graph_scans,
+            dataseries_selection=self._dataseries_selection,
+            background_fixed_scans=self._background_fixed_scans,
+            normalisation_settings=self._norm_settings,
+        )
         if normalisation_callback.exec():
             # Store the normalisation options selected.
-            self._normalisation_options = normalisation_callback.get_settings()
-            # Use graph to update figure.
+            self.norm_settings = normalisation_callback.norm_settings
+            self.norm_figure = normalisation_callback.figure
+            # Use signal to allow original UI to use properties.
             self.normalisationUpdate.emit(True)
         else:
             # Do nothing.
@@ -670,12 +852,13 @@ if __name__ == "__main__":
 
     app = QtWidgets.QApplication([])
     # window = scanNormaliser()
-    window = scanNormaliserDialog()
+    window = scanNormaliserDialog([], [])
     window.setWindowTitle("Background subtraction & normalisation")
     window.show()
 
     if window.exec():
         print("OK")
-        print(window.get_settings())
+        print(hasattr(window, "norm_settings"))
+        print(window.norm_settings)
     else:
         print("Cancel")

@@ -349,52 +349,6 @@ class SXR_NEXAFS(parser_base):
         "SR14ID01NEX01:Y_MTR.RBV": "Y",
     }
 
-    # @classmethod
-    # @overrides.overrides
-    # def file_parser(
-    #     cls, file: TextIOWrapper, header_only: bool = False
-    # ) -> tuple[NDArray | None, list[str], list[str], dict[str, Any]]:
-    #     """Reads Australian Synchrotron Soft X-ray Spectroscopy files.
-
-    #     Parameters
-    #     ----------
-    #     file : TextIOWrapper
-    #         TextIOWrapper of the datafile (i.e. open('file.asc', 'r'))
-    #     header_only : bool, optional
-    #         If True, then only the header of the file is read and NDArray is returned as None, by default False
-
-    #     Returns
-    #     -------
-    #     tuple[NDArray | None, list[str], dict[str, Any]]
-    #         Returns a set of data as a numpy array,
-    #         labels as a list of strings,
-    #         units as a list of strings,
-    #         and parameters as a dictionary.
-
-    #     Raises
-    #     ------
-    #     ValueError
-    #         If the file is not a valid filetype.
-    #     """
-
-    #     # Init vars, check file type using super method.
-    #     data, labels, units, params = super().file_parser(file)
-
-    #     # Use specific parser based on file extension.
-    #     if file.name.endswith(".asc"):
-    #             data, labels, units, params = cls.parse_asc(file, header_only=header_only)
-    #     elif file.name.endswith(".mda"):
-    #         data, labels, units, params = cls.parse_mda(file, header_only=header_only)
-    #     else:
-    #         raise NotImplementedError(
-    #             f"File {file.name} is not yet supported by the {cls.__name__} parser."
-    #         )
-
-    #     # Add filename to params at the end, to avoid incorrect filename from copy files internal params.
-    #     params["filename"] = file.name
-
-    #     return data, labels, units, params
-
     @classmethod
     def parse_asc(
         cls, file: TextIOWrapper, header_only: bool = False
@@ -508,10 +462,14 @@ class SXR_NEXAFS(parser_base):
         while line != "\n":
             # Take index info
             index = int(line[1:6].strip())
-            index_line = index == 1 # Boolean to determine if on index description line.
+            index_line = (
+                index == 1
+            )  # Boolean to determine if on index description line.
             # Take coltype info
             desc_type = line[8:26]
-            assert desc_type[0] == "[" and desc_type[-1] == "]" # Check parenthesis of the line parameters
+            assert (
+                desc_type[0] == "[" and desc_type[-1] == "]"
+            )  # Check parenthesis of the line parameters
             desc_type = desc_type[1:-1].strip()
             # Check if valid col type
             valid = False if not index_line else True
@@ -527,7 +485,7 @@ class SXR_NEXAFS(parser_base):
             column_descriptions[index] = desc_info
             # Check that the initial parameter begins with the Instrument descriptor.
             if not index_line:
-                assert desc_info[0].startswith("SR14ID01") #code for initial 
+                assert desc_info[0].startswith("SR14ID01")  # code for initial
             # Add to labels and units to lists
             labels += [desc_info[0].strip()] if not index_line else ["Index"]
             if "Positioner" in desc_type:
@@ -638,11 +596,14 @@ class SXR_NEXAFS(parser_base):
         pUnits = [
             self.params[pName][2]
             if (
-                self.params is not None # Params loaded
-                and pName in self.params # Parameter listed
-                and hasattr(self.params[pName], "__len__") #Parameter has a list of values
-                and len(self.params[pName]) == 3 # 3 params for value, description, unit
-                and self.params[pName][2] != "" # Unit value is not empty.
+                self.params is not None  # Params loaded
+                and pName in self.params  # Parameter listed
+                and hasattr(
+                    self.params[pName], "__len__"
+                )  # Parameter has a list of values
+                and len(self.params[pName])
+                == 3  # 3 params for value, description, unit
+                and self.params[pName][2] != ""  # Unit value is not empty.
             )
             else None
             for pName in pNames
