@@ -38,6 +38,10 @@ class scan_abstract_normalised(scan_abstract, metaclass=abc.ABCMeta):
         """
         return self._origin
 
+    @overrides.overrides
+    def reload_labels_from_parser(self) -> None:
+        return self._origin.reload_labels_from_parser()
+
     @property
     def ctime(self) -> datetime.datetime:
         """
@@ -80,14 +84,10 @@ class scan_abstract_normalised(scan_abstract, metaclass=abc.ABCMeta):
         self._x_errs = (
             self._origin.x_errs.copy() if self._origin.x_errs is not None else None
         )
-        self._x_label = self._origin.x_label  #
-        self._x_unit = self._origin.x_unit
         self._y = self._origin.y.copy()
         self._y_errs = (
             self._origin.y_errs.copy() if self._origin.y_errs is not None else None
         )
-        self._y_labels = self._origin.y_labels.copy()
-        self._y_units = self._origin.y_units.copy()
 
     def load_and_normalise(self) -> None:
         """
@@ -111,6 +111,102 @@ class scan_abstract_normalised(scan_abstract, metaclass=abc.ABCMeta):
             The original scan object.
         """
         return self._origin
+
+    @scan_abstract.x_label.getter
+    def x_label(self) -> str:
+        """
+        Property for the x-axis label, from the origin scan object.
+
+        Returns
+        -------
+        str
+            The x-axis label.
+        """
+        return self.origin.x_label
+
+    @x_label.setter
+    def x_label(self, label: str) -> None:
+        """
+        Property setter for the x-axis label, to the origin scan.
+
+        Parameters
+        ----------
+        label : str
+            The new x-axis label.
+        """
+        self.origin.x_label = label
+
+    @scan_abstract.x_unit.getter
+    def x_unit(self) -> str:
+        """
+        Property for the x-axis unit, from the origin scan object.
+
+        Returns
+        -------
+        str
+            The x-axis unit.
+        """
+        return self.origin.x_unit
+
+    @x_unit.setter
+    def x_unit(self, unit: str) -> None:
+        """
+        Property setter for the x-axis unit, to the origin scan.
+
+        Parameters
+        ----------
+        unit : str
+            The new x-axis unit.
+        """
+        self.origin.x_unit = unit
+
+    @scan_abstract.y_labels.getter
+    def y_labels(self) -> list[str]:
+        """
+        Property for the y-axis labels, from the origin scan object.
+
+        Returns
+        -------
+        list[str]
+            The y-axis labels.
+        """
+        return self.origin.y_labels
+
+    @y_labels.setter
+    def y_labels(self, labels: list[str]) -> None:
+        """
+        Property setter for the y-axis labels, to the origin scan.
+
+        Parameters
+        ----------
+        labels : list[str]
+            The new y-axis labels.
+        """
+        self.origin.y_labels = labels
+
+    @scan_abstract.y_units.getter
+    def y_units(self) -> list[str]:
+        """
+        Property for the y-axis units, from the origin scan object.
+
+        Returns
+        -------
+        list[str]
+            The y-axis units.
+        """
+        return self.origin.y_units
+
+    @y_units.setter
+    def y_units(self, units: list[str]) -> None:
+        """
+        Property setter for the y-axis units, to the origin scan.
+
+        Parameters
+        ----------
+        units : list[str]
+            The new y-axis units.
+        """
+        self.origin.y_units = units
 
 
 class scan_background_subtraction(scan_abstract_normalised):

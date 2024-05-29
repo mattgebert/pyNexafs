@@ -11,12 +11,13 @@ from PyQt6.QtWidgets import QApplication, QLabel
 import sys
 import matplotlib, matplotlib.axes, matplotlib.figure
 
-from pyNexafs.nexafs.scan import scan_abstract
+from pyNexafs.nexafs.scan import scan_abstract, scan_base
 from pyNexafs.parsers import parser_base
 from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas
 from pyNexafs.gui.widgets.normaliser import NavTBQT_Norm, normaliserSettings
 
 import numpy as np
+from typing import Type
 
 
 class nexafsViewer(QWidget):
@@ -66,6 +67,9 @@ class nexafsViewer(QWidget):
             self.on_label_selection_change
         )
 
+        # Boolean flag to prevent selection change from triggering callback.
+        self._updating = False
+
     @property
     def dataseries(self) -> list[str]:
         """
@@ -106,7 +110,7 @@ class nexafsViewer(QWidget):
         self.scans = {
             filename: parser.to_scan(load_all_columns)
             for filename, parser in parsers.items()
-            if (filename not in scans or override_scans)
+            if (override_scans or filename not in scans)
         }
 
     @property
@@ -165,32 +169,54 @@ class nexafsViewer(QWidget):
             List of filenames to select.
         """
         # Update internal object
-        self._selected_filenames = names if names is not None else []
+        self._selected_filenames = names.copy() if names is not None else []
+        # Update the dataseries list
+        self._update_dataseries_list()
 
+    def _update_dataseries_list(self) -> None:
+        """
+        Update the dataseries list widget with the current selection of scan objects.
+
+        Preserves name selection if updated dataseries contain the same names.
+        Alternatively preserves the selected indexes if the names are not present, but the indexes are (such as for relabelling).
+        """
+        # Prevent the callback from triggering the update if updating.
+        self._updating = True
+        # Get new filenames
+        names = self._selected_filenames
         # Update the data series list
         if len(names) != 0:
+            # Store Previous Selection
+            previousSelection = self.dataseries_selected
+            previousQModelIndexes = (
+                self._dataseries_list_view.selectionModel().selectedRows()
+            )
+            previousIndexes = [index.row() for index in previousQModelIndexes]
+
             # Find common labels in scan objects:
             scans = self.scans
+            # Only consider names that have scan objects.
+            names = [name for name in names if name in scans]
+
             if len(names) > 1:
                 # Look through all scan objects
                 scan = scans[names[0]]
                 labels = (
-                    set(scan._y_labels) if scan is not None else []
+                    set(scan.y_labels) if scan is not None else []
                 )  # set to empty list if scan object is None.
                 for name in names[1:]:
                     if name in scans:
-                        labels = labels.intersection(set(scans[name]._y_labels))
+                        labels = labels.intersection(set(scans[name].y_labels))
             elif len(names) == 1:
                 scan = scans[names[0]]
-                labels = scan._y_labels
+                labels = scan.y_labels
             else:
                 labels = []
                 scan = None
-
             # Update attributes in order, keeping original appearance order.
             ordered_intersection = []
             if scan is not None:
-                for label in scan._y_labels:
+                for label in scan.y_labels:
                     if label in labels:
                         ordered_intersection.append(label)
             else:
@@ -199,6 +225,29 @@ class nexafsViewer(QWidget):
             # Update graphics
             self._dataseries_list_view.clear()
             self._dataseries_list_view.addItems(self._dataseries_list)
+
+            # Restore the previous selection if it exists.
+            if previousSelection is not None:
+                # Restore the previous selection if it exists.
+                if np.all(
+                    [label in ordered_intersection for label in previousSelection]
+                ):
+                    # Use exact same labels
+                    self.dataseries_selected = previousSelection
+                elif len(ordered_intersection) > np.max(previousIndexes):
+                    # Use indexes of labels
+                    # self._dataseries_list_view.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+                    # self._dataseries_list_view.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.MultiSelection)
+                    for i in previousIndexes:
+                        self._dataseries_list_view.item(i).setSelected(True)
+                    self._dataseries_list_view.setFocus()
+
+        else:
+            self._dataseries_list = []
+            self._dataseries_list_view.clear()
+
+        # Reset the updating flag.
+        self._updating = False
 
     @property
     def dataseries_selected(self) -> list[str] | None:
@@ -238,12 +287,16 @@ class nexafsViewer(QWidget):
         Callback for when the selected labels change.
         """
         # Get the current scan object selection.
-        if self._selected_filenames is not None and len(self._selected_filenames) > 0:
-            scans_subset = {
-                name: scan
-                for name, scan in self.scans.items()
-                if name in self._selected_filenames
-            }
+        file_selection = self.selected_filenames
+        # Prevent the callback from triggering the update if updating.
+        if (
+            not self._updating
+            and file_selection is not None
+            and len(file_selection) > 0
+        ):
+            scans_subset = [
+                scan for name, scan in self.scans.items() if name in file_selection
+            ]
             # Get the selected fields.
             ds_list = self.dataseries_selected
             # Propogate dataseries selection to normalisation widget.
@@ -257,13 +310,24 @@ class nexafsViewer(QWidget):
         """
         self._norm_settings = self._normGraph.norm_settings
 
+    def on_relabel(self) -> None:
+        """
+        Callback for when the labels are relabelled.
+        """
+        for scan in self.scans.values():
+            if isinstance(scan, scan_abstract):
+                assert isinstance(scan, scan_abstract)
+                scan.reload_labels_from_parser()
+
+        self._update_dataseries_list()
+
 
 class normalisingGraph(QWidget):
     def __init__(
         self,
-        graph_scans: dict[str, scan_abstract] = None,
+        graph_scans: list[Type[scan_abstract]] = None,
         dataseries_selection: list[str] = [],
-        background_fixed_scans: list[scan_abstract] = [],
+        background_fixed_scans: list[Type[scan_abstract]] = [],
         norm_settings: normaliserSettings = None,
         parent=None,
     ):
@@ -286,11 +350,11 @@ class normalisingGraph(QWidget):
         self._toolbar.norm_settings = norm_settings
 
     @property
-    def graph_scans(self) -> dict[str, scan_abstract]:
+    def graph_scans(self) -> list[Type[scan_abstract]]:
         return self._toolbar.graph_scans
 
     @graph_scans.setter
-    def graph_scans(self, scans: dict[str, scan_abstract]):
+    def graph_scans(self, scans: list[Type[scan_abstract]]):
         self.toolbar.graph_scans = scans
 
     @property
@@ -302,11 +366,11 @@ class normalisingGraph(QWidget):
         self.toolbar.dataseries_selection = labels
 
     @property
-    def background_fixed_scans(self) -> list[scan_abstract]:
+    def background_fixed_scans(self) -> list[Type[scan_abstract]]:
         return self._toolbar.background_fixed_scans
 
     @background_fixed_scans.setter
-    def background_fixed_scans(self, scans: list[scan_abstract]):
+    def background_fixed_scans(self, scans: list[Type[scan_abstract]]):
         self.toolbar.background_fixed_scans = scans
 
     @property
@@ -344,15 +408,30 @@ class normalisingGraph(QWidget):
         if dataseries_list is not None:
             for ds in dataseries_list:
                 # Then iterate over each scan object.
-                for name, scan in scans.items():
+                for scan in scans:
                     try:
                         ind = scan._y_labels.index(ds)
                         x = scan.x
                         y = scan.y[:, ind]
-                        ax.plot(x, y, label=name + ":" + ds)
+                        ax.plot(x, y, label=scan.filename + ":" + ds)
                     except ValueError:
                         # Catch Value errors if the label is not found.
                         continue
+            ax.set_xlabel(
+                scan.x_label + " (" + scan.x_unit + ")"
+                if scan.x_unit is not None
+                else scan.x_label
+            )
+            # Copy behaviour from matplotlib figureoptions.py to allow removal of legend with user modification.
+            draggable = None
+            ncols = 1
+            if ax.legend_ is not None:
+                old_legend = ax.get_legend()
+                draggable = old_legend._draggable is not None
+                ncols = old_legend._ncols
+            new_legend = ax.legend(ncols=ncols)
+            if new_legend:
+                new_legend.set_draggable(draggable)
         self.canvas.draw()
 
 

@@ -1,5 +1,6 @@
 import sys
 
+from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
@@ -13,6 +14,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QSplitter,
     QSplitterHandle,
+    QAbstractItemView,
 )
 from PyQt6.QtGui import QColor, QPalette, QLinearGradient
 
@@ -28,23 +30,26 @@ import numpy as np
 
 
 class mainWidget(QWidget):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
         # Initialise elements
-        self.draggable = QSplitter(Qt.Orientation.Horizontal)
-        self.main_layout = QHBoxLayout()
+        self._draggable = QSplitter(Qt.Orientation.Horizontal)
+        self._main_layout = QHBoxLayout()
         self.loader = nexafsFileLoader(parent=self)
         self.viewer = nexafsViewer(parent=self)
         # self.converter = converterWidget()
 
         # Add to layout
-        self.draggable.addWidget(self.loader)
-        self.draggable.addWidget(self.viewer)
-        self.main_layout.addWidget(self.draggable)
+        self._draggable.addWidget(self.loader)
+        self._draggable.addWidget(self.viewer)
+        self._main_layout.addWidget(self._draggable)
         # self.main_layout.addWidget(self.loader)
         # self.main_layout.addWidget(self.viewer)
         # self.sub_layout.addWidget(self.converter)
-        self.setLayout(self.main_layout)
+        self.setLayout(self._main_layout)
+        if parent is not None:
+            self.setContentsMargins(0, 0, 0, 0)
+            self._main_layout.setContentsMargins(0, 0, 0, 0)
 
         ### Init UI
         grad = QLinearGradient(0, 0, 1, 0)
@@ -71,26 +76,18 @@ class mainWidget(QWidget):
         self.loader.nexafs_parser_selector.currentIndexChanged.connect(
             self._on_dir_parser_change
         )
+        self.loader.relabelling.connect(self.viewer.on_relabel)
 
     def _on_dir_parser_change(self):
         # Delete the current scan objects
         del self.viewer.scans
 
     def _on_load_selection(self):
-        # Store existing viewer dataseries selection
-        previousSelection = self.viewer.dataseries_selected
         # Load in the scan objects
         selection_parse_objs = self.loader.loaded_parser_files_selection
         self.viewer.add_parsers_to_scans(selection_parse_objs)
-
         # Change the file selection in the viewer.
         self.viewer.selected_filenames = self.loader.selected_filenames
-
-        # Update the selected dataseries in the viewer to graph.
-        if previousSelection is not None:
-            # Restore the previous selection if it exists.
-            if np.all([label in self.viewer.dataseries for label in previousSelection]):
-                self.viewer.dataseries_selected = previousSelection
 
 
 def gui():

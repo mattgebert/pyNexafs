@@ -39,6 +39,7 @@ import os, sys
 from pyNexafs.parsers import parser_loaders, parser_base
 from pyNexafs.nexafs import scan_base
 from typing import Type
+import overrides
 import warnings
 import numpy as np
 
@@ -60,6 +61,7 @@ class nexafsFileLoader(QWidget):
     """
 
     selectionLoaded = pyqtSignal(bool)
+    relabelling = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -145,16 +147,20 @@ class nexafsFileLoader(QWidget):
         self.selectionLoaded.emit(True)
         return
 
-    def update_relabelling(self):
+    def update_relabelling(self) -> None:
         """
         Updates the fieldnames when relabelling is checked.
         """
         parser = self.directory_viewer.parser
         if parser is not None:
-            parser.relabel = self.filter_relabelling.isChecked()
-            self.directory_viewer.relabel_header()
+            old_relabel = parser.relabel
+            new_relabel = self.filter_relabelling.isChecked()
+            parser.relabel = new_relabel
+            if old_relabel != new_relabel:
+                self.directory_viewer.update_header()
+                self.relabelling.emit(parser.relabel)
 
-    def update_dir(self):
+    def update_dir(self) -> None:
         """
         Update the dir selection
         """
@@ -165,7 +171,7 @@ class nexafsFileLoader(QWidget):
         self._log_entry()
         return
 
-    def update_parser(self):
+    def update_parser(self) -> None:
         """
         Update the parser selection.
         """
@@ -301,9 +307,13 @@ class nexafsFileLoader(QWidget):
         dict[str, Type[parser_base]]
             A dictionary of filenames and their corresponding scan objects.
         """
-        selected = self.directory_viewer.selected_filenames()
+        selected = self.directory_viewer.selected_filenames
         loaded = self.loaded_parsers_files
-        return {name: loaded[name] for name in selected if name in loaded}
+        return {
+            name: loaded[name]
+            for name in selected
+            if name in loaded and loaded[name] is not None
+        }
 
     @property
     def selected_filenames(self) -> list[str]:
@@ -315,7 +325,7 @@ class nexafsFileLoader(QWidget):
         list[str]
             A list of filenames selected in the directory viewer.
         """
-        return self.directory_viewer.selected_filenames()
+        return self.directory_viewer.selected_filenames
 
 
 class nexafs_parser_selector(QComboBox):
@@ -475,6 +485,111 @@ class directory_selector(QHBoxLayout):
         return formatted_path
 
 
+class directory_filters(QHBoxLayout):
+    """
+    Generates a QTextEdit & QComboBox for filtering the directory list.
+    """
+
+    filterChanged = pyqtSignal(bool)
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        # Instance attributes
+        self.filter_text = ""
+        self.filter_filetype = None
+        self._parser_selection = None
+        self._changing_parser = False  # Flag to prevent filterChanged signal emitting when parser is changed.
+
+        # Instance widgets
+        self.filter_text_edit = QLineEdit()
+        self.filter_filetype_select = QComboBox()
+
+        # Setup layout
+        self.addWidget(self.filter_text_edit)
+        self.addWidget(QLabel("Filetype: "))
+        self.addWidget(self.filter_filetype_select)
+
+        # Widget Attributes
+        self.filter_text_edit.setPlaceholderText("Filter filename|header by text")
+
+        # Connections
+        self.filter_text_edit.editingFinished.connect(self.on_filter_text_edit)
+        self.filter_filetype_select.currentIndexChanged.connect(self.on_filter_change)
+
+    def on_filter_text_edit(self):
+        """
+        Update the filter text.
+        """
+        self.filter_text = self.filter_text_edit.text()
+        self.on_filter_change()
+
+    def on_filter_change(self):
+        """
+        Signal generator for filter changes if parser not changing.
+        """
+        if not self._changing_parser:
+            self.filterChanged.emit(True)
+
+    @property
+    def filetypes_selection(self) -> list[str]:
+        """
+        Returns the currently selected filetype.
+
+        Returns
+        -------
+        str
+            The currently selected filetype, or a list of all possible filetypes, belonging to the parser.
+            If parser is None, returns an empty list.
+        """
+        if self.parser is None:
+            return []
+        selection = self.filter_filetype_select.currentText()
+        return [selection] if selection != "" else self.parser.ALLOWED_EXTENSIONS
+
+    @property
+    def parser(self) -> type[parser_base] | None:
+        """
+        Returns the currently selected parser.
+
+        Returns
+        -------
+        type[parser_base] | None
+            The currently used parser, or None if no parser is selected.
+        """
+        return self._parser_selection
+
+    @parser.setter
+    def parser(self, parser: type[parser_base] | None):
+        """
+        Sets the (external) parser selection.
+
+        Additionally triggers the filetype selection to be updated and repopulates the filetype selection entries.
+
+        Parameters
+        ----------
+        parser : type[parser_base] | None
+            Currently used parser, or None if no parser is selected.
+        """
+        self._changing_parser = True
+        self._parser_selection = parser
+        self.filter_filetype_select.clear()  # clear existing file extensions.
+        if parser is not None:
+            self.filter_filetype_select.addItem("")
+            self.filter_filetype_select.addItems(parser.ALLOWED_EXTENSIONS)
+        self._changing_parser = False
+
+    @parser.deleter
+    def parser(self):
+        """
+        Removes the (external) parser selection.
+
+        Additionally clears the filetype selections.
+        """
+        self._parser_selection = None
+        self.filter_filetype_select.clear()
+
+
 # Construct the Table Model
 class table_model(QAbstractTableModel):
 
@@ -485,13 +600,8 @@ class table_model(QAbstractTableModel):
         super(table_model, self).__init__()
         self._data = data
         self._header = header
-        # if header is not None:
-        #     for i in range(len(header)):
-        #         self.setHeaderData(i, Qt.Orientation.Horizontal, header[i])
 
         # Initalise graphics for loaded / unloaded files.
-        # self._icon_error =  QStyle.StandardPixmap.SP_DialogCancelButton
-        # self._icon_success = QStyle.StandardPixmap.SP_DialogApplyButton
         self._icon_error = QApplication.style().standardIcon(
             QStyle.StandardPixmap.SP_DialogCancelButton
         )
@@ -499,10 +609,7 @@ class table_model(QAbstractTableModel):
             QStyle.StandardPixmap.SP_DialogApplyButton
         )
 
-        # self._icon_error = QIcon.fromTheme("dialog-error")
-        # self._icon_success = QIcon.fromTheme("sync-synchronizing")
-        # self._icon_success = QIcon.fromTheme("dialog-error")
-
+    @overrides.overrides
     def headerData(self, section, orientation, role):
         if (
             orientation == Qt.Orientation.Horizontal
@@ -512,6 +619,7 @@ class table_model(QAbstractTableModel):
         else:
             return super().headerData(section, orientation, role)
 
+    @overrides.overrides
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         # Check that second column is being indexed for "loaded" status, to display icons.
         if (
@@ -533,16 +641,15 @@ class table_model(QAbstractTableModel):
 
         # General data accessing
         if role == Qt.ItemDataRole.DisplayRole:
-            # See below for the nested-list data structure.
-            # .row() indexes into the outer list,
-            # .column() indexes into the sub-list
             return self._data[index.row()][index.column()]
         return None
 
+    @overrides.overrides
     def rowCount(self, index):
         # The length of the outer list.
         return len(self._data)
 
+    @overrides.overrides
     def columnCount(self, index):
         # The following takes the first sub-list, and returns
         # the length (only works if all rows are an equal length)
@@ -689,8 +796,8 @@ class directory_viewer_table(QTableView):
         """
         self._parser = parser
         # Reset existing file data to use new parser.
-        self._parser_files = None
-        self._parser_headers = None
+        self._parser_files = {}
+        self._parser_headers = {}
         self._filetype_filters = (
             parser.ALLOWED_EXTENSIONS if parser is not None else None
         )
@@ -702,8 +809,8 @@ class directory_viewer_table(QTableView):
         Remove the parser from the directory viewer.
         """
         self._parser = None
-        self._parser_files = None
-        self._parser_headers = None
+        self._parser_files = {}
+        self._parser_headers = {}
         self.update_table()
 
     @property
@@ -824,64 +931,6 @@ class directory_viewer_table(QTableView):
         self._str_filter, self._filetype_filters = None, None
         self.update_table()
 
-    def relabel_header(self) -> None:
-        """
-        Generates the column headers using default parser important parameters.
-
-        First attempts to call `summary_param_names_with_units` on the first non-None
-        header-loaded parser object, to load the column labels and their appropriate units.
-        Alternatively calls `summary_param_names` on the object, which doesn't require unit labels.
-        These two methods take into account the parser `relabel` property.
-        If no headers are loaded then calls the class SUMMARY_PARAM_RAW_NAMES, which doesn't take into
-
-
-        """
-        # Setup default header columns
-        header = self._default_headers  # Get defaults
-
-        # Add list values if parser is defined, and header objects allow unit calls.
-        if (
-            self.parser is not None
-            and self._parser_headers is not None
-            and len(self._parser_headers) > 0
-        ):
-            obj_head = None
-            for val in self._parser_headers.values():
-                # Collect val (parser objects), where val is not None.
-                if val is not None:
-                    # Attempt to use 'summary_param_names_with_units' if available.
-                    try:
-                        obj_head = val.summary_param_names_with_units
-                    except NotImplementedError as e:
-                        warnings.warn(
-                            f"{self.parser.__name__} has not implemented 'summary_param_names_with_units'. Defaulting to 'summary_param_names'."
-                        )
-                        obj_head = val.summary_param_names  # without units.
-                    break  # end for loop prematurely.
-            # If all parser headers are None, then use parser default values.
-            if obj_head is None:
-                obj_head = self.parser.summary_param_names
-            # Add obj_head to header
-            header += obj_head
-        # If _parser_headers are not defined but the parser is.
-        elif self.parser is not None:
-            header += self.parser.summary_param_names
-
-        # Update internal header names
-        self._header_names = header
-
-        # Model header update
-        if self.files_model is not None:
-            self.files_model._header = self._header_names
-            self.files_model.layoutChanged.emit()
-
-        # Update column widths with header update.
-        for i in range(0, len(self._header_names)):
-            # If the current column width is larger than the size hint, resize to fit for all columns.
-            if self.columnWidth(i) > self.sizeHintForColumn(i):
-                self.resizeColumnToContents(i)
-        return
-
     @property
     def progress_bar(self) -> QProgressBar:
         """
@@ -903,40 +952,99 @@ class directory_viewer_table(QTableView):
     def progress_bar(self, progress_bar: QProgressBar):
         self._progress_bar = progress_bar
 
+    def update_header(self) -> None:
+        """
+        Generates the column headers using default parser important parameters.
+
+        First attempts to call `summary_param_names_with_units` on the first non-None
+        header-loaded parser object, to load the column labels and their appropriate units.
+        Alternatively calls `summary_param_names` on the object, which doesn't require unit labels.
+        These two methods take into account the parser `relabel` property.
+        If no headers are loaded then calls the parser `summary_param_names`.
+        """
+        # Setup default header columns
+        header = self._default_headers  # Get defaults
+
+        # Add list values if parser is defined, and header objects allow unit calls.
+        if self.parser is not None and len(self._parser_headers) > 0:
+            val = None
+            # Collect the first non-None parser object.
+            for val in self._parser_headers.values():
+                # Collect val (parser objects), where val is not None.
+                if val is not None:
+                    assert isinstance(val, self.parser)
+                    break  # end for loop prematurely.
+            # Establish parameter header names:
+            if val is not None:
+                try:
+                    # Attempt to use 'summary_param_names_with_units' if available.
+                    obj_head = val.summary_param_names_with_units
+                except NotImplementedError as e:
+                    warnings.warn(
+                        f"{self.parser.__name__} has not implemented 'summary_param_names_with_units'. Defaulting to 'summary_param_names'."
+                    )
+                    obj_head = val.summary_param_names  # without units.
+            else:
+                # If all parser headers are None, then use parser default values.
+                obj_head = self.parser.summary_param_names
+            # Add obj_head to header
+            header += obj_head
+        # If _parser_headers are not defined but the parser is.
+        elif self.parser is not None:
+            header += self.parser.summary_param_names
+
+        # Update internal header names
+        self._header_names = header
+
+        # Ideally just updates header names, but occasionally crashes when attempting to layoutChange.emit()
+        if self.files_model is not None:
+            old_selection = self.selectionModel().selectedRows()
+            new_model = table_model(
+                data=self.files_model._data, header=self._header_names
+            )
+            self.proxy_model.setSourceModel(new_model)
+            self.files_model = new_model
+            # Setup and restore selection.
+            self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+            self.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+            [self.selectRow(i.row()) for i in old_selection]
+
+        # Update column widths with header update.
+        for i in range(0, len(self._header_names)):
+            # If the current column width is larger than the size hint, resize to fit for all columns.
+            if self.columnWidth(i) > self.sizeHintForColumn(i):
+                self.resizeColumnToContents(i)
+        return
+
     def update_table(self):
         """
         Update the directory view.
+
+        Applies text filter, parser and permissionable extensions to filter the files list.
+        Loads the filtered header data for the table, appling updates to the class progress bar if defined.
+
         """
         # Do nothing if an empty directory.
         if self.directory is None:
             return
 
+        ### COLLECT FILES AND APPLY FILETYPE FILTER
         # Collect available files
         files = self.files
-
-        ## Apply filetype filter(s) to files
-        # Filetypes
+        # 1: Filetypes
         if self._filetype_filters is not None and len(self._filetype_filters) > 0:
             files = [
                 file
                 for file in self.files
                 if file.endswith(tuple(self._filetype_filters))
             ]
-
         # Set the progress bar to zero.
         if self.progress_bar is not None:
             self.progress_bar.setValue(0)
             # Store number of files to be processed for progress bar
             self.progress_bar.setRange(0, len(files))
-
-            # class percent_str(str):
-            #     def __format__(self, format_spec):
-            #         return f"{float(self) / files_len * 100:.2f}%"
-
-        # Collect the new fileheader data.
+        # 2: Load new fileheader data.
         if self.parser is not None:
-            if self._parser_headers is None:
-                self._parser_headers = {}
             # Get header data
             for i, file in enumerate(files):
                 if file not in self._parser_headers:
@@ -952,18 +1060,17 @@ class directory_viewer_table(QTableView):
                     self.progress_bar.setValue(i + 1)
         else:
             # If parser is None, empty the existing data.
-            self._parser_headers = None
+            self._parser_headers = {}
 
         # Update headers
-        self.relabel_header()
+        self.update_header()
 
         # Get header data for table:
         data = []  # list of file header lists.
         excess = [
             "" for _ in range(len(self._header_names) - len(self._default_headers))
         ]  # empty columns for invalid file headers.
-        for i in range(len(files)):
-            file = files[i]
+        for i, file in enumerate(files):
             filedata = [i + 1, file]  # add index (1, ...) and filename to data.
             # If parser specified (for loading) add field for successful loading.
             if self.parser:
@@ -980,38 +1087,26 @@ class directory_viewer_table(QTableView):
                 raise AttributeError("Default headers do not match filedata.")
 
             # Add parameter values
-            if (
-                self._parser_headers is not None
-                and self._parser_headers[file] is not None
+            if file in self._parser_headers and isinstance(
+                self._parser_headers[file], parser_base
             ):
                 # Match indexing of parser.SUMMARY_PARAM_RAW_NAMES
-                spv = self._parser_headers[file].summary_param_values
-                for j in range(len(self._header_names) - len(self._default_headers)):
-                    filedata.append(spv[j])
+                filedata.extend(self._parser_headers[file].summary_param_values)
             else:
                 filedata.extend(excess)
             # Add header data to data list.
             data.append(filedata)
 
-        # Add files to table if exists
-        if self.files_model is None:
-            # New table
-            self.files_model = table_model(data=data, header=self._header_names)
-            # Update proxy (filtering / sorting) model
-            self.proxy_model.setSourceModel(self.files_model)
-        else:
-            # Update table
-            self.files_model._data = data
-            self.files_model._header = self._header_names
-            self.files_model.layoutChanged.emit()
+        # New table - Ideally would be a model update, but would crash when attempting to layoutChange.emit()
+        self.files_model = table_model(data=data, header=self._header_names)
+        # Update proxy (filtering / sorting) model
+        self.proxy_model.setSourceModel(self.files_model)
+
         self.resizeColumnToContents(0)
         for i in range(0, len(self._header_names)):
             # If the current column width is larger than the size hint, resize to fit for all columns.
             if self.columnWidth(i) > self.sizeHintForColumn(i):
                 self.resizeColumnToContents(i)
-        # if self.parser is not None:
-        #     # self.setColumnWidth(self._status_index(), 1)
-
         if self.progress_bar is not None:
             self.progress_bar.setValue(0)
         return
@@ -1030,35 +1125,43 @@ class directory_viewer_table(QTableView):
             rows = sm.selectedRows(
                 column=1 if self._status_index() > 1 else 2
             )  # get filename, not index.
-            for row in rows:
+
+            # Set the progress bar to zero.
+            if self.progress_bar is not None:
+                self.progress_bar.setValue(0)
+                # Store number of files to be processed for progress bar
+                self.progress_bar.setRange(0, len(rows))
+
+            # Setup warnings to show once.
+            warnings.simplefilter("once", UserWarning)
+            for i, row in enumerate(rows):
                 filename = self.proxy_model.data(row, Qt.ItemDataRole.DisplayRole)
-                # Initialize parser_files if not already defined.
-                if self._parser_files is None:
-                    self._parser_files = {}
                 # Check if the file already loaded:
                 if (
                     filename not in self._parser_files
                     or self._parser_files[filename] is None
                 ):
-                    # Is the header is loaded
+                    # Check for a header object (should always exist).
                     if (
-                        filename not in self._parser_headers
-                        or self._parser_headers[filename] is None
+                        filename in self._parser_headers
+                        and self._parser_headers[filename] is not None
                     ):
-                        # Create new parser instance, add to headers and files.
-                        parser = self.parser(os.path.join(self.directory, filename))
-                        self._parser_headers[filename] = parser
-                        self._parser_files[filename] = parser
-                    else:
                         # Use existing parser instance, add to files.
                         parser = self._parser_headers[filename]
                         assert isinstance(parser, parser_base)
                         parser.load()  # use internal filepath to load
                         self._parser_files[filename] = parser
+                    # else: ignore unloaded headers (None) in the selection.
+                if self.progress_bar is not None:
+                    self.progress_bar.setValue(i + 1)
+            # Restore warnings functionality.
+            warnings.resetwarnings()
             # Trigger a loading completed signal.
+            self.progress_bar.setValue(0)
             self.selectionLoaded.emit(True)
         return
 
+    @property
     def selected_filenames(self) -> list[str]:
         """
         Returns the selected filenames in the directory viewer.
@@ -1088,111 +1191,6 @@ class directory_viewer_table(QTableView):
             return 1
         else:
             return 2 if self._status_index() < 2 else 1
-
-
-class directory_filters(QHBoxLayout):
-    """
-    Generates a QTextEdit & QComboBox for filtering the directory list.
-    """
-
-    filterChanged = pyqtSignal(bool)
-
-    def __init__(self) -> None:
-        super().__init__()
-
-        # Instance attributes
-        self.filter_text = ""
-        self.filter_filetype = None
-        self._parser_selection = None
-        self._changing_parser = False  # Flag to prevent filterChanged signal emitting when parser is changed.
-
-        # Instance widgets
-        self.filter_text_edit = QLineEdit()
-        self.filter_filetype_select = QComboBox()
-
-        # Setup layout
-        self.addWidget(self.filter_text_edit)
-        self.addWidget(QLabel("Filetype: "))
-        self.addWidget(self.filter_filetype_select)
-
-        # Widget Attributes
-        self.filter_text_edit.setPlaceholderText("Filter filename|header by text")
-
-        # Connections
-        self.filter_text_edit.editingFinished.connect(self.on_filter_text_edit)
-        self.filter_filetype_select.currentIndexChanged.connect(self.on_filter_change)
-
-    def on_filter_text_edit(self):
-        """
-        Update the filter text.
-        """
-        self.filter_text = self.filter_text_edit.text()
-        self.on_filter_change()
-
-    def on_filter_change(self):
-        """
-        Signal generator for filter changes if parser not changing.
-        """
-        if not self._changing_parser:
-            self.filterChanged.emit(True)
-
-    @property
-    def filetypes_selection(self) -> list[str]:
-        """
-        Returns the currently selected filetype.
-
-        Returns
-        -------
-        str
-            The currently selected filetype, or a list of all possible filetypes, belonging to the parser.
-            If parser is None, returns an empty list.
-        """
-        if self.parser is None:
-            return []
-        selection = self.filter_filetype_select.currentText()
-        return [selection] if selection != "" else self.parser.ALLOWED_EXTENSIONS
-
-    @property
-    def parser(self) -> type[parser_base] | None:
-        """
-        Returns the currently selected parser.
-
-        Returns
-        -------
-        type[parser_base] | None
-            The currently used parser, or None if no parser is selected.
-        """
-        return self._parser_selection
-
-    @parser.setter
-    def parser(self, parser: type[parser_base] | None):
-        """
-        Sets the (external) parser selection.
-
-        Additionally triggers the filetype selection to be updated and repopulates the filetype selection entries.
-
-        Parameters
-        ----------
-        parser : type[parser_base] | None
-            Currently used parser, or None if no parser is selected.
-        """
-        self._changing_parser = True
-        self._parser_selection = parser
-        self.filter_filetype_select.clear()  # clear existing file extensions.
-        if parser is not None:
-            self.filter_filetype_select.addItem("")
-            self.filter_filetype_select.addItems(parser.ALLOWED_EXTENSIONS)
-        self._changing_parser = False
-
-    @parser.deleter
-    def parser(self):
-        """
-        Removes the (external) parser selection.
-
-        Additionally clears the filetype selections.
-        """
-        self._parser_selection = None
-        self.filter_filetype_select.clear()
 
 
 if __name__ == "__main__":

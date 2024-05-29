@@ -17,7 +17,7 @@ class FigureCanvas(FigureCanvasQTAgg):
         super().__init__(mpl_fig)
 
 
-class NEXAFS_NavQT(NavTBQT):
+class NEXAFS_NavQT(NavTBQT, QtWidgets.QToolBar):
 
     toolitems = [*NavTBQT.toolitems]
 
@@ -145,6 +145,47 @@ class NEXAFS_NavQT(NavTBQT):
                 )  # as per the original __init__ code.
         else:
             raise ValueError("Invalid icon type")
+
+    def on_recolour(self):
+        """
+        Recolour the icons based on the OS theme.
+        """
+        # Get theme
+        toolbar_palette = self.palette()
+        light_theme_bool = toolbar_palette.window().color().lightnessF() > 0.5
+        callback_list = [toolitem[3] for toolitem in self.toolitems]
+        for callback, action in self._actions.items():
+            assert isinstance(action, QtGui.QAction)
+            index = callback_list.index(callback)
+            # Collect the icon name from the toolitems list, use to process a new icon.
+            action.setIcon(
+                self._icon(self.toolitems[index][2], light_theme=light_theme_bool)
+            )
+        pass
+
+    @overrides.overrides
+    def event(self, event: QtCore.QEvent) -> bool:
+        """
+        Event handler for the widget.
+
+        Adds palette change control for light/dark mode to QWidget event handler.
+
+        Parameters
+        ----------
+        event : QtCore.QEvent
+            The event to handle.
+
+        Returns
+        -------
+        bool
+            Whether the event was handled.
+        """
+        if (
+            event.type() == QtCore.QEvent.Type.PaletteChange
+            or event.type() == QtCore.QEvent.Type.ApplicationPaletteChange
+        ):
+            self.on_recolour()
+        return super().event(event)
 
 
 if __name__ == "__main__":

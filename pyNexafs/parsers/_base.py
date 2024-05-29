@@ -589,9 +589,9 @@ class parser_base(metaclass=parser_meta):
                     except Exception as e:
                         # Method failed, continue to next method.
                         warnings.warn(
-                            f"Attempted method '{parse_fn.__name__}' failed to load '{file.name}' from '{cls.__name__}'. {type(e).__name__}: '"
-                            + str(e)
-                            + "'.",
+                            f"Attempted method '{parse_fn.__name__}' failed to load '{os.path.basename(file.name)}' from '{cls.__name__}' with {type(e).__name__}.",
+                            # + str(e)
+                            # + "'.",
                             UserWarning,
                         )
                         continue

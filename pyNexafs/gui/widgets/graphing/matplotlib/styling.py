@@ -42,7 +42,6 @@ class QColormapPushButton(QtWidgets.QPushButton):
                 ### Check raw pixelwith of icon.
                 if self._pixmap is not None and self._pixmap.width() < w:
                     # Generate new icon with double width.
-                    print("New width", 2 * w)
                     self.generate_cmap_icon(w=2 * w, h=self._min_h)
                 self.setIconSize(QtCore.QSize(self.width() - 20, self.height() - 10))
 

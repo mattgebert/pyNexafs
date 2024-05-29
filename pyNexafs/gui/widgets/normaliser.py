@@ -588,7 +588,10 @@ class scanNormaliser(QtWidgets.QWidget):
         return self._graph_scans
 
     @graph_scans.setter
-    def graph_scans(self, scans: list[scan_abstract] | None):
+    def graph_scans(self, scans: list[scan_abstract]):
+        # Set scans, if None, set to empty list.
+        scans = [] if scans is None else scans
+        # Set attribute.
         self._graph_scans = scans
         # Check validity of selected dataseries with new scans, if not delete entries.
         if isinstance(scans, list) and len(scans) > 0:
@@ -601,7 +604,7 @@ class scanNormaliser(QtWidgets.QWidget):
 
     @graph_scans.deleter
     def graph_scans(self):
-        self._graph_scans = None
+        self._graph_scans = []
 
     @property
     def background_fixed_scans(self) -> list[scan_abstract]:

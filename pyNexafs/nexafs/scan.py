@@ -381,6 +381,16 @@ class scan_abstract(metaclass=abc.ABCMeta):
             ax[i].set_title(self._y_labels[i])
         return fig
 
+    @abc.abstractmethod
+    def reload_labels_from_parser(self) -> None:
+        """
+        Re-loads the labels and units from the parser object.
+
+        Useful when the user wants to switch from the raw parameter names to useful names.
+        Alternatively scan labels can be manually set.
+        """
+        pass
+
 
 class scan_base(scan_abstract):
     """
@@ -416,10 +426,14 @@ class scan_base(scan_abstract):
 
         # Store parser reference.
         self._parser = parser
+        self._all_columns_loaded = (
+            False  # internal tracking on whether all columns have been loaded or not.
+        )
 
         # Load data from parser
         if self.parser is not None:
             self._load_from_parser(load_all_columns=load_all_columns)
+            self._all_columns_loaded = load_all_columns
 
     @property
     def ctime(self) -> datetime.datetime:
@@ -466,14 +480,28 @@ class scan_base(scan_abstract):
         """
         return self._parser
 
-    def reload(self) -> None:
+    def reload(self, load_all_columns: bool = None) -> None:
         """
-        Reload data from the parser object.
+        Reloads all data from the parser object.
         """
-        self._load_from_parser()
+        if load_all_columns is not None:
+            self._all_columns_loaded = load_all_columns
+            self._load_from_parser(load_all_columns)
+        else:
+            self._load_from_parser(self._all_columns_loaded)
         return
 
-    def _load_from_parser(self, load_all_columns=False) -> None:
+    def reload_labels_from_parser(self) -> None:
+        """
+        Re-loads the labels and units from the parser object.
+
+        Useful when the user wants to switch from the raw parameter names to useful names.
+        Alternatively scan labels can be manually set.
+        """
+        self._load_from_parser(self._all_columns_loaded, only_labels=True)
+        return
+
+    def _load_from_parser(self, load_all_columns=False, only_labels=False) -> None:
         """
         Load data from parser object.
 
@@ -484,9 +512,9 @@ class scan_base(scan_abstract):
         Parameters
         ----------
         load_all_columns : bool, optional
-
             Load all columns from the parser object, by default False.
-
+        only_labels : bool, optional
+            Only load labels and units from the parser object, by default False.
         """
         # Get assignments from parser object.
         assignments = self.parser.COLUMN_ASSIGNMENTS  # Validated column assignments.
@@ -528,12 +556,10 @@ class scan_base(scan_abstract):
             if x_errs_label is not None
             else None
         )
-
         ### add conditional for load_all_columns.
         if load_all_columns:
             # iterate over columns, and add to y_indices if not existing indices.
             for i in range(self.parser.data.shape[1]):
-
                 if (
                     i not in y_indices
                     and (y_errs_indices is None or i not in y_errs_indices)
@@ -544,18 +570,19 @@ class scan_base(scan_abstract):
 
         ### Generate data clones.
         # Data-points
-        self._x = self.parser.data[:, x_index].copy()
-        self._y = self.parser.data[:, y_indices].copy()
-        self._y_errs = (
-            self.parser.data[:, y_errs_indices].copy()
-            if y_errs_indices is not None
-            else None
-        )
-        self._x_errs = (
-            self.parser.data[:, x_errs_index].copy()
-            if x_errs_index is not None
-            else None
-        )
+        if not only_labels:
+            self._x = self.parser.data[:, x_index].copy()
+            self._y = self.parser.data[:, y_indices].copy()
+            self._y_errs = (
+                self.parser.data[:, y_errs_indices].copy()
+                if y_errs_indices is not None
+                else None
+            )
+            self._x_errs = (
+                self.parser.data[:, x_errs_index].copy()
+                if x_errs_index is not None
+                else None
+            )
         # Labels and Units
         self._x_label = (
             self.parser.labels[x_index] if self.parser.labels is not None else None
