@@ -29,7 +29,7 @@ from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavTB
 import numpy as np
 
 
-class mainWidget(QWidget):
+class browserWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         # Initialise elements
@@ -93,7 +93,7 @@ class mainWidget(QWidget):
 def gui():
 
     app = QApplication(sys.argv)
-    window = mainWidget()
+    window = browserWidget()
     window.show()
     window.setWindowTitle("pyNexafs File Browser")
     app.exec()

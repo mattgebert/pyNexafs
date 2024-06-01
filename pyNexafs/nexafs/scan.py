@@ -530,7 +530,7 @@ class scan_base(scan_abstract):
                 try:
                     index = self.parser.search_label_index(label)
                     y_indices.append(index)
-                except AttributeError as e:
+                except (AttributeError, ValueError) as e:
                     warnings.warn(
                         f"Label {label} not found in parser object {self.parser}."
                     )

@@ -155,8 +155,8 @@ class nexafsFileLoader(QWidget):
         if parser is not None:
             old_relabel = parser.relabel
             new_relabel = self.filter_relabelling.isChecked()
-            parser.relabel = new_relabel
             if old_relabel != new_relabel:
+                parser.relabel = new_relabel
                 self.directory_viewer.update_header()
                 self.relabelling.emit(parser.relabel)
 
@@ -1004,10 +1004,10 @@ class directory_viewer_table(QTableView):
             )
             self.proxy_model.setSourceModel(new_model)
             self.files_model = new_model
-            # Setup and restore selection.
-            self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+            # Setup and restore selection: requires multiselection to select each row before using regular extended selection.
             self.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
             [self.selectRow(i.row()) for i in old_selection]
+            self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
 
         # Update column widths with header update.
         for i in range(0, len(self._header_names)):
@@ -1042,7 +1042,7 @@ class directory_viewer_table(QTableView):
         if self.progress_bar is not None:
             self.progress_bar.setValue(0)
             # Store number of files to be processed for progress bar
-            self.progress_bar.setRange(0, len(files))
+            self.progress_bar.setRange(0, len(files) if len(files) > 0 else 1)
         # 2: Load new fileheader data.
         if self.parser is not None:
             # Get header data
