@@ -38,6 +38,53 @@ class NaN_OPTION(Enum):
     INTERPOLATE_N = 4
 
 
+# class horLine(QtWidgets.QFrame):
+#     def __init__(self, parent=None):
+#         super().__init__(parent)
+#         self.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+#         self.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+#         self.setLineWidth(1)
+#         self.setMinimumHeight(1)
+#         self.setMinimumWidth(1)
+#         self.setSizePolicy(
+#             QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum
+#         )
+
+#     def event(self, event: QtCore.QEvent) -> bool:
+#         """
+#         Event handler for the widget.
+
+#         Adds palette change control for light/dark mode to QWidget event handler.
+
+#         Parameters
+#         ----------
+#         event : QtCore.QEvent
+#             The event to handle.
+
+#         Returns
+#         -------
+#         bool
+#             Whether the event was handled.
+#         """
+#         if (
+#             event.type() == QtCore.QEvent.Type.PaletteChange
+#             or event.type() == QtCore.QEvent.Type.ApplicationPaletteChange
+#         ):
+#             self.on_recolour()
+#         return super().event(event)
+
+#     def on_recolour(self):
+#         """
+#         Recolour the division lines based on the theme.
+#         """
+#         # Get theme
+#         toolbar_palette = self.palette()
+#         light_theme_bool = toolbar_palette.window().color().lightnessF() > 0.5
+#         self.setStyleSheet(
+#             "background-color: " + ("black;" if light_theme_bool else "white;")
+#         )
+
+
 class nexafsParserConverter(QtWidgets.QWidget):
     def __init__(self, parsers: list[Type[parser_base]] = [], parent=None):
         super().__init__(parent)
@@ -45,7 +92,6 @@ class nexafsParserConverter(QtWidgets.QWidget):
         self._conversions = []
         self._layout = QtWidgets.QVBoxLayout()
         self.setLayout(self._layout)
-        self._draggable = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         if parent is not None:
             self.setContentsMargins(0, 0, 0, 0)
             self._layout.setContentsMargins(0, 0, 0, 0)
@@ -57,17 +103,6 @@ class nexafsParserConverter(QtWidgets.QWidget):
         # Folder selector
         dir_sel = save_directory_selector()
 
-        # Line for vertical separation.
-        line = QtWidgets.QFrame()
-        line.setFrameShape(QtWidgets.QFrame.Shape.VLine)
-        line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
-        line.setLineWidth(1)
-        line.setMinimumWidth(1)
-        line.setMinimumHeight(1)
-        line.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum
-        )
-        self._line = line
         # File statistics
         file_widget = QtWidgets.QWidget()
         file_layout = QtWidgets.QGridLayout()
@@ -113,12 +148,13 @@ class nexafsParserConverter(QtWidgets.QWidget):
         # Method of dealing with Nan Values.
 
         # Add to layout
-        self._draggable.addWidget(file_widget)
-        self._draggable.addWidget(nan_widget)
         self._layout.addWidget(title_label)
         self._layout.addLayout(dir_sel)
-        self._layout.addWidget(line)
-        self._layout.addWidget(self._draggable)
+        # self._layout.addWidget(horLine())
+        self._layout.addWidget(file_widget)
+        # self._layout.addWidget(horLine())
+        self._layout.addWidget(nan_widget)
+        self._layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
 
         # Initialise UI
         self.on_recolour()
@@ -208,7 +244,7 @@ class nexafsParserConverter(QtWidgets.QWidget):
         # Get theme
         toolbar_palette = self.palette()
         light_theme_bool = toolbar_palette.window().color().lightnessF() > 0.5
-        self._line.setStyleSheet(
+        self.setStyleSheet(
             "background-color: " + ("black;" if light_theme_bool else "white;")
         )
 

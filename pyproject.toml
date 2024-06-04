@@ -17,6 +17,7 @@ dependencies = [
     "numpy",
     "pandas",
     "overrides",
+    "xdrlib3" # for reading binary mda files
 ]
 description = "A package for processing and analyzing NEXAFS data."
 license = {file = "LICENSE"}
