@@ -2,7 +2,9 @@ import os, io
 from xdrlib3 import Unpacker, Packer
 import pandas as pd
 from enum import Enum
-from typing import Any
+from typing import Any, Self
+import numpy as np
+import numpy.typing as npt
 
 
 class DBR(Enum):
@@ -48,16 +50,295 @@ class DBR(Enum):
     CTRL_DOUBLE = 34
 
 
+class MDAHeader:
+    """
+    Container for header data in an MDA file.
+    """
+
+    def __init__(
+        self,
+        version: float,
+        scan_number: int,
+        rank: int,
+        dimensions: list[int],
+        isRegular: int,
+        pExtra: int,
+    ):
+        self.version = version
+        self.scan_number = scan_number
+        self.rank = rank
+        self.dimensions = dimensions
+        self.isRegular = isRegular
+        self.pExtra = pExtra
+
+    @property
+    def values(self) -> tuple[float, int, int, list[int], int, int]:
+        """
+        Returns the header information of the MDA file as a tuple.
+
+        Returns
+        -------
+        tuple[float, int, int, list[int], int, int]
+            A tuple of the header information containing:
+                version : float
+                    The version of the MDA file.
+                scan_number : int
+                    The scan number of the MDA file.
+                rank : int
+                    The rank (number of dimensions) of the MDA file.
+                dimensions,
+                    The dimensions (size of each dimension) of the MDA file.
+                isRegular,
+                    The regularity of the MDA file.
+                pExtra,
+                    The byte location of the extra parameters in the MDA file.
+        """
+        return (
+            self.version,
+            self.scan_number,
+            self.rank,
+            self.dimensions,
+            self.isRegular,
+            self.pExtra,
+        )
+
+
+class MDAPositioner:
+    """
+    Container for positioner header data in an MDA file.
+    """
+
+    def __init__(
+        self,
+        number: int,
+        fieldName: str,
+        name: str,
+        desc: str,
+        step_mode: str,
+        unit: str,
+        readback_name: str,
+        readback_desc: str,
+        readback_unit: str,
+        data: npt.NDArray | int | None,
+    ):
+        self.number = number
+        self.fieldName = fieldName
+        self.name = name
+        self.desc = desc
+        self.step_mode = step_mode
+        self.unit = unit
+        self.readback_name = readback_name
+        self.readback_desc = readback_desc
+        self.readback_unit = readback_unit
+        self.data = data
+
+    @property
+    def values(self) -> tuple[int, str, str, str, str, str, str, str, str]:
+        """
+        Returns the positioner information of the MDA file as a tuple.
+
+        Returns
+        -------
+        tuple[int, str, str, str, str, str, str, str, str]
+            A tuple of the positioner information containing:
+                number : int
+                    The number of the positioner.
+                fieldName : str
+                    The field name of the positioner, usually number + 1.
+                name : str
+                    The name of the positioner.
+                desc : str
+                    The description of the positioner.
+                step_mode : str
+                    The step mode of the positioner.
+                unit : str
+                    The unit of the positioner.
+                readback_name : str
+                    A humanised name of the positioner.
+                readback_desc : str
+                    A humanised description of the positioner.
+                readback_unit : str
+                    A humanised unit of the positioner.
+        """
+        return (
+            self.number,
+            self.fieldName,
+            self.name,
+            self.desc,
+            self.step_mode,
+            self.unit,
+            self.readback_name,
+            self.readback_desc,
+            self.readback_unit,
+        )
+
+
+class MDADetector:
+    """
+    Container for detector header data in an MDA file.
+    """
+
+    def __init__(
+        self,
+        number: int,
+        fieldName: str,
+        name: str,
+        desc: str,
+        unit: str,
+        data: npt.NDArray | int | None,
+    ):
+        self.number = number
+        self.fieldName = fieldName
+        self.name = name
+        self.desc = desc
+        self.unit = unit
+        self.data = data
+
+    @property
+    def values(self) -> tuple[int, str, str, str, str]:
+        """
+        Returns the detector information of the MDA file as a tuple.
+
+        Returns
+        -------
+        tuple[int, str, str, str, str]
+            A tuple of the detector information containing:
+                number : int
+                    The number of the detector.
+                fieldName : str
+                    The field name of the detector, usually number + 1.
+                name : str
+                    The name of the detector.
+                desc : str
+                    The description of the detector.
+                unit : str
+                    The unit of the detector.
+        """
+        return self.number, self.fieldName, self.name, self.desc, self.unit
+
+
+class MDATrigger:
+    """
+    Container for trigger header data in an MDA file.
+    """
+
+    def __init__(self, number: int, name: str, command: float):
+        self.number = number
+        self.name = name
+        self.command = command
+
+    @property
+    def values(self) -> tuple[int, str, float]:
+        return self.number, self.name, self.command
+
+
+class MDAScanHeader:
+    """
+    Container for scan header data in an MDA file.
+    """
+
+    def __init__(
+        self,
+        rank: int,
+        points: int,
+        curr_point: int,
+        lower_scan_positions: list[int] | None,
+        name: str | None,
+        time: str | None,
+        num_positioners: int,
+        num_detectors: int,
+        num_triggers: int,
+        positioners: list[MDAPositioner],
+        detectors: list[MDADetector],
+        triggers: list[MDATrigger],
+    ):
+        self.rank = rank
+        self.points = points
+        self.curr_point = curr_point
+        self.lower_scan_positions = lower_scan_positions
+        self.name = name
+        self.time = time
+        self.num_positioners = num_positioners
+        self.num_detectors = num_detectors
+        self.num_triggers = num_triggers
+        self.positioners = positioners
+        self.detectors = detectors
+        self.triggers = triggers
+
+
+class MDAScan:
+    """
+    A class to store a scan header and data from an MDA file.
+
+    Attributes
+    ----------
+    rank : int
+        The rank (number of dimensions) of the scan data.
+    points : int
+        The number of points in the scan data.
+    curr_point : int
+        The current point in the scan data. If the scan is incomplete, this will be less than points.
+    lower_scans : list[Self] | None
+        A list of lower rank scans. If the scan is a 1D scan, this will be None.
+    name : str
+        The name of the scan.
+    time : str
+        The time of the scan.
+    positioners : list[MDAPositioner]
+        A list of positioners in the scan.
+    detectors : list[MDADetector]
+        A list of detectors in the scan.
+    triggers : list[MDATrigger]
+        A list of triggers in the scan.
+    position_data : npt.NDArray | None
+        The position data of the scan. None if the scan is header only.
+    detector_data : npt.NDArray | None
+        The detector data of the scan. None if the scan is header only.
+    """
+
+    def __init__(
+        self,
+        rank: int,
+        points: int,
+        curr_point: int,
+        lower_scans: list[Self] | None,
+        name: str,
+        time: str,
+        positioners: list[MDAPositioner],
+        detectors: list[MDADetector],
+        triggers: list[MDATrigger],
+        position_data: npt.NDArray | None,
+        detector_data: npt.NDArray | None,
+    ):
+        self.rank = rank
+        self.points = points
+        self.curr_point = curr_point
+        self.lower_scans = lower_scans
+        self.name = name
+        self.time = time
+        self.positioners = positioners
+        self.detectors = detectors
+        self.triggers = triggers
+        self.position_data = position_data
+        self.detector_data = detector_data
+
+
 class MDAFileReader:
     def __init__(self, path: str):
         if not os.path.exists(path):
             raise FileNotFoundError(f"File {path} does not exist.")
         self.path = path
+        # Stored buffer to open and close on public functions.
         self._buffered_reader = None
 
-        self.pos_header = 0
-        self.pos_pExtra = None
-        self.pos_main_scan = None
+        # Stored for reading various parts of the MDA file fast.
+        self.pointer_header = 0
+        self.pointer_pExtra = None
+        self.pointer_main_scan = None
+
+        # Store rank and dimension information.
+        self.rank = None
+        self.dimensions = None
 
     @property
     def buffered_reader(self) -> io.BufferedReader:
@@ -114,19 +395,18 @@ class MDAFileReader:
         data = br.read(byte_default)
         # Unpack the header
         u = Unpacker(data)
-        header = MDAFileReader._unpack_header(u)
+        header = MDAFileReader._read_header(u)
         # Record the position of the scan in the file.
-        self.pos_main_scan = br.tell() - (byte_default - u.get_position())
+        self.pointer_main_scan = br.tell() - (byte_default - u.get_position())
         del br
         # Record the position of the pExtra in the file.
-        self.pos_pExtra = header[-1]
+        self.pointer_pExtra = header.pExtra
+        self.dimensions = header.dimensions
         # Add the main scan position to the header
-        return (*header, self.pos_main_scan)
+        return (*header.values, self.pointer_main_scan)
 
     @staticmethod
-    def _unpack_header(
-        u: Unpacker, min_rank: int = 1
-    ) -> tuple[float, int, int, list[int], int, int]:
+    def _read_header(u: Unpacker, min_rank: int = 1) -> MDAHeader:
         """
         Unpacking script for header information of the MDA file.
 
@@ -135,26 +415,15 @@ class MDAFileReader:
         u : Unpacker
             Unpacking object of the initial bytes of the MDA file.
         min_rank : int, optional
-            The minimum buffer size of the MDA file. Default is 1.
+            Used to calculate the minimum buffer size required to read the MDA header. Default is 1.
+            Raises a ValueError if the buffer is too short to read the header.
 
         Returns
         -------
-        tuple[float, int, int, list[int], int, int]
-            A tuple of the header information containing:
-                version : float
-                    The version of the MDA file.
-                scan_number : int
-                    The scan number of the MDA file.
-                rank : int
-                    The rank (number of dimensions) of the MDA file.
-                dimensions,
-                    The dimensions (size of each dimension) of the MDA file.
-                isRegular,
-                    The regularity of the MDA file.
-                pExtra,
-                    The byte location of the extra parameters in the MDA file.
+        MDAHeader
+            A MDAHeader object containing the header information of the MDA file.
         """
-        # Check if the unpacker is sufficiently long enough to contain the header information.
+        # Check if the unpacker is sufficiently long enough to contain all the header information.
         if len(u.get_buffer()) < 4 * 5 + 4 * min_rank:
             raise ValueError(
                 "Unpacker obj insufficiently long to decode all header information."
@@ -166,7 +435,14 @@ class MDAFileReader:
         dimensions = u.unpack_farray(rank, u.unpack_int)  # 4 bytes * rank
         isRegular = u.unpack_int()  # 4 bytes
         pExtra = u.unpack_int()  # 4 bytes
-        return version, scan_number, rank, dimensions, isRegular, pExtra
+        return MDAHeader(
+            version=version,
+            scan_number=scan_number,
+            rank=rank,
+            dimensions=dimensions,
+            isRegular=isRegular,
+            pExtra=pExtra,
+        )
 
     @staticmethod
     def header_to_dataFrame(
@@ -209,13 +485,13 @@ class MDAFileReader:
                 value : str
                     The value of the parameter.
         """
-        if self.pos_pExtra is None:
+        if self.pointer_pExtra is None:
             self.read_header()
-            if self.pos_pExtra is None:
+            if self.pointer_pExtra is None:
                 # Check if the pExtra position was found in the MDA file.
                 raise ValueError("pExtra position not found in MDA file.")
         br = self.buffered_reader
-        br.seek(self.pos_pExtra)
+        br.seek(self.pointer_pExtra)
         buff = br.read()
         u = Unpacker(buff)
         params = MDAFileReader._read_pExtra(u)
@@ -225,9 +501,7 @@ class MDAFileReader:
     @staticmethod
     def _read_pExtra(
         u: Unpacker,
-    ) -> dict[
-        str | None, tuple[str | None, str | None, Any] | tuple[str | None, str | None]
-    ]:
+    ) -> dict[str | None, tuple[str | None, str | None, Any]]:
         """
         Reads the parameter information from a pExtra buffer of the MDA file.
 
@@ -238,7 +512,7 @@ class MDAFileReader:
 
         Returns
         -------
-        dict[str | None, tuple[str | None, str | None , Any] | tuple[str | None, str | None]]
+        dict[str | None, tuple[str | None, str | None , Any]]
             A dictionary of pExtra data, ordered by name : tuple.
             The tuple contains 3 items, with the following data:
                 description : str | None
@@ -258,47 +532,22 @@ class MDAFileReader:
         params = {}
         for i in range(numExtra):
             ## Read the name of the parameter
-            len_name = u.unpack_int()
-            if len_name:
-                # Repeated length check
-                assert len_name == u.unpack_int()
-                name = u.unpack_fstring(len_name).decode("utf-8")
-            else:
-                name = None
+            name = MDAFileReader._read_string(u)
             ## Read the description of the parameter:
-            len_desc = u.unpack_int()
-            if len_desc:
-                # Repeated length check
-                assert len_desc == u.unpack_int()
-                desc = u.unpack_fstring(len_desc).decode("utf-8")
-
-            else:
-                desc = None
-
+            desc = MDAFileReader._read_string(u)
             ## Does the parameter have a unit?
             count = None
             param_type = u.unpack_int()
             if param_type != 0:  # Then is not simple string value, and has unit.
                 count = u.unpack_int()  # Number of values in the parameter
-                len_unit = u.unpack_int()  # Length of the unit string
-                if len_unit:
-                    assert len_unit == u.unpack_int()
-                    unit = u.unpack_fstring(len_unit).decode("utf-8")
-                else:
-                    unit = None
+                unit = MDAFileReader._read_string(u)
             else:
                 unit = None
-
             ## Read the value of the parameter:
             param_type = DBR(param_type)
             match param_type:
                 case DBR.STRING:
-                    val_len = u.unpack_int()
-                    if val_len:
-                        assert val_len == u.unpack_int()
-                        val = u.unpack_fstring(val_len).decode("utf-8")
-                    else:
-                        val = None
+                    val = MDAFileReader._read_string(u)
                 case DBR.CTRL_CHAR:
                     arr = u.unpack_farray(count, u.unpack_int)
                     val = ""
@@ -307,7 +556,6 @@ class MDAFileReader:
                         if arr[i] == 0:
                             break
                         val += chr(arr[i])
-
                 case DBR.CTRL_SHORT:
                     val = u.unpack_farray(count, u.unpack_int)
                 case DBR.CTRL_LONG:
@@ -326,3 +574,231 @@ class MDAFileReader:
             params[name] = (desc, unit, val)
             print(name, param_type, params[name])
         return params
+
+    def read_scans(
+        self, header_only: bool = False
+    ) -> tuple[npt.NDArray | None, MDAScan]:
+        """
+        Reads the scan data from the MDA file.
+
+        Arguments
+        ---------
+        header_only : bool, optional
+            If True, only the header of the main scan data is read. Default is False.
+
+        Returns
+        -------
+        npt.NDArray | None
+            An array of the scan data if header_only is False. None if header_only is True.
+        MDAScan
+            The scan object of the main scan data. Provides information of the data columns
+            via the positioners and detectors, and triggers attributes.
+        """
+
+        if self.pointer_main_scan is None:
+            self.read_header()
+            if self.pointer_main_scan is None:
+                raise ValueError("Main scan position not found in MDA file.")
+        br = self.buffered_reader
+        br.seek(self.pointer_main_scan)
+        # Initialise default data value:
+        data = None
+        # Read the main scan data
+        if header_only:
+            scan = MDAFileReader._read_scan(br, header_only)
+        else:
+            data, scan = MDAFileReader._read_ND_scans(br, self.dimensions)
+        # Close file after reading
+        del self.buffered_reader
+        return data, scan
+
+    @staticmethod
+    def _read_ND_scans(
+        br: io.BufferedReader, dimensions: list[int]
+    ) -> tuple[npt.NDArray, MDAScan]:
+        # Collect first main scan
+        scan = MDAFileReader._read_scan(br)
+        # Setup array to store scan ND data
+        plen = len(scan.positioners)
+        dlen = len(scan.detectors)
+        tlen = len(scan.triggers)
+        datastreams = plen + dlen + tlen
+        shape = (*dimensions, datastreams)
+        data = np.zeros(shape)
+        # Store data if rank is 1
+        if scan.rank == 1:
+            data[:, 0:plen] = scan.position_data
+            data[:, plen : plen + dlen] = scan.detector_data
+        else:
+            # TODO: Test for rank > 1. This is untested.
+            # Call recursive function to collect subindex data
+            for i, pointer in enumerate(scan.lower_scans):
+                br.seek(pointer)
+                sub_data, sub_scan = MDAFileReader._read_ND_scans(br, shape[1:])
+                # Store subindex data
+                data[:, i] = sub_data
+        return data, scan
+
+    @staticmethod
+    def _read_scan(br: io.BufferedReader, header_only: bool = False) -> MDAScan:
+        # Scan header
+        buff = br.read(10000)  # default used by Aus Sync Sakura.
+        u = Unpacker(buff)
+        scan_header = MDAFileReader._read_scan_header(u)
+
+        if header_only:
+            return MDAScan(
+                rank=scan_header.rank,
+                points=scan_header.points,
+                curr_point=scan_header.curr_point,
+                lower_scans=scan_header.lower_scan_positions,
+                name=scan_header.name,
+                time=scan_header.time,
+                positioners=scan_header.positioners,
+                detectors=scan_header.detectors,
+                triggers=scan_header.triggers,
+                position_data=None,
+                detector_data=None,
+            )
+
+        ### Data
+        ## Positioners
+        # Get the new data position to read from the buffer
+        extra_unpacker_bytes = len(buff) - u.get_position()
+        data_pointer = br.tell() - extra_unpacker_bytes
+        br.seek(data_pointer)
+        buff = br.read(scan_header.num_positioners * scan_header.points * 8)
+        u = Unpacker(buff)
+        # Read positioner data
+        position_data = np.zeros((scan_header.points, scan_header.num_positioners))
+        for i in range(scan_header.num_positioners):
+            position_data[:, i] = u.unpack_farray(scan_header.points, u.unpack_double)
+        # Get the new detector data position to read from the buffer
+        extra_unpacker_bytes = len(buff) - u.get_position()
+        detector_data_pointer = br.tell() - extra_unpacker_bytes
+        br.seek(detector_data_pointer)
+        buff = br.read(scan_header.num_detectors * scan_header.points * 4)
+        u = Unpacker(buff)
+        # Read detector data
+        detector_data = np.zeros((scan_header.points, scan_header.num_detectors))
+        for i in range(scan_header.num_detectors):
+            detector_data[:, i] = u.unpack_farray(scan_header.points, u.unpack_float)
+
+        # Set data to NaNs if correct data if current point is less than points
+        if scan_header.curr_point < scan_header.points:
+            position_data[scan_header.curr_point + 1 :, :] = np.nan
+            detector_data[scan_header.curr_point + 1 :, :] = np.nan
+
+        return MDAScan(
+            rank=scan_header.rank,
+            points=scan_header.points,
+            curr_point=scan_header.curr_point,
+            lower_scans=scan_header.lower_scan_positions,
+            name=scan_header.name,
+            time=scan_header.time,
+            positioners=scan_header.positioners,
+            detectors=scan_header.detectors,
+            triggers=scan_header.triggers,
+            position_data=position_data,
+            detector_data=detector_data,
+        )
+
+    @staticmethod
+    def _read_scan_header(u: Unpacker) -> MDAScanHeader:
+        rank = u.unpack_int()
+        points = u.unpack_int()
+        curr_point = u.unpack_int()
+        if rank > 1:
+            lower_scan_positions = u.unpack_farray(points, u.unpack_int)
+        else:
+            lower_scan_positions = None
+        namelen = u.unpack_int()
+        if namelen:
+            assert namelen == u.unpack_int()
+            name = u.unpack_fstring(namelen).decode("utf-8")
+        else:
+            name = None
+        timelen = u.unpack_int()
+        if timelen:
+            assert timelen == u.unpack_int()
+            time = u.unpack_fstring(timelen).decode("utf-8")
+        else:
+            time = None
+        num_positioners = u.unpack_int()
+        num_detectors = u.unpack_int()
+        num_triggers = u.unpack_int()
+        positioners = [
+            MDAFileReader._read_positioner(u) for i in range(num_positioners)
+        ]
+        detectors = [MDAFileReader._read_detector(u) for i in range(num_detectors)]
+        triggers = [MDAFileReader._read_trigger(u) for i in range(num_triggers)]
+        return MDAScanHeader(
+            rank=rank,
+            points=points,
+            curr_point=curr_point,
+            lower_scan_positions=lower_scan_positions,
+            name=name,
+            time=time,
+            num_positioners=num_positioners,
+            num_detectors=num_detectors,
+            num_triggers=num_triggers,
+            positioners=positioners,
+            detectors=detectors,
+            triggers=triggers,
+        )
+
+    @staticmethod
+    def _read_positioner(u: Unpacker) -> MDAPositioner:
+        number = u.unpack_int()
+        fieldName = str(number + 1)  # TODO: Check this is correct..
+        name = MDAFileReader._read_string(u)
+        desc = MDAFileReader._read_string(u)
+        step_mode = MDAFileReader._read_string(u)
+        unit = MDAFileReader._read_string(u)
+        readback_name = MDAFileReader._read_string(u)
+        readback_desc = MDAFileReader._read_string(u)
+        readback_unit = MDAFileReader._read_string(u)
+        return MDAPositioner(
+            number=number,
+            fieldName=fieldName,
+            name=name,
+            desc=desc,
+            step_mode=step_mode,
+            unit=unit,
+            readback_name=readback_name,
+            readback_desc=readback_desc,
+            readback_unit=readback_unit,
+            data=None,
+        )
+
+    @staticmethod
+    def _read_detector(u: Unpacker) -> MDADetector:
+        number = u.unpack_int()
+        fieldName = str(number + 1)
+        name = MDAFileReader._read_string(u)
+        desc = MDAFileReader._read_string(u)
+        unit = MDAFileReader._read_string(u)
+        return MDADetector(
+            number=number,
+            fieldName=fieldName,
+            name=name,
+            desc=desc,
+            unit=unit,
+            data=None,
+        )
+
+    @staticmethod
+    def _read_trigger(u: Unpacker) -> MDATrigger:
+        number = u.unpack_int()
+        name = MDAFileReader._read_string(u)
+        command = u.unpack_float()
+        return MDATrigger(number=number, name=name, command=command)
+
+    @staticmethod
+    def _read_string(u: Unpacker) -> str:
+        strlen = u.unpack_int()
+        if strlen:
+            assert strlen == u.unpack_int()
+            return u.unpack_fstring(strlen).decode("utf-8")
+        else:
+            return None
