@@ -1,6 +1,51 @@
 import os, io
 from xdrlib3 import Unpacker, Packer
 import pandas as pd
+from enum import Enum
+from typing import Any
+
+
+class DBR(Enum):
+    """Enumerate for the type of the parameter in the MDA file.
+
+    Seems to be based off EPICS data storage.
+    https://epics.anl.gov/docs/CAproto.html"""
+
+    STRING = 0
+    SHORT = 1
+    INT = 2
+    FLOAT = 3
+    ENUM = 4
+    LONG = 5
+    DOUBLE = 6
+    STS_STRING = 7
+    STS_SHORT = 8
+    STS_FLOAT = 9
+    STS_ENUM = 10
+    STS_CHAR = 11
+    STS_LONG = 12
+    STS_DOUBLE = 13
+    TIME_STRING = 14
+    TIME_SHORT = 15
+    TIME_FLOAT = 16
+    TIME_ENUM = 17
+    TIME_CHAR = 18
+    TIME_DOUBLE = 19
+    GR_STRING = 20
+    GR_SHORT = 21
+    GR_INT = 22
+    GR_FLOAT = 23
+    GR_ENUM = 24
+    GR_CHAR = 25
+    GR_LONG = 26
+    GR_DOUBLE = 27
+    CTRL_STRING = 28
+    CTRL_SHORT = 29  # INT16
+    CTRL_FLOAT = 30
+    CTRL_ENUM = 31
+    CTRL_CHAR = 32  # UINT8
+    CTRL_LONG = 33  # INT32
+    CTRL_DOUBLE = 34
 
 
 class MDAFileReader:
@@ -177,28 +222,107 @@ class MDAFileReader:
         del self.buffered_reader
         return params
 
-    # @staticmethod
-    # def decode_string(u: Unpacker) -> str:
-    #     length = u.unpack_int()
-    #     if length:
-    #         #TODO: Unpacker doesn't use length parameter (already depacks internally)
-    #         return u.unpack_string(length)
-    #     else:
-    #         return ""
-
     @staticmethod
-    def _read_pExtra(u: Unpacker) -> dict[str, tuple[str, str, str]]:
+    def _read_pExtra(
+        u: Unpacker,
+    ) -> dict[
+        str | None, tuple[str | None, str | None, Any] | tuple[str | None, str | None]
+    ]:
+        """
+        Reads the parameter information from a pExtra buffer of the MDA file.
+
+        Parameters
+        ----------
+        u : Unpacker
+            Unpacker object of the pExtra section of the MDA file.
+
+        Returns
+        -------
+        dict[str | None, tuple[str | None, str | None , Any] | tuple[str | None, str | None]]
+            A dictionary of pExtra data, ordered by name : tuple.
+            The tuple contains 3 items, with the following data:
+                description : str | None
+                    The description of the parameter.
+                unit : str | None
+                    The unit of the parameter.
+                value : Any
+                    The value of the parameter.
+
+        Raises
+        ------
+        ImportError
+            _description_
+        """
         # Read the number of extra parameters
         numExtra = u.unpack_int()
-        print(numExtra)
         params = {}
         for i in range(numExtra):
-            name = u.unpack_string()
-            desc = u.unpack_string()
-            dtype = u.unpack_int()
+            ## Read the name of the parameter
+            len_name = u.unpack_int()
+            if len_name:
+                # Repeated length check
+                assert len_name == u.unpack_int()
+                name = u.unpack_fstring(len_name).decode("utf-8")
+            else:
+                name = None
+            ## Read the description of the parameter:
+            len_desc = u.unpack_int()
+            if len_desc:
+                # Repeated length check
+                assert len_desc == u.unpack_int()
+                desc = u.unpack_fstring(len_desc).decode("utf-8")
 
-            print(name, desc, dtype)
-            break
-            # name, desc, unit, val = MDAFileReader.(u)
-            # params[name] = (desc, unit, val)
-        return None
+            else:
+                desc = None
+
+            ## Does the parameter have a unit?
+            count = None
+            param_type = u.unpack_int()
+            if param_type != 0:  # Then is not simple string value, and has unit.
+                count = u.unpack_int()  # Number of values in the parameter
+                len_unit = u.unpack_int()  # Length of the unit string
+                if len_unit:
+                    assert len_unit == u.unpack_int()
+                    unit = u.unpack_fstring(len_unit).decode("utf-8")
+                else:
+                    unit = None
+            else:
+                unit = None
+
+            ## Read the value of the parameter:
+            param_type = DBR(param_type)
+            match param_type:
+                case DBR.STRING:
+                    val_len = u.unpack_int()
+                    if val_len:
+                        assert val_len == u.unpack_int()
+                        val = u.unpack_fstring(val_len).decode("utf-8")
+                    else:
+                        val = None
+                case DBR.CTRL_CHAR:
+                    arr = u.unpack_farray(count, u.unpack_int)
+                    val = ""
+                    # Need to treat byte array as null-terminated string
+                    for i in range(count):
+                        if arr[i] == 0:
+                            break
+                        val += chr(arr[i])
+
+                case DBR.CTRL_SHORT:
+                    val = u.unpack_farray(count, u.unpack_int)
+                case DBR.CTRL_LONG:
+                    val = u.unpack_farray(count, u.unpack_int)
+                case DBR.CTRL_FLOAT:
+                    val = u.unpack_farray(count, u.unpack_float)
+                case DBR.CTRL_DOUBLE:
+                    val = u.unpack_farray(count, u.unpack_double)
+                case _:
+                    raise ImportError(
+                        f"Unspecified unpacking for DBR type: {param_type}"
+                    )
+            if count is not None:
+                if len(val) == 1:
+                    val = val[0]
+            params[name] = (desc, unit, val)
+            print(name, param_type, params[name])
+        return params
