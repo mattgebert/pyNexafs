@@ -319,8 +319,40 @@ class MDAScan:
         self.positioners = positioners
         self.detectors = detectors
         self.triggers = triggers
-        self.position_data = position_data
+        self.positioner_data = position_data
         self.detector_data = detector_data
+
+    def units(self, readback: bool = False) -> list[str]:
+        """
+        Returns the units of the positioners and detectors in the scan.
+
+        Returns
+        -------
+        list[str]
+            A list of the units of the positioners and detectors in the scan.
+        """
+        if not readback:
+            return [p.unit for p in self.positioners] + [d.unit for d in self.detectors]
+        else:
+            return [p.readback_unit for p in self.positioners] + [
+                d.unit for d in self.detectors
+            ]
+
+    def labels(self, readback: bool = False) -> list[str]:
+        """
+        Returns the labels of the positioners and detectors in the scan.
+
+        Returns
+        -------
+        list[str]
+            A list of the labels of the positioners and detectors in the scan.
+        """
+        if not readback:
+            return [p.name for p in self.positioners] + [d.name for d in self.detectors]
+        else:
+            return [p.readback_name for p in self.positioners] + [
+                d.name for d in self.detectors
+            ]
 
 
 class MDAFileReader:
@@ -405,6 +437,26 @@ class MDAFileReader:
         # Add the main scan position to the header
         return (*header.values, self.pointer_main_scan)
 
+    def read_header_as_dict(self) -> dict[str, Any]:
+        """
+        Finds the header information of the MDA file and returns it as a dictionary.
+
+        Returns
+        -------
+        dict[str, Any]
+            The name and values of the header information of the MDA file.
+        """
+        header = self.read_header()
+        return {
+            "mda_version": header[0],
+            "mda_scan_number": header[1],
+            "mda_rank": header[2],
+            "mda_dimensions": header[3],
+            "mda_isRegular": header[4],
+            "mda_pExtra": header[5],
+            "mda_pmain_scan": header[6],
+        }
+
     @staticmethod
     def _read_header(u: Unpacker, min_rank: int = 1) -> MDAHeader:
         """
@@ -432,6 +484,7 @@ class MDAFileReader:
         version = u.unpack_float()  # 4 bytes
         scan_number = u.unpack_int()  # 4 bytes
         rank = u.unpack_int()  # 4 bytes
+        print(version, scan_number, rank)
         dimensions = u.unpack_farray(rank, u.unpack_int)  # 4 bytes * rank
         isRegular = u.unpack_int()  # 4 bytes
         pExtra = u.unpack_int()  # 4 bytes
@@ -572,27 +625,30 @@ class MDAFileReader:
                 if len(val) == 1:
                     val = val[0]
             params[name] = (desc, unit, val)
-            print(name, param_type, params[name])
         return params
 
     def read_scans(
         self, header_only: bool = False
-    ) -> tuple[npt.NDArray | None, MDAScan]:
+    ) -> tuple[list[npt.NDArray] | None, list[MDAScan]]:
         """
         Reads the scan data from the MDA file.
 
-        Arguments
-        ---------
+        Parameters
+        ----------
         header_only : bool, optional
             If True, only the header of the main scan data is read. Default is False.
 
         Returns
         -------
-        npt.NDArray | None
-            An array of the scan data if header_only is False. None if header_only is True.
-        MDAScan
-            The scan object of the main scan data. Provides information of the data columns
-            via the positioners and detectors, and triggers attributes.
+        list[npt.NDArray] | None
+            A list of arrays of the scan data if header_only is False.
+            Each array corresponds to data collected at each rank of the scan.
+            None if header_only is True.
+        list[MDAScan]
+            A list of the 0th data-point scan objects on each dimension.
+            list[MDAScan][0] will be the main scan.
+            Provides information of the data columns via the positioners and
+            detectors, and triggers attributes, which are different for each rank.
         """
 
         if self.pointer_main_scan is None:
@@ -605,39 +661,110 @@ class MDAFileReader:
         data = None
         # Read the main scan data
         if header_only:
-            scan = MDAFileReader._read_scan(br, header_only)
+            scans = [MDAFileReader._read_scan(br, header_only)]
+            s = scans[0]
+            while s.rank > 1:
+                br.seek(s.lower_scans[0])
+                s = MDAFileReader._read_scan(br, header_only)
+                scans.append(s)
         else:
-            data, scan = MDAFileReader._read_ND_scans(br, self.dimensions)
+            data, scans = MDAFileReader._read_ND_scans(br, self.dimensions)
         # Close file after reading
         del self.buffered_reader
-        return data, scan
+        return data, scans
 
     @staticmethod
     def _read_ND_scans(
-        br: io.BufferedReader, dimensions: list[int]
-    ) -> tuple[npt.NDArray, MDAScan]:
-        # Collect first main scan
+        br: io.BufferedReader,
+        dimensions: list[int],
+        accum_data: list[npt.NDArray] | None = None,
+    ) -> tuple[list[npt.NDArray], list[MDAScan]]:
+        """
+        Collects the scan data across various dimensions.
+
+        As the MDA file format is a nested structure, this function is recursive
+        to collect each level of scan data.
+
+        Parameters
+        ----------
+        br : io.BufferedReader
+            Buffered reader of the MDA file.
+        dimensions : list[int]
+            The dimensions of each rank of the scan data.
+            Read from the head of the MDA file.
+        accum_data : list[npt.NDArray] | None, optional
+            Data array to enter values into, from parent recursive calls.
+            Default is None.
+
+        Returns
+        -------
+        tuple[list[npt.NDArray], list[MDAScan]]
+            A tuple containing:
+                list[npt.NDArray]
+                    An array of the scan data.
+                list[MDAScan]
+                    A list of the 0th data-point scan objects on each dimension.
+                    These scans will contain the information of the corresponding
+                    data columns.
+        """
         scan = MDAFileReader._read_scan(br)
-        # Setup array to store scan ND data
+        if accum_data is None:
+            # Initialise scan data collection across all dimensions by
+            # collecting the first scan in each dimension and storing it with dimensions.
+            arrays = []
+            scans = []
+            diving_scan = scan
+            # Use for loop to iterate over ranks.
+            for i in range(diving_scan.rank):
+                # Setup array to store scan ND data
+                plen = len(diving_scan.positioners)
+                dlen = len(diving_scan.detectors)
+                tlen = len(diving_scan.triggers)
+                # don't add tlen, as triggers are not stored in the data array.
+                datastreams = plen + dlen  # + tlen
+                # Setup shape of each rank to match datastreams present in the scan,
+                # along with the dimensions previously traversed.
+                shape = (*dimensions[: i + 1], datastreams)
+                array = np.zeros(shape)
+                # Store objects
+                arrays.append(array)
+                scans.append(diving_scan)
+                # Dive into the next dimension scan
+                if diving_scan.rank > 1:
+                    diving_scan_pointer = diving_scan.lower_scans[0]
+                    br.seek(diving_scan_pointer)
+                    diving_scan = MDAFileReader._read_scan(br)
+                else:
+                    diving_scan = None
+                    break
+        else:
+            # Unpack accumulated data:
+            arrays = accum_data
+            scans = None
+        # Check first array element matches size of scan data
         plen = len(scan.positioners)
         dlen = len(scan.detectors)
         tlen = len(scan.triggers)
-        datastreams = plen + dlen + tlen
-        shape = (*dimensions, datastreams)
-        data = np.zeros(shape)
-        # Store data if rank is 1
-        if scan.rank == 1:
-            data[:, 0:plen] = scan.position_data
-            data[:, plen : plen + dlen] = scan.detector_data
-        else:
-            # TODO: Test for rank > 1. This is untested.
-            # Call recursive function to collect subindex data
-            for i, pointer in enumerate(scan.lower_scans):
+        datastreams = (
+            plen + dlen
+        )  # Don't add tlen, as triggers are not stored in the data array.
+        assert arrays[0].shape == (dimensions[0], datastreams)
+        # Store data from the current scan.
+        arrays[0][:, 0:plen] = scan.positioner_data  # [datapoints, positioner_num]
+        arrays[0][:, plen : plen + dlen] = scan.detector_data
+        # Store data from the lower scans
+        if scan.rank > 1:
+            for i in range(scan.curr_point):
+                pointer = scan.lower_scans[i]
                 br.seek(pointer)
-                sub_data, sub_scan = MDAFileReader._read_ND_scans(br, shape[1:])
-                # Store subindex data
-                data[:, i] = sub_data
-        return data, scan
+                arrays_subset = [array[i] for array in arrays[1:]]
+                # This function will write to the arrays_subset, no explicit override is needed.
+                MDAFileReader._read_ND_scans(
+                    br=br, dimensions=dimensions[1:], accum_data=arrays_subset
+                )
+        elif scan.rank < 1:
+            raise ImportError(f"Rank of scan ({scan.rank}) less than 1 is invalid.")
+        return arrays, scans
 
     @staticmethod
     def _read_scan(br: io.BufferedReader, header_only: bool = False) -> MDAScan:

@@ -8,6 +8,7 @@ Current beamlines supported include:
 
 from pyNexafs.parsers import parser_base
 from pyNexafs.nexafs.scan import scan_base
+from pyNexafs.utils.mda import MDAFileReader
 from io import TextIOWrapper
 from typing import Any
 from numpy.typing import NDArray
@@ -224,8 +225,6 @@ class MEX2_NEXAFS(parser_base):
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
         """Reads Australian Synchrotron .mda files.
 
-        CURRENTLY NOT IMPLEMENTED.
-
         Parameters
         ----------
         file : TextIOWrapper
@@ -244,19 +243,80 @@ class MEX2_NEXAFS(parser_base):
         ValueError
             If the file is not a valid .mda file.
         """
+
         # Initialise parameter list
         params = {}
+        labels = []
 
         # Check valid format.
         if not file.name.endswith(".mda"):
             raise ValueError(f"File {file.name} is not a valid .mda file.")
 
-        # Add temporary error for
-        raise NotImplementedError(
-            "The .mda file format is not yet supported by the SXR_NEXAFS parser."
-        )
+        # Need to reopen the file in byte mode.
+        file.close()
+        mda = MDAFileReader(file.name)
 
-        # return np.array([]), [], [], params
+        mda_header = mda.read_header_as_dict()
+        if mda_header["mda_rank"] != 1:
+            raise ValueError("MDA file is not 1D, incompatible for regular NEXAFS.")
+        mda_params = mda.read_parameters()
+        mda_arrays, mda_scans = mda.read_scans(header_only=header_only)
+
+        # Add values to params dict
+        params.update(mda_header)
+        params.update(mda_params)
+        # Add column types and descriptions to params.
+        mda_1d = mda_arrays[0]
+        scan_1d = mda_scans[0]
+        column_types = {
+            "Positioner": (
+                "name",
+                "descr",
+                "step mode",
+                "unit",
+                "rdbk name",
+                "rdbk descr",
+                "rdbk unit",
+            ),
+            "Detector": (
+                "name",
+                "descr",
+                "unit",
+            ),
+        }
+        column_descriptions = {
+            i: [
+                p.name,
+                p.desc,
+                p.step_mode,
+                p.unit,
+                p.readback_name,
+                p.readback_desc,
+                p.readback_unit,
+            ]
+            for i, p in enumerate(scan_1d.positioners)
+        }
+        column_descriptions.update(
+            {
+                i + len(scan_1d.positioners): [d.name, d.desc, d.unit]
+                for i, d in enumerate(scan_1d.detectors)
+            }
+        )
+        params["column_types"] = column_types
+        params["column_descriptions"] = column_descriptions
+        # Collect units and labels:
+        labels = []
+        units = []
+        for i, p in enumerate(scan_1d.positioners):
+            labels.append(p.name)
+            units.append(p.unit)
+        for i, d in enumerate(scan_1d.detectors):
+            labels.append(d.name)
+            units.append(d.unit)
+
+        if header_only:
+            return None, labels, units, params
+        return mda_1d, labels, units, params
 
 
 class SXR_NEXAFS(parser_base):
@@ -441,8 +501,9 @@ class SXR_NEXAFS(parser_base):
         file.readline()
 
         ## 4 Scan Column properties:
-
         # Labels for columns describing data columns.
+        # i.e.
+        # i.e. #  Positioner: name, descr, step mode, unit, rdbk name, rdbk descr, rdbk unit
         column_types = {}
         line = file.readline()
         while line != "\n":
@@ -457,6 +518,7 @@ class SXR_NEXAFS(parser_base):
         file.readline()
 
         # Column descriptions
+        # i.e. #    2  [1-D Positioner 1]  SR14ID01PGM:LOCAL_SP, Mono setpoint, TABLE, eV, SR14ID01PGM:LOCAL_SP, Mono setpoint, eV
         column_descriptions = {}
         line = file.readline()
         while line != "\n":
@@ -549,17 +611,77 @@ class SXR_NEXAFS(parser_base):
 
         # Initialise parameter list
         params = {}
+        labels = []
 
         # Check valid format.
         if not file.name.endswith(".mda"):
             raise ValueError(f"File {file.name} is not a valid .mda file.")
 
-        # Add temporary error for
-        raise NotImplementedError(
-            "The .mda file format is not yet supported by the SXR_NEXAFS parser."
-        )
+        # Need to reopen the file in byte mode.
+        file.close()
+        mda = MDAFileReader(file.name)
 
-        # return np.array([]), [], [], params
+        mda_header = mda.read_header_as_dict()
+        if mda_header["mda_rank"] != 1:
+            raise ValueError("MDA file is not 1D, incompatible for regular NEXAFS.")
+        mda_params = mda.read_parameters()
+        mda_arrays, mda_scans = mda.read_scans(header_only=header_only)
+
+        # Add values to params dict
+        params.update(mda_header)
+        params.update(mda_params)
+        # Add column types and descriptions to params.
+        mda_1d = mda_arrays[0]
+        scan_1d = mda_scans[0]
+        column_types = {
+            "Positioner": (
+                "name",
+                "descr",
+                "step mode",
+                "unit",
+                "rdbk name",
+                "rdbk descr",
+                "rdbk unit",
+            ),
+            "Detector": (
+                "name",
+                "descr",
+                "unit",
+            ),
+        }
+        column_descriptions = {
+            i: [
+                p.name,
+                p.desc,
+                p.step_mode,
+                p.unit,
+                p.readback_name,
+                p.readback_desc,
+                p.readback_unit,
+            ]
+            for i, p in enumerate(scan_1d.positioners)
+        }
+        column_descriptions.update(
+            {
+                i + len(scan_1d.positioners): [d.name, d.desc, d.unit]
+                for i, d in enumerate(scan_1d.detectors)
+            }
+        )
+        params["column_types"] = column_types
+        params["column_descriptions"] = column_descriptions
+        # Collect units and labels:
+        labels = []
+        units = []
+        for i, p in enumerate(scan_1d.positioners):
+            labels.append(p.name)
+            units.append(p.unit)
+        for i, d in enumerate(scan_1d.detectors):
+            labels.append(d.name)
+            units.append(d.unit)
+
+        if header_only:
+            return None, labels, units, params
+        return mda_1d, labels, units, params
 
     @property
     @overrides.overrides
