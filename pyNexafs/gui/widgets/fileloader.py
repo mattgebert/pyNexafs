@@ -1,3 +1,4 @@
+import re
 from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtWidgets import (
     QWidget,
@@ -42,6 +43,7 @@ from typing import Type
 import overrides
 import warnings
 import numpy as np
+from pyNexafs.gui.widgets.io.dir_selection import directory_selector
 
 
 class nexafsFileLoader(QWidget):
@@ -357,132 +359,12 @@ class nexafs_parser_selector(QComboBox):
         """
         return self.parsers[self.currentText()]
 
-
-class directory_selector(QHBoxLayout):
-    """
-    Module for selecting a directory path.
-
-    Parameters
-    ----------
-    QWidget : _type_
-        _description_
-    """
-
-    newPath = pyqtSignal(bool)
-
-    # String constants for widget elements
-    edit_description = "Path to load NEXAFS data from."
-    dialog_caption = "Select NEXAFS Directory"
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-        # Instance attributes
-        self.folder_path = os.path.expanduser("~")  # default use home path.
-        self.folder_path = directory_selector.format_path(
-            self.folder_path
-        )  # adds final slash if not present.
-
-        ### Instance widgets
-        # Folder path
-        self.folder_path_edit = QLineEdit()
-        self.folder_path_edit.setText(self.folder_path)
-        self.folder_path_edit.accessibleName = "Directory"
-        self.folder_path_edit.accessibleDescription = self.edit_description
-        self.folder_path_edit.editingFinished.connect(self.validate_path)
-        self.folder_path_edit_default_stylesheet = self.folder_path_edit.styleSheet()
-        # Folder select button
-        self.folder_select_button = QPushButton("Browse")
-        self.folder_select_button.clicked.connect(self.select_path)
-
-        # Setup layout
-        self.addWidget(self.folder_path_edit)
-        self.addWidget(self.folder_select_button)
-
-    def select_path(self):
+    def update_combo_list(self):
         """
-        Generates a file dialog to select a directory, then updates the path.
+        Update the combo box parser list from the parser attribute.
         """
-        path = QFileDialog.getExistingDirectory(
-            parent=None,
-            caption=self.dialog_caption,
-            directory=self.folder_path,
-            options=QFileDialog.Option.ShowDirsOnly,
-        )
-        path = None if path == "" else path
-        if path is None:
-            # invalid path
-            self.folder_path_edit.setText(
-                self.folder_path
-            )  # reset the text to the original path.
-        else:
-            # set editable path and validate.
-            self.folder_path_edit.setText(path)
-            self.validate_path()
-
-    def validate_path(self):
-        """
-        Validate a manual entry path.
-
-        Only updates internal path if the path is valid, otherwise sets background color to red.
-        """
-        # Get path text
-        editable_path = directory_selector.format_path(self.folder_path_edit.text())
-
-        # Check validity
-        if editable_path is None:
-            # invalid path
-            self.folder_path_edit.setText(
-                self.folder_path
-            )  # reset the text to the original path.
-            return
-
-        if not os.path.isdir(editable_path):
-            # invalid path
-            self.folder_path_edit.setStyleSheet("background-color: red;")
-        else:
-            # Valid path
-
-            # Check if path has changed
-            new_path = False
-            if editable_path != self.folder_path:
-                # if path has changed, perform extra functions...
-                new_path = True
-            self.folder_path_edit.setStyleSheet(
-                self.folder_path_edit_default_stylesheet
-            )
-            self.folder_path = editable_path
-            self.folder_path_edit.setText(editable_path)
-
-            if new_path:
-                self.newPath.emit(True)
-
-    @staticmethod
-    def format_path(path: str) -> str:
-        """
-        Formats a path string to be consistent.
-
-        Parameters
-        ----------
-        path : str
-            The incoming path string. Must be a valid path, tested by os.path.isdir().
-
-        Returns
-        -------
-        str
-            A formatted path string that always contains a trailing slash, with slashes matching OS type.
-        """
-
-        # Strip whitespace, ensure tailing slash, and convert mixed slashes to forward slashes.
-        formatted_path = os.path.join("", path.strip(), "").replace("\\", "/")
-        # Remove redundant slash duplicates
-        while "//" in formatted_path:
-            formatted_path = formatted_path.replace("//", "/")
-        # Convert slashes to match OS
-        slashes = os.sep
-        formatted_path = formatted_path.replace("/", slashes)
-
-        return formatted_path
+        self.clear()
+        self.addItems([key for key in self.parsers.keys()])
 
 
 class directory_filters(QHBoxLayout):
@@ -1046,18 +928,58 @@ class directory_viewer_table(QTableView):
         # 2: Load new fileheader data.
         if self.parser is not None:
             # Get header data
-            for i, file in enumerate(files):
-                if file not in self._parser_headers:
-                    try:
-                        self._parser_headers[file] = self.parser(
-                            os.path.join(self.directory, file), load_head_only=True
-                        )
-                    # Catch unimplemented and import errors.
-                    except (NotImplementedError, ImportError) as e:
-                        self._parser_headers[file] = None
-                if self.progress_bar is not None:
-                    # self.progress_bar.setValue(int((i + 1) / files_len * 100))
-                    self.progress_bar.setValue(i + 1)
+            with warnings.catch_warnings(record=True) as recorded_warnings:
+                for i, file in enumerate(files):
+                    if file not in self._parser_headers:
+                        try:
+                            self._parser_headers[file] = self.parser(
+                                os.path.join(self.directory, file), load_head_only=True
+                            )
+                        # Catch unimplemented and import errors.
+                        except (NotImplementedError, ImportError) as e:
+                            self._parser_headers[file] = None
+                    if self.progress_bar is not None:
+                        # self.progress_bar.setValue(int((i + 1) / files_len * 100))
+                        self.progress_bar.setValue(i + 1)
+            # Process the caught warnings
+            warning_categories = {}
+            warn_re = re.compile(
+                r"Attempted method '(.*)' failed to load '(.*)' from '(.*)' with (.*)."
+            )
+            for w in recorded_warnings:
+                matches = warn_re.search(str(w.message))
+                if matches and len(matches.groups()) == 4:
+                    method, file, parser, error = matches.groups()
+                    # Collect warning
+                    parser_method = f"{parser}.{method}"
+                    filetype = file.split(".")[-1]
+                    filetype_error = f"{filetype}:{error}"
+
+                    if parser_method not in warning_categories:
+                        # Add parser_method to categories
+                        warning_categories[parser_method] = {filetype_error: 1}
+                    elif filetype_error not in warning_categories[parser_method]:
+                        # Add filetype_error to parser_method
+                        warning_categories[parser_method][filetype_error] = 1
+                    else:
+                        # Increment filetype_error count
+                        warning_categories[parser_method][filetype_error] += 1
+                else:
+                    # re-issue warning
+                    warnings.warn_explicit(
+                        message=w.message,
+                        category=w.category,
+                        filename=w.filename,
+                        lineno=w.lineno,
+                        source=w.source,
+                    )
+            # Print warning categories
+            for parser_method, file_errors in warning_categories.items():
+                for filetype_error, count in file_errors.items():
+                    filetype, error = filetype_error.split(":")
+                    print(
+                        f"Parser method '{parser_method}' failed {count} times on filetype '{filetype}' with error '{error}'."
+                    )
         else:
             # If parser is None, empty the existing data.
             self._parser_headers = {}
@@ -1178,7 +1100,7 @@ class directory_viewer_table(QTableView):
             )  # Filename in second column.
             # return self.files_model.data(rows, Qt.ItemDataRole.DisplayRole)
             return [
-                self.files_model.data(row, Qt.ItemDataRole.DisplayRole) for row in rows
+                self.proxy_model.data(row, Qt.ItemDataRole.DisplayRole) for row in rows
             ]
         return []
 

@@ -325,7 +325,7 @@ class nexafsViewer(QWidget):
 class normalisingGraph(QWidget):
     def __init__(
         self,
-        graph_scans: list[Type[scan_abstract]] = None,
+        graph_scans: list[Type[scan_abstract | parser_base]] = None,
         dataseries_selection: list[str] = [],
         background_fixed_scans: list[Type[scan_abstract]] = [],
         norm_settings: normaliserSettings = None,
@@ -350,28 +350,28 @@ class normalisingGraph(QWidget):
         self._toolbar.norm_settings = norm_settings
 
     @property
-    def graph_scans(self) -> list[Type[scan_abstract]]:
-        return self._toolbar.graph_scans
+    def graph_scans(self) -> list[Type[scan_abstract | parser_base]]:
+        return self._toolbar.graph_scans.copy()
 
     @graph_scans.setter
-    def graph_scans(self, scans: list[Type[scan_abstract]]):
-        self.toolbar.graph_scans = scans
+    def graph_scans(self, scans: list[Type[scan_abstract | parser_base]]):
+        self.toolbar.graph_scans = scans.copy()
 
     @property
     def dataseries_selection(self) -> list[str]:
-        return self._toolbar.dataseries_selection
+        return self._toolbar.dataseries_selection.copy()
 
     @dataseries_selection.setter
     def dataseries_selection(self, labels: list[str]):
         self.toolbar.dataseries_selection = labels
 
     @property
-    def background_fixed_scans(self) -> list[Type[scan_abstract]]:
-        return self._toolbar.background_fixed_scans
+    def background_fixed_scans(self) -> list[Type[scan_abstract | parser_base]]:
+        return self._toolbar.background_fixed_scans.copy()
 
     @background_fixed_scans.setter
-    def background_fixed_scans(self, scans: list[Type[scan_abstract]]):
-        self.toolbar.background_fixed_scans = scans
+    def background_fixed_scans(self, scans: list[Type[scan_abstract | parser_base]]):
+        self.toolbar.background_fixed_scans = scans.copy()
 
     @property
     def norm_settings(self) -> normaliserSettings:
@@ -407,15 +407,20 @@ class normalisingGraph(QWidget):
         # Iterate over dataseries first:
         if dataseries_list is not None:
             for ds in dataseries_list:
-                # Then iterate over each scan object.
+                # Then iterate over each scan | parser object.
                 for scan in scans:
                     try:
-                        ind = scan._y_labels.index(ds)
-                        x = scan.x
-                        y = scan.y[:, ind]
-                        ax.plot(x, y, label=scan.filename + ":" + ds)
+
+                        if isinstance(scan, scan_abstract):
+                            ind = scan.y_labels.index(ds)
+                            x = scan.x
+                            y = scan.y[:, ind]
+                            ax.plot(x, y, label=scan.filename + ":" + ds)
+                        elif isinstance(scan, parser_base):
+                            assert isinstance(scan, parser_base)
+
                     except ValueError:
-                        # Catch Value errors if the label is not found.
+                        # Catch Value errors if the label is not found: don't plot.
                         continue
             ax.set_xlabel(
                 scan.x_label + " (" + scan.x_unit + ")"

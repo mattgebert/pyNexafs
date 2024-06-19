@@ -1,9 +1,6 @@
 """
-Parser classes for the Australian Synchrotron.
+Parser classes for the Soft X-ray (SXR) beamline at the Australian Synchrotron.
 
-Current beamlines supported include:
-- MEX2_NEXAFS : Australian Synchrotron Medium Energy X-ray NEXAFS parser.
-- SXR_NEXAFS : Australian Synchrotron Soft X-ray NEXAFS parser.
 """
 
 from pyNexafs.parsers import parser_base
@@ -15,308 +12,8 @@ from numpy.typing import NDArray
 import numpy as np
 import ast
 import overrides
-
-
-class MEX2_NEXAFS(parser_base):
-    """
-    Australian Synchrotron Soft X-ray (SXR) NEXAFS parser.
-
-    Parses data formats including '.asc' and '.mda' formats from the SXR
-    Near Edge X-ray Absorption Fine Structure (NEXAFS) tool.
-
-    Attributes
-    ----------
-    ALLOWED_EXTENSIONS
-    SUMMARY_PARAM_RAW_NAMES
-    COLUMN_ASSIGNMENTS
-    RELABELS
-
-    Notes
-    -----
-    Implemented for data as of 2024-Mar.
-    """
-
-    ALLOWED_EXTENSIONS = [".xdi", ".mda"]
-    SUMMARY_PARAM_RAW_NAMES = [
-        "Sample",
-        "ROI.start_bin",
-        "ROI.end_bin",
-        "Element.symbol",
-        "Element.edge",
-    ]
-    COLUMN_ASSIGNMENTS = {
-        "x": "energy",
-        "y": [
-            "bragg",
-            "ifluor|ifluor_sum",
-            "count_time",
-            "i0",
-            "SampleDrain",
-            "ICR_AVG",
-            "OCR_AVG",
-        ],
-        "y_errs": None,
-        "x_errs": None,
-    }
-    RELABELS = {
-        "ROI.start_bin": r"$E_1$",
-        "ROI.end_bin": r"$E_2$",
-        "Element.symbol": "Element",
-        "Element.edge": "Edge",
-        "OCR_AVG": "Output Count Rate",
-        "ICR_AVG": "Input Count Rate",
-        "ifluor": "Fluorescence",
-    }
-
-    # @classmethod
-    # @overrides.overrides
-    # def file_parser(
-    #     cls, file: TextIOWrapper, header_only: bool = False
-    # ) -> tuple[NDArray | None, list[str], list[str], dict[str, Any]]:
-    #     """Reads Australian Synchrotron Medium Energy Xray2 (MEX2) Spectroscopy files.
-
-    #     Parameters
-    #     ----------
-    #     file : TextIOWrapper
-    #         TextIOWrapper of the datafile (i.e. open('file.asc', 'r'))
-    #     header_only : bool, optional
-    #         If True, then only the header of the file is read and NDArray is returned as None, by default False
-
-    #     Returns
-    #     -------
-    #     tuple[NDArray | None, list[str], dict[str, Any]]
-    #         Returns a set of data as a numpy array,
-    #         labels as a list of strings,
-    #         units as a list of strings,
-    #         and parameters as a dictionary.
-
-    #     Raises
-    #     ------
-    #     ValueError
-    #         If the file is not a valid filetype.
-    #     """
-    #     # Init vars, check file type using super method.
-    #     data, labels, units, params = super().file_parser(file)
-
-    #     # Use specific parser based on file extension.
-    #     if file.name.endswith(".xdi"):
-    #         data, labels, units, params = cls.parse_xdi(file, header_only=header_only)
-    #     elif file.name.endswith(".mda"):
-    #         data, labels, units, params = cls.parse_mda(file, header_only=header_only)
-    #     else:
-    #         raise NotImplementedError(
-    #             f"File {file.name} is not yet supported by the {cls.__name__} parser."
-    #         )
-
-    #     # Add filename to params at the end, to avoid incorrect filename from copy files internal params.
-    #     params["filename"] = file.name
-
-    #     return data, labels, units, params
-
-    @classmethod
-    def parse_xdi(
-        cls, file: TextIOWrapper, header_only: bool = False
-    ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
-        """Reads Australian Synchrotron .xdi files.
-
-        Parameters
-        ----------
-        file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.xdi', 'r'))
-        header_only : bool, optional
-            If True, then only the header of the file is read and NDArray is returned as None, by default False
-
-        Returns
-        -------
-        tuple[NDArray, list[str], dict[str, Any]]
-            Returns a set of data as a numpy array,
-            labels as a list of strings,
-            units as a list of strings,
-            and parameters as a dictionary.
-
-        Raises
-        ------
-        ValueError
-            If the file is not a valid .xdi file.
-        """
-        # Initialise structures
-        params = {}
-        labels = []
-        units = None
-
-        # Check valid format.
-        if not file.name.endswith(".xdi"):
-            raise ValueError(f"File {file.name} is not a valid .xdi file.")
-
-        ### Read file
-        # Check header is correct
-        assert file.readline() == "# XDI/1.0\n"
-
-        ## 1 Initial Parameters
-        # Read first param line.
-        line = file.readline()
-        while "# " == line[0:2] and line != "# ///\n":
-            line = line[2:].strip().split(": ", 1)  # split first colon
-            param, value = tuple(line)
-
-            # Categorise information
-            if "Column." in param:
-                if "Describe." in param:
-                    # Label description. No dedicated structure for this, add to params.
-                    params[param] = value
-                else:
-                    # Label name
-                    labels.append(value)
-            else:
-                if param == "Samples":
-                    # Parse the datapoint length list
-                    samples = ast.literal_eval(value)
-                    samples = [x.strip() if isinstance(x, str) else x for x in samples]
-                    # Add to params
-                    for i in range(len(samples)):
-                        params[f"Datapoints.Column.{i}"] = samples[i]
-                else:
-                    # General parameter, add to params.
-                    params[param] = value
-            # Load new param line
-            line = file.readline()
-
-        assert line == "# ///\n"  # Check end of initial parameters
-
-        # Get samplename
-        line = file.readline()
-        sample_name = line[2:].strip()
-        params["Sample"] = sample_name
-
-        # Skip header lines before data
-        assert file.readline() == "# \n"
-        line = file.readline()
-        # Some xdi conversion have a "default mda2xdi" line.
-        try:
-            assert line == "# xdi from default mda2xdi preset for mex2.\n"
-            assert file.readline() == "#--------\n"
-        except AssertionError:
-            assert line == "#--------\n"
-
-        # Read data columns
-        header_line = file.readline()
-        assert header_line[0:2] == "# "
-        labels = (
-            header_line[2:].strip().split()
-        )  # split on whitespace, even though formatting seems to use "   " (i.e. three spaces).
-        labels = [label.strip() if type(label) == str else label for label in labels]
-
-        if header_only:
-            # Do not process remaining lines
-            return None, labels, units, params
-
-        # Read data
-        lines = file.readlines()  # read remaining lines efficiently
-
-        # Convert data to numpy array.
-        data = np.loadtxt(lines)
-        data = np.array(data)
-
-        return data, labels, units, params
-
-    @classmethod
-    def parse_mda(
-        cls, file: TextIOWrapper, header_only: bool = False
-    ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
-        """Reads Australian Synchrotron .mda files.
-
-        Parameters
-        ----------
-        file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.mda', 'r'))
-
-        Returns
-        -------
-        tuple[NDArray, list[str], dict[str, Any]]
-            Returns a set of data as a numpy array,
-            labels as a list of strings,
-            units as a list of strings,
-            and parameters as a dictionary.
-
-        Raises
-        ------
-        ValueError
-            If the file is not a valid .mda file.
-        """
-
-        # Initialise parameter list
-        params = {}
-        labels = []
-
-        # Check valid format.
-        if not file.name.endswith(".mda"):
-            raise ValueError(f"File {file.name} is not a valid .mda file.")
-
-        # Need to reopen the file in byte mode.
-        file.close()
-        mda = MDAFileReader(file.name)
-
-        mda_header = mda.read_header_as_dict()
-        if mda_header["mda_rank"] != 1:
-            raise ValueError("MDA file is not 1D, incompatible for regular NEXAFS.")
-        mda_params = mda.read_parameters()
-        mda_arrays, mda_scans = mda.read_scans(header_only=header_only)
-
-        # Add values to params dict
-        params.update(mda_header)
-        params.update(mda_params)
-        # Add column types and descriptions to params.
-        mda_1d = mda_arrays[0]
-        scan_1d = mda_scans[0]
-        column_types = {
-            "Positioner": (
-                "name",
-                "descr",
-                "step mode",
-                "unit",
-                "rdbk name",
-                "rdbk descr",
-                "rdbk unit",
-            ),
-            "Detector": (
-                "name",
-                "descr",
-                "unit",
-            ),
-        }
-        column_descriptions = {
-            i: [
-                p.name,
-                p.desc,
-                p.step_mode,
-                p.unit,
-                p.readback_name,
-                p.readback_desc,
-                p.readback_unit,
-            ]
-            for i, p in enumerate(scan_1d.positioners)
-        }
-        column_descriptions.update(
-            {
-                i + len(scan_1d.positioners): [d.name, d.desc, d.unit]
-                for i, d in enumerate(scan_1d.detectors)
-            }
-        )
-        params["column_types"] = column_types
-        params["column_descriptions"] = column_descriptions
-        # Collect units and labels:
-        labels = []
-        units = []
-        for i, p in enumerate(scan_1d.positioners):
-            labels.append(p.name)
-            units.append(p.unit)
-        for i, d in enumerate(scan_1d.detectors):
-            labels.append(d.name)
-            units.append(d.unit)
-
-        if header_only:
-            return None, labels, units, params
-        return mda_1d, labels, units, params
+import warnings
+import datetime as dt
 
 
 class SXR_NEXAFS(parser_base):
@@ -410,7 +107,7 @@ class SXR_NEXAFS(parser_base):
     }
 
     @classmethod
-    def parse_asc(
+    def parse_asc_202403(
         cls, file: TextIOWrapper, header_only: bool = False
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
         """Reads Australian Synchrotron .asc files.
@@ -520,6 +217,7 @@ class SXR_NEXAFS(parser_base):
         # Column descriptions
         # i.e. #    2  [1-D Positioner 1]  SR14ID01PGM:LOCAL_SP, Mono setpoint, TABLE, eV, SR14ID01PGM:LOCAL_SP, Mono setpoint, eV
         column_descriptions = {}
+        column_type_assignments = {}
         line = file.readline()
         while line != "\n":
             # Take index info
@@ -545,6 +243,7 @@ class SXR_NEXAFS(parser_base):
             # Take info
             desc_info = line[28:].split(", ")
             column_descriptions[index] = desc_info
+            column_type_assignments[index] = desc_type
             # Check that the initial parameter begins with the Instrument descriptor.
             if not index_line:
                 assert desc_info[0].startswith("SR14ID01")  # code for initial
@@ -565,6 +264,7 @@ class SXR_NEXAFS(parser_base):
         # add column data to params
         params["column_types"] = column_types
         params["column_descriptions"] = column_descriptions
+        params["column_type_assignments"] = column_type_assignments
 
         if header_only:
             # Do not process remaining lines
@@ -716,18 +416,20 @@ class SXR_NEXAFS(parser_base):
         """
         pNames = self.SUMMARY_PARAM_RAW_NAMES
         pUnits = [
-            self.params[pName][2]
-            if (
-                self.params is not None  # Params loaded
-                and pName in self.params  # Parameter listed
-                and hasattr(
-                    self.params[pName], "__len__"
-                )  # Parameter has a list of values
-                and len(self.params[pName])
-                == 3  # 3 params for value, description, unit
-                and self.params[pName][2] != ""  # Unit value is not empty.
+            (
+                self.params[pName][2]
+                if (
+                    self.params is not None  # Params loaded
+                    and pName in self.params  # Parameter listed
+                    and hasattr(
+                        self.params[pName], "__len__"
+                    )  # Parameter has a list of values
+                    and len(self.params[pName])
+                    == 3  # 3 params for value, description, unit
+                    and self.params[pName][2] != ""  # Unit value is not empty.
+                )
+                else None
             )
-            else None
             for pName in pNames
         ]
         if not self.relabel:

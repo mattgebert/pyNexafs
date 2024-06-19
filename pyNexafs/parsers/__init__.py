@@ -1,3 +1,10 @@
+"""
+Parser classes for NEXAFS data, including support for synchrotron specific beamlines.
+
+Parsers are registered in the parser_loaders dictionary, which is used to register parsers
+in GUI applications.
+"""
+
 # Base objects
 from ._base import parser_base
 

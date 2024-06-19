@@ -484,7 +484,6 @@ class MDAFileReader:
         version = u.unpack_float()  # 4 bytes
         scan_number = u.unpack_int()  # 4 bytes
         rank = u.unpack_int()  # 4 bytes
-        print(version, scan_number, rank)
         dimensions = u.unpack_farray(rank, u.unpack_int)  # 4 bytes * rank
         isRegular = u.unpack_int()  # 4 bytes
         pExtra = u.unpack_int()  # 4 bytes
@@ -764,6 +763,10 @@ class MDAFileReader:
                 )
         elif scan.rank < 1:
             raise ImportError(f"Rank of scan ({scan.rank}) less than 1 is invalid.")
+        # Set to NaN if the scan is incomplete.
+        if scan.curr_point < scan.points:
+            for array in arrays:
+                array[scan.curr_point + 1 :] = np.nan
         return arrays, scans
 
     @staticmethod
@@ -929,3 +932,40 @@ class MDAFileReader:
             return u.unpack_fstring(strlen).decode("utf-8")
         else:
             return None
+
+
+# TODO: Implmement reverse parser: filewriter!
+# class MDAFileWriter:
+#     @staticmethod
+#     def write_mda_file(
+#         path: str,
+#         scan_arrays: list[npt.NDArray],
+#         labels: list[list[str]],
+#         units: list[list[str]],
+#         pExtra: dict[str, tuple[str, str, Any]],
+#     ):
+#         # If units not supplied, set to empty lists matching labels
+#         if units is None:
+#             units = [["" for label in label_set] for label_set in labels]
+#         # Check dimensions of inputs match appropriately
+#         if np.any(len(scan_arrays) != len(labels),
+#                   len(scan_arrays) != len(units)):
+#             raise ValueError("Length of lists of scan_arrays, labels arrays and unit arrays must match.")
+#         for i in range(len(scan_arrays)):
+#             arr = scan_arrays[i]
+#             label_set = labels[i]
+#             unit_set = units[i] if units is not None else [""]*len(label_set)
+#             if np.any(arr.shape[-1] != len(label_set),
+#                       arr.shape[-1] != len(unit_set)):
+#                 raise ValueError("Last dimension of scan arrays must match labels and unit array length.")
+
+
+#             if np.any(len(scan_arrays[i]) != len(labels[i]),
+#                       len(scan_arrays[i]) != len(units[i])):
+#                 raise ValueError("Length of scan arrays, labels arrays and unit arrays must match.")
+
+#         # Check if the path exists, if not create it.
+#         os.path.isdir(os.path.dirname(path)) or os.makedirs(os.path.dirname(path))
+
+
+#         return

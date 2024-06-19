@@ -52,10 +52,10 @@ class browserWidget(QWidget):
             self._main_layout.setContentsMargins(0, 0, 0, 0)
 
         ### Init UI
-        grad = QLinearGradient(0, 0, 1, 0)
-        grad.setCoordinateMode(grad.CoordinateMode.ObjectMode)
 
         # # TODO: Find another way to define a black line on handles with some margin two widgets.
+        # grad = QLinearGradient(0, 0, 1, 0)
+        # grad.setCoordinateMode(grad.CoordinateMode.ObjectMode)
         # for handle in self.draggable.findChildren(QSplitterHandle):
         #     if handle.parent().orientation() == Qt.Orientation.Horizontal:
         #         # handle.setStyleSheet("background-color: black;")

@@ -146,7 +146,8 @@ class parser_meta(abc.ABCMeta):
 
         Returns
         -------
-        dict[str, str | list[str] | None]
+        dict[str, str | tuple[str] | list[str | tuple[str]] | None]
+            Dictionary of column assignments.
 
         Raises
         ------
@@ -409,7 +410,7 @@ class parser_base(metaclass=parser_meta):
 
     def __init__(
         self,
-        filepath: str,
+        filepath: str | None,
         load_head_only: bool = False,
         relabel: bool | None = None,
     ) -> None:
@@ -573,33 +574,40 @@ class parser_base(metaclass=parser_meta):
                             : parse_fn.__code__.co_argcount
                         ]
                         if type(parse_fn) == types.FunctionType:  # staticmethod
-                            return (
+                            obj = (
                                 parse_fn(file, header_only)
                                 if "header_only" in arg_names
                                 else parse_fn(file)
                             )
+                            # Close the file upon successful load
+                            file.close()
+                            return obj
                         else:  # classmethod
                             # type(parse_fn == types.MethodType)
                             # cls is the first argument of the method, already incorporated into the function call.
-                            return (
+                            obj = (
                                 parse_fn(file, header_only)
                                 if "header_only" in arg_names
                                 else parse_fn(file)
                             )
+                            # Close the file upon successful load
+                            file.close()
+                            return obj
                     except Exception as e:
                         # Method failed, continue to next method.
                         warnings.warn(
-                            f"Attempted method '{parse_fn.__name__}' failed to load '{os.path.basename(file.name)}' from '{cls.__name__}' with {type(e).__name__}.",
+                            f"Attempted method '{parse_fn.__name__}' failed to load '{os.path.basename(file.name)}' from '{cls.__name__}' with {repr(e)}.",
+                            # f"Attempted method '{parse_fn.__name__}' failed to load '{os.path.basename(file.name)}' from '{cls.__name__}' with {type(e).__name__}.",
                             # + str(e)
                             # + "'.",
-                            UserWarning,
+                            ImportWarning,
                         )
-                        continue
 
             # If no parse functions successfully import the file type,
             raise ImportError(
                 f"No parser method in {cls.__name__} succeeded on {file.name}."
             )
+
         # If no parse functions match the file type, raise an error.
         raise ImportError(f"No parser method in {cls.__name__} found for {file.name}.")
 
@@ -607,7 +615,7 @@ class parser_base(metaclass=parser_meta):
         self, file: str | TextIOWrapper | None = None, header_only: bool = False
     ) -> None:
         """
-        Loads data from the specified file, and attaches it to the object.
+        Loads all data from the specified file, and attaches it to the object.
 
         Additionally rewrites filepath attribute if a new file is loaded.
         Will also save additional "created" and "modified" entries in param list
@@ -621,7 +629,7 @@ class parser_base(metaclass=parser_meta):
             If filepath is also None, then a ValueError is raised.
         header_only : bool, optional
             If True, then only the header of the file is read, by default False
-            Consequently loads labels, units and params, but sets the data as None.
+            Consequently loads labels, units and params. Pre-existing object data persists.
 
         Raises
         ------
@@ -630,32 +638,37 @@ class parser_base(metaclass=parser_meta):
         """
         # Load object filepath
         load_filepath = self._filepath  # Might be None
-
         try:
             # Check if file parameter is provided:
             if type(file) is TextIOWrapper:
                 load_filepath = file.name
                 # File already loaded
-                self.data, self._labels, self.params = self.file_parser(
+                data, labels, units, params = self.file_parser(
                     file, header_only=header_only
                 )
+                file.close()  # Close file after reading
                 # If a file is provided override filepath.
-                self._filepath = file.name
-                return
             elif type(file) is str:
                 # Update filepath
                 load_filepath = file
-
-            # Try to load filepath
-            if load_filepath is None:
-                raise ValueError("No file/filepath provided to load data.")
-            else:
                 with open(load_filepath, "r") as load_file:
                     data, labels, units, params = self.file_parser(
                         load_file, header_only=header_only
-                    )
+                    )  # makes sure to close the file.
+            elif file is None and load_filepath is not None:
+                with open(load_filepath, "r") as load_file:
+                    data, labels, units, params = self.file_parser(
+                        load_file, header_only=header_only
+                    )  # makes sure to close the file.
+            elif load_filepath is None:
+                raise ValueError("No file/filepath provided to load data.")
+            else:
+                raise ValueError(
+                    f"File parameter of type {type(file)} not supported for loading."
+                )
+
             if data is not None or self.data is not None:
-                # Use existing data to check consistency if only loading header.
+                # Use existing data to check consistency if only (re-)loading header.
                 if data is None and self.data is not None:
                     data = self.data
                 # Pull column length of data to compare to units and labels.
@@ -684,12 +697,12 @@ class parser_base(metaclass=parser_meta):
             params["modified"] = datetime.datetime.fromtimestamp(
                 os.path.getmtime(load_filepath)
             )
+        self._filepath = load_filepath
 
         # Assign data, labels, units, and params to object.
         self.data, self._labels, self.units, self.params = data, labels, units, params
 
         # Update filepath after data load if successful!
-        self._filepath = load_filepath
         return
 
     @staticmethod
@@ -750,27 +763,44 @@ class parser_base(metaclass=parser_meta):
             A copy of the parser object.
         """
         # Use the provided clone, otherwise create newobj.
-        newobj = type(self)(None) if clone is not None else clone
-
+        newobj = (
+            type(self)(
+                filepath=None,
+                load_head_only=False,
+                relabel=None,
+            )
+            if not clone
+            else clone
+        )
         # Perform deep copy of data, labels, and params.
-        newobj.filepath = self._filepath  # str copy
-        newobj.data = self.data.copy()  # numpy copy
-        newobj.labels = self._labels.copy()  # str list copy
-        newobj.units = self.units.copy()  # str list copy
+        newobj._filepath = self._filepath  # str copy
+        newobj.data = self.data.copy() if self.data is not None else None  # numpy copy
+        newobj._labels = self._labels.copy()  # str list copy
+        newobj.units = (
+            self.units.copy() if self.units is not None else None
+        )  # str list copy
         for key in self.params:  # dict key str - value Any copy
             value = self.params[key]
-            newobj.params[key] = (
-                value if isinstance(value, (int, str, float, bool)) else value.copy()
-            )
+            if isinstance(value, (int, str, float, bool, datetime.datetime)):
+                newobj.params[key] = value
+            elif hasattr(value, "copy"):
+                newobj.params[key] = value.copy()
+            else:
+                # Shallow
+                newobj.params[key] = value
+                warnings.warn(f"Shallow copy of parameter {key} in {type(self)}.")
+        newobj.relabel = self.relabel  # bool copy
         return newobj
 
     @property
     def filesize(self) -> int:
         """Returns the size of the file in bytes."""
-
         if self._filepath is None:
             raise ValueError("No file loaded.")
-        return os.path.getsize(self._filepath)
+        elif os.path.isfile(self._filepath):
+            return os.path.getsize(self._filepath)
+        else:
+            raise FileNotFoundError(f"File {self._filepath} not found.")
 
     @property
     def memorysize(self) -> int:
@@ -795,7 +825,7 @@ class parser_base(metaclass=parser_meta):
             self.data, columns=self._labels if len(self._labels) > 0 else None
         )
 
-    def search_label_index(self, search: str, search_relabels=True) -> int:
+    def search_label_index(self, search: str | list[str], search_relabels=True) -> int:
         """
         Returns the index of the label in the labels list.
 
@@ -803,8 +833,8 @@ class parser_base(metaclass=parser_meta):
 
         Parameters
         ----------
-        search : str
-            String label to search for in the labels list.
+        search : str | list[str]
+            String label to search for in the labels list. For redundant strings
             Can also accommodate the '|' character to search for multiple labels, in priority of the left-right order.
 
         search_relabels : bool, optional
@@ -820,7 +850,16 @@ class parser_base(metaclass=parser_meta):
         ValueError
             Raised if the label is not found in the labels list.
         """
-        queries = search.split("|")
+        if isinstance(search, list) and isinstance(search[0], str):
+            queries = []
+            for query in search:
+                queries.extend(query.split("|"))
+        elif isinstance(search, str):
+            queries = search.split("|")
+        else:
+            raise ValueError(
+                f"Search parameter {search} is not a string or list of strings."
+            )
         for query in queries:
             # Check default queries
             try:
@@ -828,8 +867,8 @@ class parser_base(metaclass=parser_meta):
             except ValueError as e:
                 pass
 
-            # Also check relabel if relabel is True.
-            if self.relabel and search_relabels:
+            # Also check relabel if search_relabel is True.
+            if search_relabels:
                 # Search keys
                 if query in self.RELABELS:
                     try:
@@ -839,19 +878,22 @@ class parser_base(metaclass=parser_meta):
                     except ValueError as e:
                         pass
 
-                # Search values
-                if query in self.RELABELS.values():
+                # Search values instead to reverse for key
+                relabel_vals = list(self.RELABELS.values())
+                if query in relabel_vals:
+                    relabel_keys = list(self.RELABELS.keys())
                     # Check for multiple matching values (opposed to unique keys).
-                    warn = (
-                        True if list(self.RELABELS.values()).count(query) > 1 else False
-                    )
-                    #
-                    i = list(self.RELABELS.values()).index(query)
+                    warn = True if relabel_vals.count(query) > 1 else False
+                    # Find value in RELABELS
+                    i = relabel_vals.index(query)
                     if warn:
                         warnings.warn(
-                            f"Multiple labels matched {query} in {type(self)}.RELABELS. Using key '{self.RELABELS.keys()[i]}' as the label."
+                            f"Multiple labels matched `{query}` in {type(self)}.RELABELS. Using key '{relabel_keys[i]}' as the label."
                         )
-                    return i
+                    # If labels found, return index of key.
+                    key = relabel_keys[i]
+                    if key in self._labels:
+                        return self._labels.index(key)
 
         raise ValueError(f"Label '{search}' not found in labels {self._labels}.")
 
@@ -860,12 +902,38 @@ class parser_base(metaclass=parser_meta):
         """
         Returns a dictionary of important parameters of the data file.
 
+        If important parameters are defined with multiple names (using '|') then the
+        key entry is the first name for the parameter. When collecting values, all
+        names (including RELABEL keys and values) are checked and the first match found is used.
+
         Returns
         -------
         dict
             Dictionary of important parameters.
         """
-        return {key: self.params[key] for key in self.SUMMARY_PARAM_RAW_NAMES}
+        summary_params = {}
+        for keystr in self.SUMMARY_PARAM_RAW_NAMES:
+            keys = keystr.split("|") if isinstance(keystr, str) else keystr
+            key1 = keys[0]  # Take first name if multiple names are provided.
+            for key in keys:
+                if key in self.params:
+                    summary_params[key1] = self.params[key]
+                    break  # Only use first value found.
+                elif (
+                    key in self.RELABELS
+                ):  # If key is a relabel, then search for the relabel value.
+                    if self.RELABELS[key] in self.params:
+                        summary_params[key1] = self.params[self.RELABELS[key]]
+                        break
+                elif (
+                    key in self.RELABELS.values()
+                ):  # If key is a relabel value, then search for the relabel key.
+                    idx = list(self.RELABELS.values()).index(key)
+                    relabel_key = list(self.RELABELS.keys())[idx]
+                    if relabel_key in self.params:
+                        summary_params[key1] = self.params[relabel_key]
+                        break
+        return summary_params
 
     @property
     def summary_param_names(self) -> list[str]:
@@ -880,10 +948,19 @@ class parser_base(metaclass=parser_meta):
         list[str]
             List of important parameter names.
         """
-        return [
-            self.RELABELS[name] if (name in self.RELABELS and self.relabel) else name
-            for name in self.SUMMARY_PARAM_RAW_NAMES
-        ]
+        names = []
+        for keystr in self.SUMMARY_PARAM_RAW_NAMES:
+            keys = keystr.split("|")
+            key1 = keys[0]  # Take first name if multiple names are provided.
+            for key in keys:
+                if (
+                    key in self.params
+                    or key in self.RELABELS
+                    or key in self.RELABELS.values()
+                ):
+                    names.append(key1)
+                    break
+        return names
 
     @property
     def summary_param_values(self) -> list[Any]:
@@ -895,10 +972,7 @@ class parser_base(metaclass=parser_meta):
         list
             List of important parameter values.
         """
-        return [
-            self.params[key] if key in self.params else None
-            for key in self.SUMMARY_PARAM_RAW_NAMES
-        ]
+        return self.summary_params.values()
 
     @property
     def summary_param_names_with_units(self) -> list[str]:

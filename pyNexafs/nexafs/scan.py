@@ -528,6 +528,7 @@ class scan_base(scan_abstract):
             y_indices = []
             for label in y_labels:
                 try:
+                    # label could be multiple labels, or a tuple of labels.
                     index = self.parser.search_label_index(label)
                     y_indices.append(index)
                 except (AttributeError, ValueError) as e:
@@ -540,9 +541,11 @@ class scan_base(scan_abstract):
         y_errs_labels = assignments["y_errs"]
         if isinstance(y_errs_labels, list):
             y_errs_indices = [
-                self.parser.search_label_index(label)
-                if label in y_errs_labels and y_errs_labels[label] is not None
-                else None
+                (
+                    self.parser.search_label_index(label)
+                    if label in y_errs_labels and y_errs_labels[label] is not None
+                    else None
+                )
                 for label in y_errs_labels
             ]
         elif isinstance(y_errs_labels, str):
