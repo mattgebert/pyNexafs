@@ -245,8 +245,8 @@ class scan_abstract(metaclass=abc.ABCMeta):
         Returns
         -------
         list[str]
-            The y labels. If y data has been redefined without redefining y_labels, y labels are
-            generated in the form 'Data Col. N'.
+            A direct reference to the y labels list. If y data has been redefined
+            without redefining y_labels, y labels are generated in the form 'Data Col. N'.
         """
         if self._y_labels is not None:
             return self._y_labels
@@ -255,7 +255,10 @@ class scan_abstract(metaclass=abc.ABCMeta):
                 np.log10(self.y.shape[1] + 1)
             )  # Gets number of characters for a given number.
             ylabel_fmt_str = "Data Col. {:" + str(chars_col_len) + "d}"
-            return [ylabel_fmt_str.format(i + 1) for i in range(self.y.shape[1])]
+            self._y_labels = [
+                ylabel_fmt_str.format(i + 1) for i in range(self.y.shape[1])
+            ]
+            return self._y_labels
 
     @y_labels.setter
     def y_labels(self, labels: list[str]) -> None:
