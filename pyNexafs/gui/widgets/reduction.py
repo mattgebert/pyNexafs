@@ -3,7 +3,7 @@ import numpy as np
 from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas
 import matplotlib.pyplot as plt
 from matplotlib.backend_bases import MouseButton
-from matplotlib.widgets import SpanSelector
+from matplotlib.widgets import NSpanSelector
 
 
 class EnergyBinReducer(QtWidgets.QWidget):
@@ -41,7 +41,7 @@ class EnergyBinReducer(QtWidgets.QWidget):
         (self.line2,) = ax.plot([], [])
         (self.line3,) = ax.plot([], [])
         self.canvas.draw()
-        self.span = SpanSelector(
+        self.span = NSpanSelector(
             self.ax,
             self.onselect,
             "horizontal",

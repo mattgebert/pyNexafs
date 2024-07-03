@@ -1,22 +1,114 @@
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import numpy as np
-from typing import Any, Collection, Literal, Callable
+import matplotlib.cbook as cbook
 from matplotlib.axes import Axes
 from matplotlib.backend_bases import MouseButton
-from matplotlib.widgets import SpanSelector, ToolLineHandles  # , _SelectorWidget
-import numpy.typing as npt
-import matplotlib.cbook as cbook
-from matplotlib.lines import Line2D
+from matplotlib.widgets import SpanSelector, ToolLineHandles
 from matplotlib.patches import Rectangle
+from matplotlib.colors import Colormap
+from matplotlib.backend_bases import Event as mplEvent
+import numpy as np
+import numpy.typing as npt
+from typing import Any, Collection, Literal, Callable
 import overrides
 
 
 class NSpanSelector(SpanSelector):
     """
+    A modified version of SpanSelector that allows for multiple selections.
+    Visually select multiple min/max ranges on a single axis and call a singular
+    or indexed function with those values.
+
+    To guarantee that the selector remains responsive, keep a reference to it.
+
+    In order to turn off the SpanSelector, set ``span_selector.active`` to
+    False. To turn it back on, set it to True.
+
+    Press and release events triggered at the same coordinates outside the
+    selection will clear the selector, except when
+    ``ignore_event_outside=True``.
+
     Code based on matplotlib.widgets.SpanSelector.
 
-    This class is a modified version of SpanSelector that allows for multiple selections.
+    Parameters
+    ----------
+    N : int
+        The number of selections that can be made.
+
+    ax : `~matplotlib.axes.Axes`
+
+    onselect : A singular callable or list of callables with signature
+        ``func(min: float, max: float)``. The callback function is called
+        after a release event, and the selection is created, changed or removed.
+        If singular, the function will be called for all selections, otherwise
+        the function at the corresponding index will be called.
+
+    direction : {"horizontal", "vertical"}
+        The direction along which to draw the span selector.
+
+    minspan : float, default: 0
+        If selection is less than or equal to *minspan*, the selection is
+        removed (when already existing) or cancelled.
+
+    useblit : bool, default: False
+        If True, use the backend-dependent blitting features for faster
+        canvas updates. See the tutorial :ref:`blitting` for details.
+
+    props : dict, default: {'facecolor': 'red', 'alpha': 0.5}
+        Dictionary of `.Patch` properties.
+
+    onmove_callback : callable with signature ``func(min: float, max: float)``, optional
+        Called on mouse move while the span is being selected.
+
+    interactive : bool, default: False
+        Whether to draw a set of handles that allow interaction with the
+        widget after it is drawn.
+
+    button : `.MouseButton` or list of `.MouseButton`, default: all buttons
+        The mouse buttons which activate the span selector.
+
+    handle_props : dict, default: None
+        Properties of the handle lines at the edges of the span. Only used
+        when *interactive* is True. See `.Line2D` for valid properties.
+
+    grab_range : float, default: 10
+        Distance in pixels within which the interactive tool handles can be activated.
+
+    state_modifier_keys : dict, optional
+        Keyboard modifiers which affect the widget's behavior.  Values
+        amend the defaults, which are:
+
+        - "clear": Clear the current shape, default: "escape".
+
+    drag_from_anywhere : bool, default: False
+        If `True`, the widget can be moved by clicking anywhere within its bounds.
+
+    ignore_event_outside : bool, default: False
+        If `True`, the event triggered outside the span selector will be ignored.
+
+    snap_values : 1D array-like, optional
+        Snap the selector edges to the given values.
+
+    colors : list[str] | str | list[tuple[float, float, float, float]] | tuple[float, float, float, float] | Colormap | None, optional
+        A general mapping of colors to the spans. By default uses mpl.colormaps.get("tab10").
+
+
+    Examples
+    --------
+    >>> import matplotlib.pyplot as plt
+    >>> import matplotlib.widgets as mwidgets
+    >>> fig, ax = plt.subplots()
+    >>> ax.plot([1, 2, 3], [10, 50, 100])
+    >>> N=2
+    >>> def onSelectorGenerator(i):
+    ...     def onselect(vmin, vmax):
+    ...         print(f"Span {i}:\t", vmin, vmax)
+    ...     return onselect
+    >>> fns = [onSelectorGenerator(i) for i in range(N)]
+    >>> span = mwidgets.NSpanSelector(N, ax, fns, 'horizontal', useblit=True, interactive=True)
+    >>> fig.show()
+
+    See also: :doc:`/gallery/widgets/span_selector`
     """
 
     @overrides.overrides
@@ -34,13 +126,24 @@ class NSpanSelector(SpanSelector):
         drag_from_anywhere: bool = False,
         ignore_event_outside: bool = False,
         button: MouseButton | Collection[MouseButton] | None = None,
-        onmove_callback: Callable[[float, float], Any] | None = None,
+        onmove_callback: (
+            list[Callable[[float, float], Any]] | Callable[[float, float], Any] | None
+        ) = None,
         handle_props: dict[str, Any] | None = None,
         state_modifier_keys: dict[str, str] | None = None,
         snap_values: npt.ArrayLike = None,
+        colors: (
+            list[str]
+            | str
+            | list[tuple[float, float, float, float]]
+            | tuple[float, float, float, float]
+            | Colormap
+        ) = mpl.colormaps.get("tab10"),
     ) -> None:
         # Define N
-        self.N = N
+        self._N = N
+        self._props = props  # rectangles
+        self._handle_props = handle_props  # lines
         # Initialise tracking for active handle.
         self._active_handle_idx = None
         super().__init__(
@@ -60,6 +163,179 @@ class NSpanSelector(SpanSelector):
             state_modifier_keys=state_modifier_keys,
             snap_values=snap_values,
         )
+        self.color_spans(colors)
+
+    @property
+    def N(self) -> int:
+        """Returns the number of selections that can be made."""
+        return self._N
+
+    @N.setter
+    def N(self, N: int) -> None:
+        """Sets the number of selections that can be made."""
+        if N != self._N:
+            # Update the number of edge handles based on the change from old self._N
+            if self._edge_handles is not None:
+                # Get existing positions
+                positions = self._edge_handles.positions
+                if N > self._N:
+                    # Add new positions to the end, by default invisible.
+                    ax_v1 = positions[-1]
+                    nPositions = (
+                        *positions,
+                        *(ax_v1 + i + 1 for i in range(N - self._N)),
+                    )
+                else:
+                    # Remove positions from the end, by default invisible.
+                    nPositions = positions[:N]
+            # Reset the handles.
+            self._edge_handles.remove()
+            self._edge_handles = ToolLineHandles(
+                self.ax,
+                nPositions,
+                direction=self.direction,
+                line_props=self._handle_props,
+                useblit=self.useblit,
+            )
+            # Finally update the number of selections.
+            self._N = N
+
+    def color_spans(
+        self,
+        rect_colors: (
+            list[str]
+            | str
+            | list[tuple[float, float, float, float]]
+            | tuple[float, float, float, float]
+            | Colormap
+        ) = mpl.colormaps.get("tab10"),
+        handle_colors: (
+            list[str]
+            | str
+            | list[tuple[float, float, float, float]]
+            | tuple[float, float, float, float]
+            | Colormap
+            | None
+        ) = None,
+    ) -> None:
+        """
+        Set the colors of the rectangle spans and their edge handles.
+
+        Parameters
+        ----------
+        colors : list[str] | list[tuple[float, float, float, float]] | tuple[float, float, float, float] | str | Colormap
+            A general mapping of colors to the spans.
+            If a list is provided, it should match the length of N.
+            If a single color is provided, all spans will be set to that color.
+            Values can be a string, a tuple of RGBA values (0-1), or a Colormap.
+
+        handle_colors : list[str] | str | list[tuple[float, float, float, float]] | tuple[float, float, float, float] | Colormap, optional
+            A general mapping of colors to the edge handles. Must match the same type as colors, as behaviour will be the same.
+            By default None, the edge handles will be set to half the RGB values of the rectangle colors.
+        """
+        rect_clist = []
+        handle_clist = []
+        # Check typing of handle_colors
+        if handle_colors is not None:
+            if type(handle_colors) != type(rect_colors):
+                raise TypeError("handle_colors must match the type of rect_colors.")
+            if hasattr(rect_colors, "__len__") and hasattr(handle_colors, "__len__"):
+                if len(rect_colors) != len(handle_colors):
+                    raise ValueError(
+                        "rect_colors and handle_colors must be the same length."
+                    )
+                if hasattr(rect_colors[0], "__len__") and hasattr(
+                    handle_colors[0], "__len__"
+                ):
+                    if len(rect_colors[0]) != len(handle_colors[0]):
+                        raise ValueError(
+                            "rect_colors and handle_colors must have the same number of elements."
+                        )
+
+        ## Gather all colors for the rectangles and edge handles.
+        # LIST
+        if isinstance(rect_colors, list):
+            rect_clist = rect_colors.copy()
+            if isinstance(rect_colors[0], str):
+                handle_clist = (
+                    handle_colors.copy()
+                    if handle_colors is not None
+                    else rect_clist.copy()
+                )
+            elif isinstance(rect_colors[0], (tuple, list)):
+                handle_clist = (
+                    # List of RGBA from rect_colors
+                    [
+                        (
+                            (*(RGB * 0.5 for RGB in color[0:3]), color[3])
+                            if len(rect_colors[0]) > 3
+                            # List of RGB from rect_colors
+                            else (RGB * 0.5 for RGB in color[0:3])
+                        )
+                        for color in rect_colors
+                    ]
+                    if handle_colors is None
+                    # If handle_colors is defined, use that for the edge handles.
+                    else handle_colors
+                )
+                if len(rect_colors) > 3:
+                    handle_clist = [RGB + (rect_colors[3],) for RGB in handle_clist]
+            else:
+                raise TypeError("rect_colors must be a list of strings or tuples.")
+        # TUPLE
+        elif isinstance(rect_colors, tuple):
+            rect_clist = [rect_colors for _ in range(self.N)]
+            handle_clist = (
+                # List of RGBA from rect_colors tuple
+                [
+                    (
+                        (*(RGB * 0.5 for RGB in rect_colors[0:3]), rect_colors[3])
+                        if len(rect_colors) > 3
+                        # List of RGB from rect_colors tuple
+                        else (RGB * 0.5 for RGB in rect_colors[0:3])
+                    )
+                    for _ in range(self.N)
+                ]
+                if handle_colors is None
+                else [handle_colors for _ in range(self.N)]
+            )
+        # STR
+        elif isinstance(rect_colors, str):
+            # String cannot be used to set darker edge handles. Just copy.
+            rect_clist = [rect_colors for _ in range(self.N)]
+            handle_clist = (
+                rect_clist.copy()
+                if handle_colors is None
+                else [handle_colors for _ in range(self.N)]
+            )
+        # CMAP
+        elif isinstance(rect_colors, Colormap):
+            # Use discrete colormap (i.e., mpl.colormaps.get("tab10")) to get N colours.
+            rect_clist = [rect_colors(i) for i in range(self.N)]
+            handle_clist = (
+                # List of RGBA from rect_colors tuple
+                [
+                    (
+                        (*(RGB * 0.5 for RGB in color[0:3]), color[3])
+                        if len(color) > 3
+                        # List of RGB from rect_colors tuple
+                        else (RGB * 0.5 for RGB in color[0:3])
+                    )
+                    for color in rect_clist
+                ]
+                if handle_colors is None
+                else [handle_colors(i) for i in range(self.N)]
+            )
+        else:
+            raise TypeError("rect_colors must be a list, string or Colormap.")
+
+        ## Apply colours to the rectangles and edge handles.
+        for i, selection_artist in enumerate(self._selection_artists):
+            selection_artist.set_facecolor(rect_clist[i])
+            if self._interactive:
+                self._edge_handles._artists[i * 2].set_color(handle_clist[i])
+                self._edge_handles._artists[i * 2 + 1].set_color(handle_clist[i])
+        return
 
     # --------------- Override attributes of _SelectorWidget ---------------:
     @property
@@ -79,23 +355,13 @@ class NSpanSelector(SpanSelector):
             artist.set(**props)
         if self.useblit:
             self.update()
-
-    from matplotlib.colors import Colormap
-    from matplotlib.backend_bases import Event as mplEvent
-
-    @overrides.overrides
-    def update_background(
-        self, event: mplEvent, cmap: Colormap = mpl.colormaps.get("tab10")
-    ) -> None:
-        super().update_background(event)
-        # Change colour of each selection artist using a cmap
-        for i, selection_artist in enumerate(self._selection_artists):
-            selection_artist.set_facecolor(cmap(i))
-        return
+        # Additionally updates stored props
+        self._handle_props.update(props)
 
     # --------------- Override attributes of SpanSelector ---------------:
     @overrides.overrides
     def _setup_edge_handles(self, props):
+        ## Overrides to define 2*self.N handles for selection in _edge_handles.
         # Define initial position using the axis bounds to keep the same bounds
         if self.direction == "horizontal":
             positions = self.ax.get_xbound()
@@ -104,8 +370,8 @@ class NSpanSelector(SpanSelector):
 
         # Use N to define 2*N handles for selection in _edge_handles.
         dxy = (positions[1] - positions[0]) / (2 * self.N - 1)
-        nPositions = (dxy * i for i in range(2 * self.N))
-
+        nPositions = (positions[0] + dxy * i for i in range(2 * self.N))
+        # Set handles.
         self._edge_handles = ToolLineHandles(
             self.ax,
             nPositions,
@@ -120,113 +386,153 @@ class NSpanSelector(SpanSelector):
         # Overrides to define self.N rectangles for selection in rect_artists
         # and self._selection_artists variables. Previously was rect_artist and
         # self._selection_artist.
-        self.ax = ax
-        assert isinstance(self.ax, Axes)
-        if self.canvas is not ax.figure.canvas:
-            if self.canvas is not None:
-                self.disconnect_events()
 
-            self.canvas = ax.figure.canvas
-            self.connect_default_events()
-
-        # Reset
-        self._selection_completed = False
-        # Direction of variables.
-        if self.direction == "horizontal":
-            trans = ax.get_xaxis_transform()
-            w, h = 0, 1
+        # Also implements an axis update, where the number of selections can be changed.
+        if (
+            self.ax is ax
+            and hasattr(self, "_selection_artists")
+            and self._selection_artists is not None
+        ):
+            # Updating axis
+            art_len = len(self._selection_artists)
+            if art_len == self.N:
+                return
+            else:
+                # Use existing artists if the Axes is the same.
+                if art_len >= self.N:
+                    self._selection_artists = self._selection_artists[: self.N]
+                else:
+                    # Create new artists if the number of selections has increased.
+                    # Hide the artists at creation.
+                    v1, v2 = self.ax.get_xbound()[0]
+                    if art_len > 0:
+                        v1 = (
+                            self._selection_artists[-1].get_x()
+                            + self._selection_artists[-1].get_width()
+                        )
+                    self._selection_artists += [
+                        Rectangle(
+                            xy=(
+                                (
+                                    (
+                                        v1 + i
+                                        if v1 + i < v2
+                                        else v1 + ((v1 + i) % (v2 - v1))
+                                    ),
+                                    0,
+                                )
+                                if self.direction == "horizontal"
+                                else (
+                                    0,
+                                    (
+                                        v1 + i
+                                        if v1 + i < v2
+                                        else v1 + ((v1 + i) % (v2 - v1))
+                                    ),
+                                )
+                            ),
+                            width=0 if self.direction == "horizontal" else 1,
+                            height=1 if self.direction == "horizontal" else 0,
+                            transform=ax.transData,
+                            visible=False,
+                        )
+                        for i in range(self.N - art_len)
+                    ]
         else:
-            trans = ax.get_yaxis_transform()
-            w, h = 1, 0
+            self.ax = ax
+            assert isinstance(self.ax, Axes)
+            if self.canvas is not ax.figure.canvas:
+                if self.canvas is not None:
+                    self.disconnect_events()
 
-        # Generate rectangles for selection.
-        # use double the number of selections to allow spaces between
+                self.canvas = ax.figure.canvas
+                self.connect_default_events()
 
-        dw = w / (2 * self.N - 1)
-        dh = h / (2 * self.N - 1)
-        rect_artists = [
-            Rectangle(
-                xy=(
-                    (2 * i * dw, 0)
-                    if self.direction == "horizontal"
-                    else (0, 2 * i * dh)
-                ),
-                width=w,
-                height=h,
-                transform=trans,
-                visible=False,
-            )
-            for i in range(self.N)
-        ]
-        for i, rect_artist in enumerate(rect_artists):
-            if _props is not None:
-                rect_artist.update(_props)
-            elif self._selection_artists is not None and len(
-                self._selection_artists
-            ) == len(rect_artists):
-                rect_artist.update_from(self._selection_artists[i])
-            self.ax.add_patch(rect_artist)
-        self._selection_artists = rect_artists
+            # Reset
+            self._selection_completed = False
+            # Direction of variables.
+            if self.direction == "horizontal":
+                trans = ax.get_xaxis_transform()
+                w, h = 0, 1
+            else:
+                trans = ax.get_yaxis_transform()
+                w, h = 1, 0
 
-    @overrides.override
-    def _setup_edge_handles(self, props):
-        ## Overrides to define 2*self.N handles for selection in _edge_handles.
-        # Define initial position using the axis bounds to keep the same bounds
-        if self.direction == "horizontal":
-            positions = self.ax.get_xbound()
-        else:
-            positions = self.ax.get_ybound()
-        # Update positions to include handles at each Nth position
-        dxy = (positions[1] - positions[0]) / (2 * self.N - 1)
-        nPositions = (positions[0] + dxy * i for i in range(2 * self.N))
-        # Set handles.
-        self._edge_handles = ToolLineHandles(
-            self.ax,
-            nPositions,
-            direction=self.direction,
-            line_props=props,
-            useblit=self.useblit,
-        )
+            # Generate rectangles for selection.
+            # use double the number of selections to allow spaces between
+
+            dw = w / (2 * self.N - 1)
+            dh = h / (2 * self.N - 1)
+            rect_artists = [
+                Rectangle(
+                    xy=(
+                        (2 * i * dw, 0)
+                        if self.direction == "horizontal"
+                        else (0, 2 * i * dh)
+                    ),
+                    width=w,
+                    height=h,
+                    transform=trans,
+                    visible=False,
+                )
+                for i in range(self.N)
+            ]
+            for i, rect_artist in enumerate(rect_artists):
+                if _props is not None:
+                    rect_artist.update(_props)
+                elif self._selection_artists is not None and len(
+                    self._selection_artists
+                ) == len(rect_artists):
+                    rect_artist.update_from(self._selection_artists[i])
+                self.ax.add_patch(rect_artist)
+            self._selection_artists = rect_artists
 
     @overrides.overrides
     def _press(self, event):
         """Button press event handler."""
         # Overrides to use self._selection_artists instead of self._selection_artist.
         # Also adjust extents for only the active handle.
+
+        xdata, ydata = self._get_data_coords(event)
+        v = xdata if self.direction == "horizontal" else ydata
         self._set_cursor(True)
-        if self._interactive and any(
-            [select_artist.get_visible() for select_artist in self._selection_artists]
-        ):
+
+        # Tracking for non-visible selection artists; used in self._release if the selection is less than minspan;
+        # removes nearest visible instead of revealing invisible.
+        self._active_handle_vis = True
+
+        # If any artists rect selection artists are not visible, add one at the cursor locatin.
+        sel_artists_vis = np.array(
+            [artist.get_visible() for artist in self._selection_artists], bool
+        )
+        if self._visible is False or np.any(sel_artists_vis == False):
+            i = np.argmax(sel_artists_vis == False)
+            ex = self.extents
+            ex[i] = v, v
+            self.extents = ex
+
+            self._active_handle_vis = False
+            self.set_visible(True, i)
+            # Setting active handle again when no handles are defined (ie. self._interactive = False) is necessary.
+            self._active_handle_idx = i
+
+        # Set the active handle based on the location of the mouse event.
+        visible_rects = [
+            select_artist.get_visible() for select_artist in self._selection_artists
+        ]
+        if any(visible_rects) and self._interactive:
             self._set_active_handle(event)
+        elif any(visible_rects) and self._active_handle_idx is not None:
+            # When not interactive, but active handle index has been defined.
+            self._active_handle = None
         else:
             self._active_handle = None
             self._active_handle_idx = None
 
+        # If no handle is active, then we are done.
         if self._active_handle is None or not self._interactive:
             # Clear previous rectangle before drawing new rectangle.
             self.update()
-
-        xdata, ydata = self._get_data_coords(event)
-        v = xdata if self.direction == "horizontal" else ydata
-
-        if self._active_handle is None and not self.ignore_event_outside:
-            # Collect closest edge handle to the mouse press event.
-            closest, dist = self._edge_handles.closest(xdata, ydata)
-            handle_idx = int(np.floor(closest / 2))
-            minmax = closest % 2
-
-            # when the press event outside the span, we initially set the
-            # visibility to False and extents to (v, v)
-            # update will be called when setting the extents
-            self.set_visible(False, closest)
-            ex = self.extents
-            ex[handle_idx] = v, v
-            self.extents = ex
-            # We need to set the visibility back, so the span selector will be
-            # drawn when necessary (span width > 0)
-            self.set_visible(True, closest)
-        else:
-            self.set_visible(True)
 
         return False
 
@@ -242,8 +548,6 @@ class NSpanSelector(SpanSelector):
 
         # Save selection index. 2 handles per selection, so divide by 2.
         self._active_handle_idx = h_idx
-        # Save coordinates of rectangle at the start of handle movement.
-        self._extents_on_press = self.extents[h_idx]
 
         ## Prioritise within proximity to edge handle, then centre handle, then outside.
         if e_dist < self.grab_range:
@@ -257,9 +561,21 @@ class NSpanSelector(SpanSelector):
             self._active_handle = "C"
         elif "move" in self._state:
             self._active_handle = "C"
-        else:
-            # If outside the region, instead use closest edge.
+        elif not self.ignore_event_outside:
+            # If outside the region, instead use closest edge determine which selection.
             self._active_handle = self._edge_order[edge_order_idx]
+            # Get the extents for the active handle.
+            xdata, ydata = self._get_data_coords(event)
+            v = xdata if self.direction == "horizontal" else ydata
+            ex = self.extents
+            ex[h_idx] = v, v
+            self.extents = ex
+        else:
+            self._active_handle = None
+            self._active_handle_idx = None
+
+        # Save coordinates of rectangle at the start of handle movement.
+        self._extents_on_press = self.extents[h_idx]
 
     @overrides.overrides
     def _contains(self, event):
@@ -326,14 +642,23 @@ class NSpanSelector(SpanSelector):
             self.extents = ex
 
         if self.onmove_callback is not None:
-            self.onmove_callback(vmin, vmax)
-
+            # If a list corresponding to spans, call particular span.
+            if isinstance(self.onmove_callback, list):
+                if self._active_handle_idx is not None:
+                    self.onmove_callback[self._active_handle_idx](vmin, vmax)
+                else:
+                    # No index selected, don't call.
+                    pass
+            else:
+                # Else singular function for all spans.
+                self.onmove_callback(vmin, vmax)
         return False
 
     @overrides.overrides
     def set_visible(self, visible: bool, index: int = None) -> None:
         """
         Overrides functionality of default _SelectorWidget.set_visible method.
+        Uses additional artists and sets visibility for all selection artists if no index is provided.
 
         Parameters
         ----------
@@ -344,7 +669,16 @@ class NSpanSelector(SpanSelector):
             all selection artists will be set to the same visibility.
         """
         if index is not None:
-            self.artists[index].set_visible(visible)
+            self._selection_artists[index].set_visible(visible)
+            if self._edge_handles is not None and self._interactive:
+                self._edge_handles._artists[index * 2].set_visible(visible)
+                self._edge_handles._artists[index * 2 + 1].set_visible(visible)
+            if visible is True:
+                self._visible = True
+                return
+            else:
+                if np.all([artist.get_visible() is False for artist in self.artists]):
+                    self._visible = False
         else:
             self._visible = visible
             for artist in self.artists:
@@ -355,9 +689,7 @@ class NSpanSelector(SpanSelector):
         """Button release event handler."""
         self._set_cursor(False)
 
-        if not self._interactive:
-            self._selection_artist.set_visible(False)
-
+        ### If already completed, return and don't trigger onselect callback.
         if (
             self._active_handle is None
             and self._selection_completed
@@ -365,37 +697,102 @@ class NSpanSelector(SpanSelector):
         ):
             return
 
+        ### Get the extents
         ext = self.extents
         spans = [vmax - vmin for vmin, vmax in ext]
 
-        for i, span in enumerate(spans):
-            vmin, vmax = ext[i]
-            if span <= self.minspan:
-                # Remove span and set self._selection_completed = False
-                self.set_visible(False, index=i)
-                if self._selection_completed:
-                    # Call onselect, only when the span is already existing
-                    if (
-                        isinstance(self.onselect, list)
-                        and self._active_handle_idx is not None
-                    ):
-                        # Call onselect, only when the handle index matches
-                        if i == self._active_handle_idx:
-                            self.onselect[i](vmin, vmax)
+        ### Call function(s) for selections.
+        # If not interactive (ie, spans disappear after full selection) then hide once the last selection is made.
+        if not self._interactive:
+            # Check if the active handle belongs to the last required selection (last two handles).
+            if (
+                self._active_handle_idx is not None
+                and self._active_handle_idx >= self.N - 1
+            ):
+                for artist in self._selection_artists:
+                    artist.set_visible(False)
+
+        # Perform hiding in case the span is less than minspan. Perform again later if changing handle.
+        if self._active_handle_idx is not None:
+            idx = self._active_handle_idx
+            if spans[idx] <= self.minspan:
+                self.set_visible(False, index=idx)
+        else:
+            idx = None
+
+        # If span was already invisible, then hide the next nearest visible span.
+        if not self._active_handle_vis:
+            visible_rects = [
+                select_artist
+                for select_artist in self._selection_artists
+                if select_artist.get_visible()
+            ]
+            if len(visible_rects) > 0:
+                xdata, ydata = self._get_data_coords(event)
+                # If the delta is less than the minspan, then hide the nearest visible.
+                v = (
+                    abs(xdata - self._eventpress.xdata)
+                    if self.direction == "horizontal"
+                    else abs(ydata - self._eventpress.ydata)
+                )
+                if v <= self.minspan:
+                    # Use release x,y to find closest visible.
+                    vis_idx = np.argmin(
+                        [
+                            # Minimum of X or X + Width for horizontal
+                            (
+                                min(
+                                    abs(select_artist.get_x() - xdata),
+                                    abs(
+                                        select_artist.get_x()
+                                        + select_artist.get_width()
+                                        - xdata
+                                    ),
+                                )
+                                if self.direction == "horizontal"
+                                # Minimum of Y or Y + Height for vertical
+                                else min(
+                                    abs(select_artist.get_y() - xdata),
+                                    abs(
+                                        select_artist.get_y()
+                                        + select_artist.get_height()
+                                        - ydata
+                                    ),
+                                )
+                            )
+                            for select_artist in visible_rects
+                        ]
+                    )
+                    # Find the index of the visible selection in the selection artists.
+                    closest_idx = self._selection_artists.index(visible_rects[vis_idx])
+                    # Set it to visible.
+                    self.set_visible(False, index=closest_idx)
+                    # Change the active handle index to freshly hidden selection.
+                    self._active_handle_idx = closest_idx
+                    self._active_handle_vis = True
+
+        # Perform the selection call.
+        if not self._selection_completed:
+            # If active handle
+            if idx is not None:
+                idx = self._active_handle_idx
+                vmin, vmax = ext[idx]
+                if spans[idx] <= self.minspan:
+                    self.set_visible(False, index=idx)
+                    if self._selection_completed:
+                        # Only call onselect if the span was previously existing.
+                        if isinstance(self.onselect, list):
+                            self.onselect[idx](vmin, vmax)
+                        else:
+                            self.onselect(vmin, vmax)
+                    self._selection_completed = False
+                else:
+                    # If onselect is a list, call the indexed function.
+                    if isinstance(self.onselect, list):
+                        self.onselect[idx](vmin, vmax)
                     else:
                         self.onselect(vmin, vmax)
-                self._selection_completed = False
-            else:
-                if (
-                    isinstance(self.onselect, list)
-                    and self._active_handle_idx is not None
-                ):
-                    # Call onselect, only when the handle index matches
-                    if i == self._active_handle_idx:
-                        self.onselect[i](vmin, vmax)
-                else:
-                    self.onselect(vmin, vmax)
-                self._selection_completed = True
+                    self._selection_completed = True
 
         self.update()
 
@@ -439,7 +836,6 @@ class NSpanSelector(SpanSelector):
             # Update displayed handles
             extent_data = np.array(extents).flatten()
             self._edge_handles.set_data(extent_data)
-        self.set_visible(self._visible)
         self.update()
 
     def _draw_shapes(
@@ -450,6 +846,7 @@ class NSpanSelector(SpanSelector):
         Draws the selection shapes on the axes."""
         for i, extent in enumerate(extents):
             (vmin, vmax) = extent
+            # Reorder if necessary
             if vmin > vmax:
                 vmin, vmax = vmax, vmin
             if self.direction == "horizontal":
@@ -480,10 +877,14 @@ class NSpanSelector(SpanSelector):
     def colors_rect(self, colors: list[str] | str):
         if isinstance(colors, list):
             for i, color in enumerate(colors):
-                self._selection_artists[i].set_facecolor(color)
+                if len(color) > 3:
+                    self._selection_artists[i].set_alpha(color[3])
+                self._selection_artists[i].set_facecolor(color[0:3])
         elif isinstance(colors, str):
             for artist in self._selection_artists:
-                artist.set_facecolor(colors)
+                if len(color) > 3:
+                    artist.set_alpha(color[3])
+                artist.set_facecolor(color[0:3])
         else:
             raise ValueError(f"colors '{colors}' must be a list or a string")
         self.update()
@@ -540,19 +941,20 @@ if __name__ == "__main__":
     span = 5
 
     def onselect1(xmin, xmax):
-        print("1", xmin, xmax)
+        print("1st Span:\t", xmin, xmax)
         pass
 
     def onselect2(xmin, xmax):
-        print("2", xmin, xmax)
+        print("2nd Span:\t", xmin, xmax)
         pass
 
     def onselect3(xmin, xmax):
-        print("3", xmin, xmax)
-        thecols = span.colors_rect[-1]
-        print(thecols)
-        # thecols[-1]
-        # span.colors_rect = thecols
+        print("3rd Span:\t", xmin, xmax)
+        thecols = span.colors_rect
+        newGreen = np.sqrt(thecols[-1])
+        newGreen[0:3] = thecols[-1][0:3]  # keep colour, change alpha
+        thecols[-1] = tuple(newGreen)
+        span.colors_rect = thecols
         pass
 
     span = NSpanSelector(
@@ -564,6 +966,14 @@ if __name__ == "__main__":
         interactive=True,
         useblit=True,
     )
-    span.extents = [(1, 2), (3, 4), (5, 6)]
+
+    # span = SpanSelector(
+    #     ax=ax,
+    #     onselect=onselect1,
+    #     direction="horizontal",
+    #     drag_from_anywhere=True,
+    #     interactive=True,
+    #     useblit=True,
+    # )
 
     plt.show()
