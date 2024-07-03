@@ -19,6 +19,16 @@ class NSpanSelector(SpanSelector):
     Visually select multiple min/max ranges on a single axis and call a singular
     or indexed function with those values.
 
+    If 'interactive' is set to True, the widget will allow for the selection
+    and movement of multiple handles in order. The selections can be removed by
+    press/releasing on the same location in proximity to the span
+    If 'interactive' is set to False, the widget will allow for N selections before
+    clearing all selections.
+
+    Notably `onselect` and `onmove_callback` can be singular or a list of callables,
+    where the index of the callable will correspond to the index of the selection.
+    If singular, the function will be called for all selections.
+
     To guarantee that the selector remains responsive, keep a reference to it.
 
     In order to turn off the SpanSelector, set ``span_selector.active`` to
@@ -99,7 +109,7 @@ class NSpanSelector(SpanSelector):
     >>> import matplotlib.widgets as mwidgets
     >>> fig, ax = plt.subplots()
     >>> ax.plot([1, 2, 3], [10, 50, 100])
-    >>> N=2
+    >>> N=3
     >>> def onSelectorGenerator(i):
     ...     def onselect(vmin, vmax):
     ...         print(f"Span {i}:\t", vmin, vmax)
@@ -111,7 +121,8 @@ class NSpanSelector(SpanSelector):
     See also: :doc:`/gallery/widgets/span_selector`
     """
 
-    @overrides.overrides
+    # overrides the __init__ method of the SpanSelector class
+    # @overrides.overrides
     def __init__(
         self,
         N: int,
@@ -338,6 +349,7 @@ class NSpanSelector(SpanSelector):
         return
 
     # --------------- Override attributes of _SelectorWidget ---------------:
+    # overrides artists property
     @property
     def artists(self):
         # Overrides to include self._selection_artists instead of
@@ -349,8 +361,8 @@ class NSpanSelector(SpanSelector):
     def set_props(self, **props) -> None:
         # Overrides to set properties for all selection artists,
         # instead of just the single selection artist.
-        artist = self._selection_artists
-        for artist in self.artists:
+        artists = self._selection_artists
+        for artist in artists:
             props = cbook.normalize_kwargs(props, artist)
             artist.set(**props)
         if self.useblit:
@@ -388,6 +400,9 @@ class NSpanSelector(SpanSelector):
         # self._selection_artist.
 
         # Also implements an axis update, where the number of selections can be changed.
+
+        # Reset selection on new axes.
+        self._selection_completed = False
         if (
             self.ax is ax
             and hasattr(self, "_selection_artists")
@@ -440,7 +455,7 @@ class NSpanSelector(SpanSelector):
                     ]
         else:
             self.ax = ax
-            assert isinstance(self.ax, Axes)
+            # assert isinstance(self.ax, Axes) # allow editor to recognise type.
             if self.canvas is not ax.figure.canvas:
                 if self.canvas is not None:
                     self.disconnect_events()
@@ -448,8 +463,6 @@ class NSpanSelector(SpanSelector):
                 self.canvas = ax.figure.canvas
                 self.connect_default_events()
 
-            # Reset
-            self._selection_completed = False
             # Direction of variables.
             if self.direction == "horizontal":
                 trans = ax.get_xaxis_transform()
@@ -501,11 +514,15 @@ class NSpanSelector(SpanSelector):
         # removes nearest visible instead of revealing invisible.
         self._active_handle_vis = True
 
-        # If any artists rect selection artists are not visible, add one at the cursor locatin.
+        # Check if  hovering an existing visible handle.
+        index, e_dist = self._edge_handles.closest(event.x, event.y)
+        hover = e_dist <= self.grab_range
+
+        # If any artists rect selection artists are not visible, add one at the cursor location
         sel_artists_vis = np.array(
             [artist.get_visible() for artist in self._selection_artists], bool
         )
-        if self._visible is False or np.any(sel_artists_vis == False):
+        if (self._visible is False or np.any(sel_artists_vis == False)) and not hover:
             i = np.argmax(sel_artists_vis == False)
             ex = self.extents
             ex[i] = v, v
@@ -782,16 +799,36 @@ class NSpanSelector(SpanSelector):
                     if self._selection_completed:
                         # Only call onselect if the span was previously existing.
                         if isinstance(self.onselect, list):
-                            self.onselect[idx](vmin, vmax)
+                            if callable(self.onselect[idx]):
+                                self.onselect[idx](vmin, vmax)
+                            else:
+                                raise ValueError(
+                                    f"onselect `{self.onselect[idx]}` must be a callable."
+                                )
                         else:
-                            self.onselect(vmin, vmax)
+                            if callable(self.onselect):
+                                self.onselect(vmin, vmax)
+                            else:
+                                raise ValueError(
+                                    f"onselect `{self.onselect}` must be a callable."
+                                )
                     self._selection_completed = False
                 else:
                     # If onselect is a list, call the indexed function.
                     if isinstance(self.onselect, list):
-                        self.onselect[idx](vmin, vmax)
+                        if callable(self.onselect[idx]):
+                            self.onselect[idx](vmin, vmax)
+                        else:
+                            raise ValueError(
+                                f"onselect `{self.onselect[idx]}` must be a callable."
+                            )
                     else:
-                        self.onselect(vmin, vmax)
+                        if callable(self.onselect):
+                            self.onselect(vmin, vmax)
+                        else:
+                            raise ValueError(
+                                f"onselect `{self.onselect}` must be a callable."
+                            )
                     self._selection_completed = True
 
         self.update()
