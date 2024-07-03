@@ -56,6 +56,11 @@ class NSpanSelector(SpanSelector):
     direction : {"horizontal", "vertical"}
         The direction along which to draw the span selector.
 
+    callback_at_selection_complete: bool, default: False
+        If True, the onselect callback will be called only when the selection
+        is completed, i.e., all N selections are made. If False, the callback
+        will be called at each selection.
+
     minspan : float, default: 0
         If selection is less than or equal to *minspan*, the selection is
         removed (when already existing) or cancelled.
@@ -129,6 +134,7 @@ class NSpanSelector(SpanSelector):
         ax: Axes,
         onselect: list[Callable[[float, float], Any]] | Callable[[float, float], Any],
         direction: Literal["horizontal"] | Literal["vertical"],
+        callback_at_selection_complete: bool = False,
         minspan: float = 0,
         useblit: bool = False,
         props: dict[str, Any] | None = {"facecolor": "red", "alpha": 0.5},
@@ -156,7 +162,9 @@ class NSpanSelector(SpanSelector):
         self._props = props  # rectangles
         self._handle_props = handle_props  # lines
         # Initialise tracking for active handle.
-        self._active_handle_idx = None
+        self._active_selection_idx = None
+        # Initialise callback behaviour for selection(s) completion.
+        self._callback_at_selection_complete = callback_at_selection_complete
         super().__init__(
             ax=ax,
             onselect=onselect,
@@ -516,7 +524,10 @@ class NSpanSelector(SpanSelector):
 
         # Check if  hovering an existing visible handle.
         index, e_dist = self._edge_handles.closest(event.x, event.y)
-        hover = e_dist <= self.grab_range
+        hover = (
+            e_dist <= self.grab_range
+            and self._edge_handles.artists[index].get_visible()
+        )
 
         # If any artists rect selection artists are not visible, add one at the cursor location
         sel_artists_vis = np.array(
@@ -531,7 +542,7 @@ class NSpanSelector(SpanSelector):
             self._active_handle_vis = False
             self.set_visible(True, i)
             # Setting active handle again when no handles are defined (ie. self._interactive = False) is necessary.
-            self._active_handle_idx = i
+            self._active_selection_idx = i
 
         # Set the active handle based on the location of the mouse event.
         visible_rects = [
@@ -539,17 +550,19 @@ class NSpanSelector(SpanSelector):
         ]
         if any(visible_rects) and self._interactive:
             self._set_active_handle(event)
-        elif any(visible_rects) and self._active_handle_idx is not None:
+        elif any(visible_rects) and self._active_selection_idx is not None:
             # When not interactive, but active handle index has been defined.
             self._active_handle = None
         else:
             self._active_handle = None
-            self._active_handle_idx = None
+            self._active_selection_idx = None
 
         # If no handle is active, then we are done.
         if self._active_handle is None or not self._interactive:
             # Clear previous rectangle before drawing new rectangle.
             self.update()
+
+        print(self._active_selection_idx, self._active_handle, self._extents_on_press)
 
         return False
 
@@ -564,7 +577,14 @@ class NSpanSelector(SpanSelector):
         edge_order_idx = e_idx % 2  # 0 for min, 1 for max
 
         # Save selection index. 2 handles per selection, so divide by 2.
-        self._active_handle_idx = h_idx
+        self._active_selection_idx = h_idx
+
+        # Check if another selection artist contains the event.
+        # This is used after closest contains is checked.
+        contains = [
+            artist.contains(event) and i != h_idx and artist.get_visible()
+            for i, artist in enumerate(self._selection_artists)
+        ]
 
         ## Prioritise within proximity to edge handle, then centre handle, then outside.
         if e_dist < self.grab_range:
@@ -574,7 +594,7 @@ class NSpanSelector(SpanSelector):
             # Check if we've clicked inside any region.
             # Note: self._contains changes self._active_handle_idx if True for a different index.
             # Update the extents, in case the active handle index has changed.
-            self._extents_on_press = self.extents[self._active_handle_idx]
+            h_idx = self._active_selection_idx
             self._active_handle = "C"
         elif "move" in self._state:
             self._active_handle = "C"
@@ -589,7 +609,7 @@ class NSpanSelector(SpanSelector):
             self.extents = ex
         else:
             self._active_handle = None
-            self._active_handle_idx = None
+            self._active_selection_idx = None
 
         # Save coordinates of rectangle at the start of handle movement.
         self._extents_on_press = self.extents[h_idx]
@@ -597,7 +617,8 @@ class NSpanSelector(SpanSelector):
     @overrides.overrides
     def _contains(self, event):
         """Return True if event is within the selected handle index."""
-        i = self._active_handle_idx
+        # Note, if the event is within another span, then the active handle index is updated.
+        i = self._active_selection_idx
         if i is None:
             return False
         else:
@@ -608,7 +629,7 @@ class NSpanSelector(SpanSelector):
                 for j, selection_artist in enumerate(self._selection_artists):
                     if j != i and selection_artist.contains(event, radius=0)[0]:
                         # Update active handle index to the selection artist that contains the event.
-                        self._active_handle_idx = j
+                        self._active_selection_idx = j
                         return True
 
     @overrides.overrides
@@ -650,19 +671,21 @@ class NSpanSelector(SpanSelector):
             if self.ignore_event_outside and self._selection_completed:
                 return
             vmin, vmax = vpress, v
-            if vmin > vmax:
-                vmin, vmax = vmax, vmin
 
-        if self._active_handle_idx is not None:
+        # Swap vmin, vmax if necessary
+        if vmin > vmax:
+            vmin, vmax = vmax, vmin
+
+        if self._active_selection_idx is not None:
             ex = self.extents
-            ex[self._active_handle_idx] = vmin, vmax
+            ex[self._active_selection_idx] = vmin, vmax
             self.extents = ex
 
         if self.onmove_callback is not None:
             # If a list corresponding to spans, call particular span.
             if isinstance(self.onmove_callback, list):
-                if self._active_handle_idx is not None:
-                    self.onmove_callback[self._active_handle_idx](vmin, vmax)
+                if self._active_selection_idx is not None:
+                    self.onmove_callback[self._active_selection_idx](vmin, vmax)
                 else:
                     # No index selected, don't call.
                     pass
@@ -670,6 +693,25 @@ class NSpanSelector(SpanSelector):
                 # Else singular function for all spans.
                 self.onmove_callback(vmin, vmax)
         return False
+
+    @overrides.overrides
+    def _hover(self, event):
+        """Update the canvas cursor if it's over a handle."""
+        # Overrides behaviour so that hovering edge_handles will work with incomplete selections.
+        # But ignore invisible selections.
+        if self.ignore(event):
+            return
+
+        if self._active_handle is not None:
+            # Do nothing if button is pressed and a handle is active, which may
+            # occur with drag_from_anywhere=True.
+            return
+
+        index, e_dist = self._edge_handles.closest(event.x, event.y)
+        self._set_cursor(
+            e_dist <= self.grab_range
+            and self._edge_handles.artists[index].get_visible()
+        )
 
     @overrides.overrides
     def set_visible(self, visible: bool, index: int = None) -> None:
@@ -723,98 +765,87 @@ class NSpanSelector(SpanSelector):
         if not self._interactive:
             # Check if the active handle belongs to the last required selection (last two handles).
             if (
-                self._active_handle_idx is not None
-                and self._active_handle_idx >= self.N - 1
+                self._active_selection_idx is not None
+                and self._active_selection_idx >= self.N - 1
             ):
                 for artist in self._selection_artists:
                     artist.set_visible(False)
 
-        # Perform hiding in case the span is less than minspan. Perform again later if changing handle.
-        if self._active_handle_idx is not None:
-            idx = self._active_handle_idx
+        # Hide current span in case the span is less than minspan.
+        # Perform again later if changing handle
+        idx = self._active_selection_idx
+        if self._active_selection_idx is not None:
             if spans[idx] <= self.minspan:
                 self.set_visible(False, index=idx)
-        else:
-            idx = None
 
-        # If span was already invisible, then hide the next nearest visible span.
-        if not self._active_handle_vis:
-            visible_rects = [
-                select_artist
-                for select_artist in self._selection_artists
-                if select_artist.get_visible()
-            ]
-            if len(visible_rects) > 0:
-                xdata, ydata = self._get_data_coords(event)
-                # If the delta is less than the minspan, then hide the nearest visible.
-                v = (
-                    abs(xdata - self._eventpress.xdata)
-                    if self.direction == "horizontal"
-                    else abs(ydata - self._eventpress.ydata)
-                )
-                if v <= self.minspan:
-                    # Use release x,y to find closest visible.
-                    vis_idx = np.argmin(
-                        [
-                            # Minimum of X or X + Width for horizontal
-                            (
-                                min(
-                                    abs(select_artist.get_x() - xdata),
-                                    abs(
-                                        select_artist.get_x()
-                                        + select_artist.get_width()
-                                        - xdata
-                                    ),
-                                )
-                                if self.direction == "horizontal"
-                                # Minimum of Y or Y + Height for vertical
-                                else min(
-                                    abs(select_artist.get_y() - xdata),
-                                    abs(
-                                        select_artist.get_y()
-                                        + select_artist.get_height()
-                                        - ydata
-                                    ),
-                                )
-                            )
-                            for select_artist in visible_rects
-                        ]
+        # Find visible selection artists, exclusing the active handle.
+        visible_rects = [
+            select_artist
+            for i, select_artist in enumerate(self._selection_artists)
+            if select_artist.get_visible() and i != idx
+        ]
+        # Check if active selection wasn't and won't be visible
+        if (
+            not self._active_handle_vis
+            and idx
+            and spans[idx] <= self.minspan
+            and len(visible_rects) > 0
+        ):
+            # Hide the nearest visible selection if any visible.
+            # Use release x,y to find closest visible.
+            xdata, ydata = self._get_data_coords(event)
+            vis_idx = np.argmin(
+                [
+                    # Minimum of X or X + Width for horizontal
+                    (
+                        min(
+                            abs(select_artist.get_x() - xdata),
+                            abs(
+                                select_artist.get_x()
+                                + select_artist.get_width()
+                                - xdata
+                            ),
+                        )
+                        if self.direction == "horizontal"
+                        # Minimum of Y or Y + Height for vertical
+                        else min(
+                            abs(select_artist.get_y() - xdata),
+                            abs(
+                                select_artist.get_y()
+                                + select_artist.get_height()
+                                - ydata
+                            ),
+                        )
                     )
-                    # Find the index of the visible selection in the selection artists.
-                    closest_idx = self._selection_artists.index(visible_rects[vis_idx])
-                    # Set it to visible.
-                    self.set_visible(False, index=closest_idx)
-                    # Change the active handle index to freshly hidden selection.
-                    self._active_handle_idx = closest_idx
-                    self._active_handle_vis = True
+                    for select_artist in visible_rects
+                ]
+            )
+            # Find the index of the visible selection in the selection artists.
+            closest_idx = self._selection_artists.index(visible_rects[vis_idx])
+            # Set the nearest visible selection to invisible.
+            self.set_visible(False, index=closest_idx)
+            # Update the extents to reflect the zero-width, hidden selection.
+            ext[closest_idx] = (
+                (xdata, xdata) if self.direction == "horizontal" else (ydata, ydata)
+            )
+            spans[closest_idx] = 0
+            # Change the active handle index to freshly hidden selection.
+            self._active_selection_idx = closest_idx
+            self._active_handle_vis = True
 
         # Perform the selection call.
-        if not self._selection_completed:
-            # If active handle
-            if idx is not None:
-                idx = self._active_handle_idx
-                vmin, vmax = ext[idx]
-                if spans[idx] <= self.minspan:
-                    self.set_visible(False, index=idx)
-                    if self._selection_completed:
-                        # Only call onselect if the span was previously existing.
-                        if isinstance(self.onselect, list):
-                            if callable(self.onselect[idx]):
-                                self.onselect[idx](vmin, vmax)
-                            else:
-                                raise ValueError(
-                                    f"onselect `{self.onselect[idx]}` must be a callable."
-                                )
-                        else:
-                            if callable(self.onselect):
-                                self.onselect(vmin, vmax)
-                            else:
-                                raise ValueError(
-                                    f"onselect `{self.onselect}` must be a callable."
-                                )
-                    self._selection_completed = False
-                else:
-                    # If onselect is a list, call the indexed function.
+        if (
+            idx is not None and self.onselect
+        ):  # Requires active handle, and non-None onselect.
+            idx = self._active_selection_idx  # active handle may have changed.
+            vmin, vmax = ext[idx]
+            # Check if the current span is being hidden but was visible.
+            if (
+                spans[idx] <= self.minspan
+                and self._selection_artists[idx] in visible_rects
+            ):
+                # If callback only at selection complete, do not call as selection is incomplete.
+                if not self._callback_at_selection_complete:
                     if isinstance(self.onselect, list):
                         if callable(self.onselect[idx]):
                             self.onselect[idx](vmin, vmax)
@@ -829,13 +860,60 @@ class NSpanSelector(SpanSelector):
                             raise ValueError(
                                 f"onselect `{self.onselect}` must be a callable."
                             )
-                    self._selection_completed = True
+            elif spans[idx] > self.minspan:
+                if self._callback_at_selection_complete:
+                    rect_artists = self._selection_artists
+                    if all(artist.get_visible() for artist in rect_artists):
+                        # Perform callbacks when all selections are visible.
+                        for i, (wmin, wmax) in enumerate(ext):
+                            if isinstance(self.onselect, list):
+                                # If onselect is a list, call the indexed function.
+                                if callable(self.onselect[idx]):
+                                    self.onselect[i](wmin, wmax)
+                                else:
+                                    raise ValueError(
+                                        f"onselect `{self.onselect[i]}` must be a callable."
+                                    )
+                            else:
+                                if callable(self.onselect):
+                                    self.onselect(wmin, wmax)
+                                else:
+                                    raise ValueError(
+                                        f"onselect `{self.onselect}` must be a callable."
+                                    )
+                else:
+                    # Singular calls for each selection.
+                    if isinstance(self.onselect, list):
+                        # If onselect is a list, call the indexed function.
+                        if callable(self.onselect[idx]):
+                            self.onselect[idx](vmin, vmax)
+                        else:
+                            raise ValueError(
+                                f"onselect `{self.onselect[idx]}` must be a callable."
+                            )
+                    else:
+                        if callable(self.onselect):
+                            self.onselect(vmin, vmax)
+                        else:
+                            raise ValueError(
+                                f"onselect `{self.onselect}` must be a callable."
+                            )
+        else:
+            # Do not call for incomplete selections, or hidden selections remaining hidden.
+            pass
+
+        # If all selections are completed, then set _selection_completed to True.
+        self._selection_completed = all(
+            span.get_visible() for span in self._selection_artists
+        )
 
         self.update()
 
         # Reset active handle
         self._active_handle = None
-        self._active_handle_idx = None
+        self._active_selection_idx = None
+        self._active_handle_vis = None
+        self._extents_on_press = None
 
         return False
 
