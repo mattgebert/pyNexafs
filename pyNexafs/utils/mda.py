@@ -356,6 +356,26 @@ class MDAScan:
 
 
 class MDAFileReader:
+    """
+    A class to read MDA files.
+
+    Parameters
+    ----------
+    path : str
+        The path to the MDA file.
+
+    Methods
+    -------
+    read_header(byte_default=100)
+        Reads the header information of an MDA file.
+    read_header_as_dict()
+        Finds the header information of the MDA file and returns it as a dictionary.
+    read_parameters()
+        Reads the pExtra values in the MDA file.
+    read_scans(header_only=False)
+        Reads the scan data from the MDA file.
+    """
+
     def __init__(self, path: str):
         if not os.path.exists(path):
             raise FileNotFoundError(f"File {path} does not exist.")

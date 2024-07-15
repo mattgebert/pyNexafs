@@ -1,2 +1,3 @@
-from .viewer import nexafsViewer
-import pyNexafs.gui.widgets.graphing
+# from viewer import nexafsViewer
+
+# from .matplotlib.widgets import NSpanSelector

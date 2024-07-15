@@ -1,7 +1,9 @@
 """
 Parser classes for the Generic data.
 
-Utilises the generic numpy text loader to load data from a file.
+Utilises the generic numpy text loader or pandas loaders to load data from a file.
+Uses a QT dialog window to select the correct options.
+Options for each successful filetype are stored in a dictionary, and used again for the same filetype.
 """
 
 from pyNexafs.parsers import parser_base
@@ -14,12 +16,11 @@ import ast
 import overrides
 
 
-class MEX2_NEXAFS(parser_base):
+class numpy_loadtxt(parser_base):
     """
-    Australian Synchrotron Soft X-ray (SXR) NEXAFS parser.
+    General file parser using NumPy's loadtxt function.
 
-    Parses data formats including '.asc' and '.mda' formats from the SXR
-    Near Edge X-ray Absorption Fine Structure (NEXAFS) tool.
+    Parses ASCII data formats (.txt, .csv, .dat, .tsv, etc.) using NumPy's loadtxt function.
 
     Attributes
     ----------
@@ -33,7 +34,7 @@ class MEX2_NEXAFS(parser_base):
     Implemented for data as of 2024-Mar.
     """
 
-    ALLOWED_EXTENSIONS = [".xdi", ".mda"]
+    ALLOWED_EXTENSIONS = [".txt", ".csv", ".dat", ".tsv", ".asc", ".xdi"]
     SUMMARY_PARAM_RAW_NAMES = [
         "Sample",
         "ROI.start_bin",
