@@ -6,7 +6,7 @@ in GUI applications.
 """
 
 # Base objects
-from ._base import parser_base
+from ._base import parser_base, parser_meta
 
 # Specific Parsers
 from . import au

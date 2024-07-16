@@ -2,11 +2,11 @@
 Parser classes for the Medium Energy X-ray 2 (MEX2) beamline at the Australian Synchrotron.
 """
 
-from pyNexafs.parsers import parser_base
+from pyNexafs.parsers import parser_base, parser_meta
 from pyNexafs.nexafs.scan import scan_base
 from pyNexafs.utils.mda import MDAFileReader
 from io import TextIOWrapper
-from typing import Any
+from typing import Any, Self
 from numpy.typing import NDArray
 import numpy as np
 import ast
@@ -15,7 +15,20 @@ import warnings
 import datetime as dt
 
 
-class MEX2_NEXAFS(parser_base):
+class MEX2_NEXAFS_META(parser_meta):
+    def __new__(
+        __mcls: type[Self],
+        __name: str,
+        __bases: tuple[type, ...],
+        __namespace: dict[str, Any],
+        **kwargs: Any,
+    ) -> "MEX2_NEXAFS":
+        # Add extra class property for MEX2 mda data, to track binning settings
+        __mcls.most_recent_domain: tuple[float, float] | tuple[int, int] | None = None
+        return super().__new__(__mcls, __name, __bases, __namespace)
+
+
+class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
     """
     Australian Synchrotron Soft X-ray (SXR) NEXAFS parser.
 
@@ -332,6 +345,17 @@ class MEX2_NEXAFS(parser_base):
         "Element.edge": "Absorption Edge",
     }
 
+    def __init__(
+        self,
+        filepath: str | None,
+        load_head_only: bool = False,
+        relabel: bool | None = None,
+        use_recent_binning: bool = False,
+    ) -> None:
+        super().__init__(filepath, load_head_only, relabel)
+        # Add extra object property for MEX2 .mda data, to track binning settings.
+        self._use_recent_binning: bool = use_recent_binning
+
     @classmethod
     def parse_xdi(
         cls, file: TextIOWrapper, header_only: bool = False
@@ -456,7 +480,7 @@ class MEX2_NEXAFS(parser_base):
         return data, labels, units, params
 
     @classmethod
-    def parse_mda(
+    def parse_mda_2024_04(
         cls, file: TextIOWrapper, header_only: bool = False
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
         """Reads Australian Synchrotron .mda files for MEX2 Data
