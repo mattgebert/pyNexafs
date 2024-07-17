@@ -6,7 +6,7 @@ import sys, io, os
 import types
 import warnings
 from io import TextIOWrapper
-from typing import Any, TypeVar, Type, Self
+from typing import Any, TypeVar, Type, Self, Callable
 from numpy.typing import NDArray
 from pyNexafs.nexafs.scan import scan_base
 import datetime
@@ -70,7 +70,15 @@ class parser_meta(abc.ABCMeta):
         super().__init__(name, bases, dict, **kwds)
 
         # Gather internal parser methods at class creation for use in file loading.
-        name.parse_functions = []
+        name.parse_functions: list[Callable] = []
+        """List of recognised parser methods for the class."""
+        name.parse_recent_success: dict[str, Callable] = {}
+        """
+        The most recent successful parser method for each filetype for the class.
+
+        Enables the faster loading of similar files that have already been successfully loaded.
+        """
+
         for fn_name in dir(name):
             if fn_name.startswith("parse_"):
                 fn = getattr(name, fn_name)
@@ -564,11 +572,22 @@ class parser_base(metaclass=parser_meta):
                 f"File {file.name} is not a valid file type for {cls.__name__}."
             )
 
+        extension = file.name.split(".")[-1]
+
         if len(cls.parse_functions) > 0:
             # Check if any parse functions match the file type.
+            if (
+                extension in cls.parse_recent_success
+                and cls.parse_functions[0] != cls.parse_recent_success[extension]
+            ):
+                # Reorder parse functions to put the most recent successful parse function first.
+                i = cls.parse_functions.index(cls.parse_recent_success[extension])
+                cls.parse_functions.insert(0, cls.parse_functions.pop(i))
+
+            # Attempt to load the file using the parse functions.
             for parse_fn in cls.parse_functions:
                 # Attempt to use parse functions that contain a string that matches the extension
-                if file.name.split(".")[-1] in parse_fn.__name__:
+                if extension in parse_fn.__name__:
                     try:
                         arg_names = parse_fn.__code__.co_varnames[
                             : parse_fn.__code__.co_argcount
@@ -581,6 +600,8 @@ class parser_base(metaclass=parser_meta):
                             )
                             # Close the file upon successful load
                             file.close()
+                            # Add the successful parse function to the recent success dictionary.
+                            cls.parse_recent_success[extension] = parse_fn
                             return obj
                         else:  # classmethod
                             # type(parse_fn == types.MethodType)
@@ -592,6 +613,7 @@ class parser_base(metaclass=parser_meta):
                             )
                             # Close the file upon successful load
                             file.close()
+                            cls.parse_recent_success[extension] = parse_fn
                             return obj
                     except Exception as e:
                         # Method failed, continue to next method.

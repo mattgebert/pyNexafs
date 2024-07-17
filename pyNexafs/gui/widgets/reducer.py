@@ -86,9 +86,11 @@ class EnergyBinReducer(QtWidgets.QWidget):
         )
         self._bin_edit_layout.addWidget(QtWidgets.QLabel("Lower" + binning_label))
         self.bin_lower = QtWidgets.QLineEdit()
+        self.bin_lower.setMaximumWidth(100)
         self._bin_edit_layout.addWidget(self.bin_lower)
         self._bin_edit_layout.addWidget(QtWidgets.QLabel("Upper" + binning_label))
         self.bin_upper = QtWidgets.QLineEdit()
+        self.bin_upper.setMaximumWidth(100)
         self._bin_edit_layout.addWidget(self.bin_upper)
         self.bin_lower.setValidator(
             QtGui.QDoubleValidator()
@@ -148,9 +150,11 @@ class EnergyBinReducer(QtWidgets.QWidget):
         The bin features are the sum of counts for each detector channel.
         """
         self.bin_axes.clear()
-        bins, counts = self._reduction.reduce_to_bin_features()
+        # Store the bins, so the max range can be used as a default.
+        self._bins, counts = self._reduction.reduce_to_bin_features()
+
         for i in range(self._reduction.detectors):
-            self.bin_axes.plot(bins, counts[:, i], label=f"Detector {i}")
+            self.bin_axes.plot(self._bins, counts[:, i], label=f"Detector {i}")
 
         self.bin_axes.set_xlabel(
             "Bin #" if not self._reduction.has_bin_energies else "Bin Energy (eV)"
@@ -287,50 +291,46 @@ class EnergyBinReducer(QtWidgets.QWidget):
         ----------
         bin_domain : tuple[int, int], optional
             The energy domain to plot, by default None.
-            If upper and lower bounds are not provided / identical, the full range is plotted.
+            If None, plots the full range.
         """
-        if bin_domain is None or bin_domain[0] == bin_domain[1]:
-            # Use full index range if no domain is provided or the same value is provided.
-            bin_idxs = [
-                (0, self._dataset.shape[1]) for i in range(self._dataset.shape[2])
-            ]
-        elif not self._reduction.has_bin_energies:
-            # No energies values provided, so can't convert the domain to indexes.
-            # Domain already in bin numbers. Round to nearest integer and use for all detectors.
-            lb, ub = np.round(bin_domain).astype(int)
-            bin_idxs = [(lb, ub)] * self._dataset.shape[2]
-        else:
-            bin_idxs = [
-                self._bin_domain_to_indx(bin_domain, detector=i)
-                for i in range(self._dataset.shape[2])
-            ]
-
+        # Setup the colormap to plot the energies
         cmap = plt.get_cmap("inferno")
-        # Clear all existing axes
+
+        # Clear all existing axes (plots and colorbars)
         for ax in self.detector_axes:
             ax.clear()
+
+        # Get the sub-sampled data from the dataset
+        sampled_bin_energies, sampled_data = self._reduction.reduce_domain(
+            bin_domain=bin_domain
+        )
+
         # Plot the new data at the selected domain
         for i, ax in enumerate(self.detector_axes[::2]):  # for each detector
-            bins = bin_idxs[i]
-            # Reduce the data to subsampled values
-            bl: int = int(bins[0])
-            """Lower bin index"""
-            bu: int = int(bins[1])
-            """Upper bin index"""
-            sampled_bin_energies = self._bin_energies[bl : bu : self._subsampling, i]
-            sampled_data = self._dataset[:, bl : bu : self._subsampling, i]
+            # Collect the detector data
+            energies = self._reduction.energies
+            bin_energies = (
+                sampled_bin_energies[:: self._subsampling, i]
+                if sampled_bin_energies.ndim == 2
+                else sampled_bin_energies
+            )
+            data = (
+                sampled_data[:, :: self._subsampling, i]
+                if sampled_data.ndim == 3
+                else sampled_data
+            )
 
-            # Get the sub-sampled data and setup the color normalisation.
+            # Setup the color normalisation.
             norm = mpl_colors.Normalize(
-                vmin=sampled_bin_energies.min(), vmax=sampled_bin_energies.max()
+                vmin=bin_energies.min(), vmax=bin_energies.max()
             )
 
             # Plot the data
-            for j in range(sampled_data.shape[1]):  # for each subsampled bin
+            for j in range(data.shape[1]):  # for each subsampled bin
                 ax.plot(
-                    self._energies,
-                    sampled_data[:, j],
-                    c=cmap(norm(sampled_bin_energies[j])),
+                    energies,
+                    data[:, j],
+                    c=cmap(norm(bin_energies[j])),
                 )
 
             # Add the colorbar
@@ -354,6 +354,8 @@ class EnergyBinReducer(QtWidgets.QWidget):
         Callback function for the SpanSelector.
 
         Used to call `plot` with the selected energy domain.
+        If upper and lower bounds are not provided / identical,
+        then the full range is used.
 
         Parameters
         ----------
@@ -362,7 +364,13 @@ class EnergyBinReducer(QtWidgets.QWidget):
         xmax : float
             The upper bound of the selected energy domain.
         """
-        self.plot(bin_domain=(xmin, xmax))
+        # If the same value is provided, or range is below visibility.
+        if xmin == xmax or abs(xmax - xmin) < self.span.minspan:
+            # Return the full range from the data.
+            self.plot(bin_domain=None)
+        else:
+            self.plot(bin_domain=(xmin, xmax))
+
         # Pause QEdit updates while changing values from the span selector
         self.bin_lower.blockSignals(True)
         self.bin_upper.blockSignals(True)

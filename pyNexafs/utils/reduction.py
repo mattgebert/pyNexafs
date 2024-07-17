@@ -224,10 +224,10 @@ class reducer:
                     f"Detector index {detector_idx} out of range [0-{self.detectors})."
                 )
             else:
-                if len(self.bin_energies.shape) == 1:
+                if self.bin_energies.ndim == 1:  # Singular bin_energies
                     lb = np.argmin(np.abs(self.bin_energies - bin_domain[0]))
                     ub = np.argmin(np.abs(self.bin_energies - bin_domain[1]))
-                else:
+                else:  # Multiple bin_energies for detectors
                     lb = np.argmin(
                         np.abs(self.bin_energies[:, detector_idx] - bin_domain[0])
                     )
@@ -242,33 +242,48 @@ class reducer:
             list[tuple[int, int] | tuple[float, float]]
             | tuple[int, int]
             | tuple[float, float]
+            | None
         ),
     ) -> list[tuple[int, int]]:
         """
         Converts an energy|bin domain to bin indexes for all detectors.
 
+        Uses `domain_to_detector_bin_indexes` to convert the domain for each detector.
+
         Parameters
         ----------
-        bin_domain : tuple[int, int] | tuple[float, float]
+        bin_domain : (list[tuple[int, int] | tuple[float, float]]
+        | tuple[int, int] | tuple[float, float])
             The energy|bin domain to convert to bin indexes.
+
+            If None, indexes of the full dataset is returned.
 
         Returns
         -------
         list[tuple[int, int]]
             The lower and upper selected bin indexes for each detector.
         """
-        if isinstance(bin_domain, list):
+        if bin_domain is None:
+            # Generate the full range of indexes
+            return [(0, self.bin_energies.shape[0])] * self.detectors
+        elif isinstance(bin_domain, list):
             return [
                 self.domain_to_detector_bin_indexes(bin_domain=domain, detector_idx=i)
                 for i, domain in enumerate(bin_domain)
             ]
         else:
-            return [
-                self.domain_to_detector_bin_indexes(
-                    bin_domain=bin_domain, detector_idx=i
-                )
-                for i in range(self.detectors)
-            ]
+            if not self.has_bin_energies:
+                # Can repeat the domain for each detector; indexing is the same
+                return [
+                    self.domain_to_detector_bin_indexes(bin_domain=bin_domain)
+                ] * self.detectors
+            else:
+                return [
+                    self.domain_to_detector_bin_indexes(
+                        bin_domain=bin_domain, detector_idx=i
+                    )
+                    for i in range(self.detectors)
+                ]
 
     def reduce_domain(
         self,
@@ -463,11 +478,12 @@ class reducer:
         """
         # Sum over all energies to find the energy bins with signal.
         ds_sum: np.ndarray = self.dataset.sum(axis=0)
-        # Translate every bin to be positive definite if data values < 1e-2,
-        # This also allows log plotting.
-        if np.any(ds_sum < 1e-2):
+        # Translate every bin to be positive definite.
+        if np.any(ds_sum < 0):
             # Keep relative signal amplitude between detectors
-            ds_sum += 1e-2 - ds_sum.min()
+            ds_sum += -ds_sum.min()
+        # Add a base 1e-2 so we can log plot
+        ds_sum += 1e-2
         return self.bin_energies, ds_sum
 
     @staticmethod
