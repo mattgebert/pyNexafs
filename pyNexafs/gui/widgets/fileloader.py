@@ -1,4 +1,5 @@
 import re
+import traceback
 from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtWidgets import (
     QWidget,
@@ -933,7 +934,7 @@ class directory_viewer_table(QTableView):
                     if file not in self._parser_headers:
                         try:
                             self._parser_headers[file] = self.parser(
-                                os.path.join(self.directory, file), load_head_only=True
+                                os.path.join(self.directory, file), header_only=True
                             )
                         # Catch unimplemented and import errors.
                         except (NotImplementedError, ImportError) as e:
@@ -1071,8 +1072,12 @@ class directory_viewer_table(QTableView):
                         # Use existing parser instance, add to files.
                         parser = self._parser_headers[filename]
                         assert isinstance(parser, parser_base)
-                        parser.load()  # use internal filepath to load
-                        self._parser_files[filename] = parser
+                        try:
+                            parser.load()  # use internal filepath to load
+                            if parser.is_loaded:
+                                self._parser_files[filename] = parser
+                        except Exception as e:
+                            traceback.print_exception(e)
                     # else: ignore unloaded headers (None) in the selection.
                 if self.progress_bar is not None:
                     self.progress_bar.setValue(i + 1)

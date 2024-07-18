@@ -9,6 +9,7 @@ from io import TextIOWrapper
 from typing import Any, TypeVar, Type, Self, Callable
 from numpy.typing import NDArray
 from pyNexafs.nexafs.scan import scan_base
+import traceback
 import datetime
 
 
@@ -27,61 +28,67 @@ class parser_meta(abc.ABCMeta):
     _relabel = False
 
     def __new__(
-        __mcls: type[Self],
-        __name: str,
-        __bases: tuple[type, ...],
-        __namespace: dict[str, Any],
+        mcls: type[Self],
+        name: str,
+        bases: tuple[type, ...],
+        namespace: dict[str, Any],
         **kwargs: Any,
     ) -> Self:
 
         # Perform checks on parsers that implement parser_base.
-        if __name != "parser_base":
+        if name != "parser_base":
             # If class does not define the important parameters, then set to empty list.
-            if "SUMMARY_PARAM_RAW_NAMES" not in __namespace:
-                __namespace["SUMMARY_PARAM_RAW_NAMES"] = []
-            if "RELABELS" not in __namespace:
-                __namespace["RELABELS"] = {}
+            if "SUMMARY_PARAM_RAW_NAMES" not in namespace:
+                namespace["SUMMARY_PARAM_RAW_NAMES"] = []
+            if "RELABELS" not in namespace:
+                namespace["RELABELS"] = {}
 
             # Raise error if necessary variables are not defined.
-            for name in ["ALLOWED_EXTENSIONS", "COLUMN_ASSIGNMENTS"]:
-                if name not in __namespace:
-                    raise ValueError(f"Class {__name} does not define {name}.")
+            for prop in ["ALLOWED_EXTENSIONS", "COLUMN_ASSIGNMENTS"]:
+                if prop not in namespace:
+                    raise ValueError(f"Class {name} does not define {prop}.")
 
             # Rename attributes, avoid overriding property.
-            for name in [
+            for prop in [
                 "ALLOWED_EXTENSIONS",
                 "COLUMN_ASSIGNMENTS",
                 "SUMMARY_PARAM_RAW_NAMES",
                 "RELABELS",
             ]:
-                __namespace[f"_{name}"] = __namespace[
-                    name
+                namespace[f"_{prop}"] = namespace[
+                    prop
                 ]  # Adjust assignments to an internal variable i.e. _ALLOWED_EXTENSIONS
-                del __namespace[name]  # Remove old assignment
+                del namespace[prop]  # Remove old assignment
 
             # Validate column assignments
-            __namespace["_COLUMN_ASSIGNMENTS"] = parser_meta.__validate_assignments(
-                __namespace["_COLUMN_ASSIGNMENTS"]
+            namespace["_COLUMN_ASSIGNMENTS"] = parser_meta.__validate_assignments(
+                namespace["_COLUMN_ASSIGNMENTS"]
             )
 
-        return super().__new__(__mcls, __name, __bases, __namespace, **kwargs)
+        return super().__new__(mcls, name, bases, namespace, **kwargs)
 
-    def __init__(name, bases, dict, kwds):
-        super().__init__(name, bases, dict, **kwds)
+    def __init__(
+        cls: type,
+        name: str,
+        bases: tuple[type, ...],
+        namespace: dict[str, Any],
+        **kwds: Any,
+    ):
+        super().__init__(name, bases, namespace, **kwds)
 
         # Gather internal parser methods at class creation for use in file loading.
-        name.parse_functions: list[Callable] = []
+        cls.parse_functions: list[Callable] = []
         """List of recognised parser methods for the class."""
-        name.parse_recent_success: dict[str, Callable] = {}
+        cls.parse_recent_success: namespace[str, Callable] = {}
         """
         The most recent successful parser method for each filetype for the class.
 
         Enables the faster loading of similar files that have already been successfully loaded.
         """
 
-        for fn_name in dir(name):
+        for fn_name in dir(cls):
             if fn_name.startswith("parse_"):
-                fn = getattr(name, fn_name)
+                fn = getattr(cls, fn_name)
                 if callable(fn):
                     arg_names = fn.__code__.co_varnames[: fn.__code__.co_argcount]
                     # Check the parameters of each function match requirements.
@@ -94,11 +101,11 @@ class parser_meta(abc.ABCMeta):
                             raise TypeError(
                                 f"Second (optional) argument of static parser method must be 'header_only'. Is {arg_names[2]}."
                             )
-                        name.parse_functions.append(fn)
+                        cls.parse_functions.append(fn)
                     elif type(fn) == types.MethodType:  # Class methods
-                        if len(arg_names) < 2 or len(arg_names) > 3:
+                        if len(arg_names) < 2:
                             raise TypeError(
-                                f"Parser method must only have 2-3 arguments: 'cls', 'file' and (optional) 'header_only'. Has {arg_names}"
+                                f"Parser method must have a minimum 2-3 arguments: 'cls', 'file' and (optional) 'header_only'. Has {arg_names}"
                             )
                         if arg_names[0] != "cls":
                             raise TypeError(
@@ -112,7 +119,7 @@ class parser_meta(abc.ABCMeta):
                             raise TypeError(
                                 f"Third (optional) argument of parser method must be 'header_only'. Is {arg_names[2]}."
                             )
-                        name.parse_functions.append(fn)
+                        cls.parse_functions.append(fn)
         return
 
     @property
@@ -374,11 +381,13 @@ class parser_base(metaclass=parser_meta):
     ----------
     filepath : str | None, optional
         The filepath of the data file, by default None
-    load_head_only : bool, optional
+    header_only : bool, optional
         If True, then only the header of the file loaded, by default False
     relabel : bool, optional
         If True, then column and parameter labels are returned as more useful
         names defined in 'parser_base.RELABELS', by default False
+    **kwargs
+        Additional keyword arguments that will be passed to the `file_parser` method.
 
     Attributes
     ----------
@@ -419,8 +428,9 @@ class parser_base(metaclass=parser_meta):
     def __init__(
         self,
         filepath: str | None,
-        load_head_only: bool = False,
+        header_only: bool = False,
         relabel: bool | None = None,
+        **kwargs,
     ) -> None:
 
         # parser_meta super
@@ -432,16 +442,34 @@ class parser_base(metaclass=parser_meta):
         self._labels = []
         self.units = []
         self.params = {}
+        self.__loading_kwargs = kwargs
 
         if filepath is None:
             return
         elif type(filepath) is str:
-            self.load(header_only=load_head_only)  # Load data
+            self.load(header_only=header_only, **kwargs)  # Load data
         else:
             raise TypeError(f"Filepath is {type(filepath)}, not str.")
 
         # Copy class value at initialisation if None
         self._relabel = relabel
+
+        # Create a variable to track loading
+        self._loaded = False
+
+    @property
+    def is_loaded(self) -> bool:
+        """
+        Returns whether the parser object has loaded data.
+
+        Not related to whether the header has been loaded.
+
+        Returns
+        -------
+        bool
+            True if the parser object has loaded data.
+        """
+        return self._loaded
 
     @property
     def relabel(self) -> bool:
@@ -545,7 +573,10 @@ class parser_base(metaclass=parser_meta):
 
     @classmethod
     def file_parser(
-        cls, file: TextIOWrapper, header_only: bool = False
+        cls,
+        file: TextIOWrapper,
+        header_only: bool = False,
+        **kwargs,
     ) -> tuple[NDArray | None, list[str], list[str], dict[str, Any]]:
         """
         Class method that tries to call cls.parse_functions methods.
@@ -556,6 +587,9 @@ class parser_base(metaclass=parser_meta):
             TextIOWapper of the datafile (i.e. file=open('file.csv', 'r'))
         header_only : bool, optional
             If True, then only the header of the file is read and NDArray is returned as None, by default False
+        **kwargs
+            Additional keyword arguments that will be passed to the attempted parser method.
+            Method will be skipped if the keyword arguments are not in the method signature.
 
         Returns
         -------
@@ -592,9 +626,13 @@ class parser_base(metaclass=parser_meta):
                         arg_names = parse_fn.__code__.co_varnames[
                             : parse_fn.__code__.co_argcount
                         ]
+                        # Check all keyword args are in the arg_names, otherwise skip the method.
+                        if not all([kw in arg_names for kw in kwargs.keys()]):
+                            continue
+
                         if type(parse_fn) == types.FunctionType:  # staticmethod
                             obj = (
-                                parse_fn(file, header_only)
+                                parse_fn(file, header_only, **kwargs)
                                 if "header_only" in arg_names
                                 else parse_fn(file)
                             )
@@ -607,7 +645,7 @@ class parser_base(metaclass=parser_meta):
                             # type(parse_fn == types.MethodType)
                             # cls is the first argument of the method, already incorporated into the function call.
                             obj = (
-                                parse_fn(file, header_only)
+                                parse_fn(file, header_only, **kwargs)
                                 if "header_only" in arg_names
                                 else parse_fn(file)
                             )
@@ -624,6 +662,9 @@ class parser_base(metaclass=parser_meta):
                             # + "'.",
                             ImportWarning,
                         )
+                        # Uncomment this to see your import errors.
+                        print("Traceback: ", file.name)
+                        traceback.print_exception(e)
 
             # If no parse functions successfully import the file type,
             raise ImportError(
@@ -634,7 +675,10 @@ class parser_base(metaclass=parser_meta):
         raise ImportError(f"No parser method in {cls.__name__} found for {file.name}.")
 
     def load(
-        self, file: str | TextIOWrapper | None = None, header_only: bool = False
+        self,
+        file: str | TextIOWrapper | None = None,
+        header_only: bool = False,
+        **kwargs,
     ) -> None:
         """
         Loads all data from the specified file, and attaches it to the object.
@@ -652,12 +696,19 @@ class parser_base(metaclass=parser_meta):
         header_only : bool, optional
             If True, then only the header of the file is read, by default False
             Consequently loads labels, units and params. Pre-existing object data persists.
+        **kwargs
+            Additional keyword arguments that will be passed to the `file_parser` method.
 
         Raises
         ------
         ValueError
             Raised if no file is provided and the object filepath attribute is None.
         """
+        # Use the instantiation kwargs, and update with any additional kwargs for the load call.
+        # Does not override the initialisation kwargs.
+        parsing_kwargs = self.__loading_kwargs.copy()
+        parsing_kwargs.update(kwargs)
+
         # Load object filepath
         load_filepath = self._filepath  # Might be None
         try:
@@ -666,7 +717,7 @@ class parser_base(metaclass=parser_meta):
                 load_filepath = file.name
                 # File already loaded
                 data, labels, units, params = self.file_parser(
-                    file, header_only=header_only
+                    file, header_only=header_only, **parsing_kwargs
                 )
                 file.close()  # Close file after reading
                 # If a file is provided override filepath.
@@ -675,12 +726,12 @@ class parser_base(metaclass=parser_meta):
                 load_filepath = file
                 with open(load_filepath, "r") as load_file:
                     data, labels, units, params = self.file_parser(
-                        load_file, header_only=header_only
+                        load_file, header_only=header_only, **parsing_kwargs
                     )  # makes sure to close the file.
             elif file is None and load_filepath is not None:
                 with open(load_filepath, "r") as load_file:
                     data, labels, units, params = self.file_parser(
-                        load_file, header_only=header_only
+                        load_file, header_only=header_only, **parsing_kwargs
                     )  # makes sure to close the file.
             elif load_filepath is None:
                 raise ValueError("No file/filepath provided to load data.")
@@ -725,10 +776,32 @@ class parser_base(metaclass=parser_meta):
         self.data, self._labels, self.units, self.params = data, labels, units, params
 
         # Update filepath after data load if successful!
+        if not header_only:
+            self._loaded = True
         return
 
     @staticmethod
     def convert_to_datetime(time_input: Any) -> datetime.datetime:
+        """
+        Converts a time input to a datetime object.
+
+        Attempts to convert the input to a datetime object using various methods.
+
+        Parameters
+        ----------
+        time_input : Any
+            Time input to convert to a datetime object.
+
+        Returns
+        -------
+        datetime.datetime
+            Datetime object of the time input.
+
+        Raises
+        ------
+        ValueError
+            Raised if the time input cannot be converted to a datetime object.
+        """
         if isinstance(time_input, datetime.datetime):
             return time_input
         elif isinstance(time_input, float):
@@ -759,6 +832,15 @@ class parser_base(metaclass=parser_meta):
     def ctime(self) -> datetime.datetime:
         """
         Returns the creation time of the file as a datetime object.
+
+        Data is pulled from the 'created' parameter in the params dictionary.
+        This is generated by the 'load' method using the 'os' library,
+        if not already created in the params.
+
+        Returns
+        -------
+        datetime.datetime
+            Creation time of the file.
         """
         return self.convert_to_datetime(self.params["created"])
 
@@ -766,6 +848,15 @@ class parser_base(metaclass=parser_meta):
     def mtime(self) -> datetime.datetime:
         """
         Returns the modification time of the file as a datetime object.
+
+        Data is pulled from the 'modified' parameter in the params dictionary.
+        This is generated by the 'load' method using the 'os' library,
+        if not already created in the params.
+
+        Returns
+        -------
+        datetime.datetime
+            Modification time of the file.
         """
         return self.convert_to_datetime(self.params["modified"])
 
@@ -788,7 +879,7 @@ class parser_base(metaclass=parser_meta):
         newobj = (
             type(self)(
                 filepath=None,
-                load_head_only=False,
+                header_only=False,
                 relabel=None,
             )
             if not clone

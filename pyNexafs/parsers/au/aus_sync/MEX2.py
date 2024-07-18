@@ -2,30 +2,52 @@
 Parser classes for the Medium Energy X-ray 2 (MEX2) beamline at the Australian Synchrotron.
 """
 
+import PyQt6
+from PyQt6 import QtWidgets
 from pyNexafs.parsers import parser_base, parser_meta
 from pyNexafs.nexafs.scan import scan_base
 from pyNexafs.utils.mda import MDAFileReader
+from pyNexafs.gui.widgets.reducer import EnergyBinReducerDialog
 from io import TextIOWrapper
 from typing import Any, Self
 from numpy.typing import NDArray
 import numpy as np
 import ast
-import overrides
 import warnings
 import datetime as dt
+import os
+from pyNexafs.utils.reduction import reducer
+import traceback
+
+
+# Additional data provided by the MEX2 beamline for the data reduction
+BIN_ENERGY_DELTA = 11.935
+BIN_96_ENERGY = 1146.7
+TOTAL_BINS = 4096
+TOTAL_BIN_ENERGIES = np.linspace(
+    start=BIN_96_ENERGY - 95 * BIN_ENERGY_DELTA,
+    stop=BIN_96_ENERGY + (TOTAL_BINS - 96) * BIN_ENERGY_DELTA,
+    num=TOTAL_BINS,
+)
+INTERESTING_BINS_IDX = [80, 900]
+INTERESTING_BINS_ENERGIES = TOTAL_BIN_ENERGIES[
+    INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1]
+]
 
 
 class MEX2_NEXAFS_META(parser_meta):
-    def __new__(
-        __mcls: type[Self],
-        __name: str,
-        __bases: tuple[type, ...],
-        __namespace: dict[str, Any],
-        **kwargs: Any,
+    def __init__(
+        cls: type,
+        name: str,
+        bases: tuple[type, ...],
+        namespace: dict[str, Any],
+        **kwds: Any,
     ) -> "MEX2_NEXAFS":
+
         # Add extra class property for MEX2 mda data, to track binning settings
-        __mcls.most_recent_domain: tuple[float, float] | tuple[int, int] | None = None
-        return super().__new__(__mcls, __name, __bases, __namespace)
+        cls.reduction_bin_indexes: list[tuple[int, int]] | None = None
+        """Tracker for the binning settings used in the most recent data reduction."""
+        return super().__init__(name=name, bases=bases, namespace=namespace, **kwds)
 
 
 class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
@@ -41,6 +63,21 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
     SUMMARY_PARAM_RAW_NAMES
     COLUMN_ASSIGNMENTS
     RELABELS
+
+    Parameters
+    ----------
+    filepath : str | None
+        The file path to the data file.
+    header_only : bool, optional
+        If True, only the header of the file is read, by default False
+    relabel : bool | None, optional
+        If True, then the parser will relabel the data columns, by default None
+    use_recent_binning : bool, optional
+        If True, then the '.mda' parsers will use the most recent class
+        reduction binning settings. By default True, as UIs will use this,
+        and assume the parser will use the same binning settings.
+        TODO: Perhaps make this a property of the base class, that way UIs can
+        reset such settings if needed upon directory change etc.
 
     Notes
     -----
@@ -328,6 +365,10 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         "MEX2SSCAN01:SIMPLE_END_2_VALUE": "E4",
         # MEX2SSCAN01:SIMPLE_DURATION_VALUE
         # MEX2SSCAN01:SIMPLE_NUMBER_OF_POINTS
+        "MEX2ES01DPP01:ch1:W:ArrayData": "Fluorescence Detector 1",
+        "MEX2ES01DPP01:ch2:W:ArrayData": "Fluorescence Detector 2",
+        "MEX2ES01DPP01:ch3:W:ArrayData": "Fluorescence Detector 3",
+        "MEX2ES01DPP01:ch4:W:ArrayData": "Fluorescence Detector 4",
         # XDI File:
         # "energy": "Energy",
         # "bragg": "Bragg",
@@ -335,6 +376,7 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         # "BIM": "BIM",
         # "i0": "IO",
         # "SampleDrain": "Sample Drain",
+        #### XDI Names ####
         "OCR_AVG": "Output Average Count Rate",
         "ICR_AVG": "Input Average Count Rate",
         "ROI_AD_AVG": "ROI Average",
@@ -348,17 +390,21 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
     def __init__(
         self,
         filepath: str | None,
-        load_head_only: bool = False,
+        header_only: bool = False,
         relabel: bool | None = None,
-        use_recent_binning: bool = False,
+        use_recent_binning: bool = True,
     ) -> None:
-        super().__init__(filepath, load_head_only, relabel)
-        # Add extra object property for MEX2 .mda data, to track binning settings.
-        self._use_recent_binning: bool = use_recent_binning
+        # Manually add kwargs
+        kwargs = {}
+        if use_recent_binning is not None:
+            kwargs.update(use_recent_binning=use_recent_binning)
+        super().__init__(filepath, header_only, relabel, **kwargs)
 
     @classmethod
     def parse_xdi(
-        cls, file: TextIOWrapper, header_only: bool = False
+        cls,
+        file: TextIOWrapper,
+        header_only: bool = False,
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
         """Reads Australian Synchrotron .xdi files.
 
@@ -481,14 +527,26 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
 
     @classmethod
     def parse_mda_2024_04(
-        cls, file: TextIOWrapper, header_only: bool = False
+        cls,
+        file: TextIOWrapper,
+        header_only: bool = False,
+        use_recent_binning: bool = False,
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
-        """Reads Australian Synchrotron .mda files for MEX2 Data
+        """
+        Reads Australian Synchrotron .mda files for MEX2 Data
+
+        Created for data as of 2024-Apr.
 
         Parameters
         ----------
         file : TextIOWrapper
             TextIOWrapper of the datafile (i.e. open('file.mda', 'r'))
+        header_only : bool, optional
+            If True, then only the header of the file is read and
+            NDArray is returned as None, by default False
+        use_recent_binning : bool, optional
+            If True, then the most recent binning settings are used
+            for data reduction, by default False
 
         Returns
         -------
@@ -503,10 +561,10 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         ValueError
             If the file is not a valid .mda file.
         """
-
         # Initialise parameter list
         params = {}
         labels = []
+        units = []
 
         # Check valid format.
         if not file.name.endswith(".mda"):
@@ -515,25 +573,83 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         # Need to reopen the file in byte mode.
         file.close()
         mda = MDAFileReader(file.name)
-
         mda_header = mda.read_header_as_dict()
         ## Previously threw error for higher dimensional data, now just a warning.
-        # if mda_header["mda_rank"] != 1:
-        # raise ValueError("MDA file is not 1D, incompatible for regular NEXAFS.")
         mda_params = mda.read_parameters()
         mda_arrays, mda_scans = mda.read_scans(header_only=header_only)
 
         # Add values to params dict
         params.update(mda_header)
         params.update(mda_params)
+
+        # Initialise to None for header only reading.
+        mda_1d = None
         # Add column types and descriptions to params.
-        mda_1d = mda_arrays[0] if not header_only else None
         if not header_only:
+            # 1D array essential
+            mda_1d = mda_arrays[0]
+            # 2D array optional
             if len(mda_arrays) > 1:
-                warnings.warn(
-                    "MDA file(s) contain more than one dimension, handling of higher dimensions is not yet implemented."
+                mda_2d = mda_arrays[1]
+                mda_2d_scan = mda_scans[1]
+                # Check 'multi-channel-analyser-spectra of fluorescence-detector' names are as expected
+                florescence_labels = [
+                    "MEX2ES01DPP01:ch1:W:ArrayData",
+                    "MEX2ES01DPP01:ch2:W:ArrayData",
+                    "MEX2ES01DPP01:ch3:W:ArrayData",
+                    "MEX2ES01DPP01:ch4:W:ArrayData",
+                ]
+                assert mda_2d_scan.labels() == florescence_labels
+
+                # Take properties from 1D and 2D arrays:
+                energies = mda_1d[:, 0]
+                dataset = mda_2d[
+                    :, INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1], :
+                ]
+                bin_e = INTERESTING_BINS_ENERGIES  # pre-calibrated.
+
+                # Perform binning on 2D array:
+                if use_recent_binning and cls.reduction_bin_indexes is not None:
+                    cls.reduction_bin_indexes
+                    red = reducer(energies, dataset, bin_e)
+                else:
+                    # Create a QT application to run the dialog.
+                    if QtWidgets.QApplication.instance() is None:
+                        app = QtWidgets.QApplication([])
+                    # Run the Bin Selector dialog
+                    window = EnergyBinReducerDialog(
+                        energies=energies, dataset=dataset, bin_energies=bin_e
+                    )
+                    window.show()
+                    if window.exec():
+                        # If successful, store the binning settings.
+                        cls.reduction_bin_indexes = window.domain_incidies
+                        red = window.reducer
+                    else:
+                        raise ValueError("No binning settings selected.")
+
+                # Use the binning settings to reduce the data.
+                _, reduced_single_data = red.reduce_by_sum(
+                    bin_domain=cls.reduction_bin_indexes
                 )
+                _, reduced_detector_data = red.reduce_by_sum(
+                    bin_domain=cls.reduction_bin_indexes, axis="bin_energies"
+                )
+
+            # 3D array unhandled.
+            if len(mda_arrays) > 2:
+                warnings.warn(
+                    "MDA file(s) contain more than two dimension, handling of higher dimensions is not yet implemented."
+                )
+        # Collect units and labels:
         scan_1d = mda_scans[0]
+        positioners = scan_1d.positioners
+        detectors = scan_1d.detectors
+        if len(mda_scans) > 1:
+            scan_2d = mda_scans[1]
+            positioners += scan_2d.positioners
+            detectors += scan_2d.detectors
+
         column_types = {
             "Positioner": (
                 "name",
@@ -560,30 +676,38 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                 p.readback_desc,
                 p.readback_unit,
             ]
-            for i, p in enumerate(scan_1d.positioners)
+            for i, p in enumerate(positioners)
         }
         column_descriptions.update(
             {
-                i + len(scan_1d.positioners): [d.name, d.desc, d.unit]
-                for i, d in enumerate(scan_1d.detectors)
+                i + len(positioners): [d.name, d.desc, d.unit]
+                for i, d in enumerate(detectors)
             }
         )
         params["column_types"] = column_types
         params["column_descriptions"] = column_descriptions
+
         # Collect units and labels:
-        labels = []
-        units = []
-        for i, p in enumerate(scan_1d.positioners):
+        for i, p in enumerate(positioners):
             labels.append(p.name)
             units.append(p.unit)
-        for i, d in enumerate(scan_1d.detectors):
+        for i, d in enumerate(detectors):
             labels.append(d.name)
             units.append(d.unit)
-
+        # If 2D data is present, add reduced data to 1D data.
+        if not header_only and len(mda_arrays) > 1:
+            # Check rows (energies) match length
+            assert reduced_single_data.shape[0] == mda_1d.shape[0]
+            assert reduced_detector_data.shape[0] == mda_1d.shape[0]
+            # Add reduced data to 1D data as extra columns
+            mda_1d = np.c_[mda_1d, reduced_detector_data, reduced_single_data]
+            # Add labels and units for reduced data
+            # (Detector data labels/units already added via positioners and detectors above.)
+            labels += ["Florescence Sum (Reduced)"]
+            units += ["a.u."]
         # Use scan time if available, otherwise let system time be used.
         if "MEX1ES01GLU01:MEX_TIME" in params:
             params["created"] = params["MEX1ES01GLU01:MEX_TIME"]
-
         return mda_1d, labels, units, params
 
 
@@ -838,3 +962,23 @@ def MEX2_to_QANT_AUMainAsc(
 
     # End of file
     return ostrs
+
+
+if __name__ == "__main__":
+    # Example usage
+    path = os.path.dirname(__file__)
+    package_path = os.path.normpath(os.path.join(path, "../../../../"))
+    mda_path1 = os.path.normpath(
+        os.path.join(package_path, "tests/test_data/au/MEX2/MEX2_5643.mda")
+    )
+    mda_path2 = os.path.normpath(
+        os.path.join(package_path, "tests/test_data/au/MEX2/MEX2_5640.mda")
+    )
+    print(mda_path1)
+    print(mda_path2)
+    # HEADER
+    test1 = MEX2_NEXAFS(mda_path1, header_only=True)
+    # BODY
+    test2 = MEX2_NEXAFS(mda_path1, header_only=False)
+    # Check if previous binning is applied to new data.
+    test3 = MEX2_NEXAFS(mda_path2, header_only=False, use_recent_binning=True)

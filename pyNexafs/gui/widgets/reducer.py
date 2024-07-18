@@ -12,7 +12,6 @@ from pyNexafs.gui.widgets.graphing.matplotlib.graphs import NavTBQT
 import numpy.typing as npt
 from pyNexafs.utils.mda import MDAFileReader
 import os
-from typing import Iterator
 from pyNexafs.utils.reduction import reducer
 
 
@@ -81,9 +80,7 @@ class EnergyBinReducer(QtWidgets.QWidget):
         self._bin_edit_layout = QtWidgets.QVBoxLayout()
         self._bin_layout.addLayout(self._bin_edit_layout)
         self._bin_edit_layout.addWidget(QtWidgets.QLabel("Energy Binning:"))
-        binning_label = (
-            " #:" if not self._reduction.has_bin_energies else " Energy (eV):"
-        )
+        binning_label = " #:" if not self.reducer.has_bin_energies else " Energy (eV):"
         self._bin_edit_layout.addWidget(QtWidgets.QLabel("Lower" + binning_label))
         self.bin_lower = QtWidgets.QLineEdit()
         self.bin_lower.setMaximumWidth(100)
@@ -94,12 +91,12 @@ class EnergyBinReducer(QtWidgets.QWidget):
         self._bin_edit_layout.addWidget(self.bin_upper)
         self.bin_lower.setValidator(
             QtGui.QDoubleValidator()
-            if self._reduction.has_bin_energies
+            if self.reducer.has_bin_energies
             else QtGui.QIntValidator()
         )
         self.bin_upper.setValidator(
             QtGui.QDoubleValidator()
-            if self._reduction.has_bin_energies
+            if self.reducer.has_bin_energies
             else QtGui.QIntValidator()
         )
         self._bin_edit_layout.addStretch(1)
@@ -143,6 +140,18 @@ class EnergyBinReducer(QtWidgets.QWidget):
         self.bin_lower.editingFinished.connect(self.on_bounds_update)
         self.bin_upper.editingFinished.connect(self.on_bounds_update)
 
+    @property
+    def reducer(self) -> reducer:
+        """
+        Returns the reducer object.
+
+        Returns
+        -------
+        reducer
+            The reducer object.
+        """
+        return self._reduction
+
     def plot_bin_features(self) -> None:
         """
         Plots the bin features for each detector.
@@ -151,13 +160,13 @@ class EnergyBinReducer(QtWidgets.QWidget):
         """
         self.bin_axes.clear()
         # Store the bins, so the max range can be used as a default.
-        self._bins, counts = self._reduction.reduce_to_bin_features()
+        self._bins, counts = self.reducer.reduce_to_bin_features()
 
-        for i in range(self._reduction.detectors):
+        for i in range(self.reducer.detectors):
             self.bin_axes.plot(self._bins, counts[:, i], label=f"Detector {i}")
 
         self.bin_axes.set_xlabel(
-            "Bin #" if not self._reduction.has_bin_energies else "Bin Energy (eV)"
+            "Bin #" if not self.reducer.has_bin_energies else "Bin Energy (eV)"
         )
         self.bin_axes.set_ylabel("Log Channel Counts (A.U.)")
         self.bin_axes.set_yscale("log")
@@ -172,7 +181,7 @@ class EnergyBinReducer(QtWidgets.QWidget):
         which will also trigger onselect.
         """
         lb, ub = self.bin_lower.text(), self.bin_upper.text()
-        if self._reduction.has_bin_energies:
+        if self.reducer.has_bin_energies:
             lb, ub = float(lb), float(ub)
         else:
             lb, ub = int(lb), int(ub)
@@ -262,12 +271,12 @@ class EnergyBinReducer(QtWidgets.QWidget):
         """
         vals = (
             self.span.extents
-            if self._reduction.has_bin_energies
+            if self.reducer.has_bin_energies
             else tuple(np.round(self.span.extents).astype(int))
         )
         if vals[0] == vals[1]:
             # If the same value is provided, return the full range from the data.
-            return tuple(self._reduction.bin_energies[[0, -1]])
+            return tuple(self.reducer.bin_energies[[0, -1]])
         else:
             return vals
 
@@ -281,7 +290,7 @@ class EnergyBinReducer(QtWidgets.QWidget):
         list[tuple[int, int]]
             List of the lower and upper selected bin indices for each detector.
         """
-        return self._reduction.domain_to_indexes(self.domain)
+        return self.reducer.domain_to_indexes(self.domain)
 
     def plot(self, bin_domain: tuple[int, int] | None = None):
         """
@@ -301,14 +310,14 @@ class EnergyBinReducer(QtWidgets.QWidget):
             ax.clear()
 
         # Get the sub-sampled data from the dataset
-        sampled_bin_energies, sampled_data = self._reduction.reduce_domain(
+        sampled_bin_energies, sampled_data = self.reducer.reduce_domain(
             bin_domain=bin_domain
         )
 
         # Plot the new data at the selected domain
         for i, ax in enumerate(self.detector_axes[::2]):  # for each detector
             # Collect the detector data
-            energies = self._reduction.energies
+            energies = self.reducer.energies
             bin_energies = (
                 sampled_bin_energies[:: self._subsampling, i]
                 if sampled_bin_energies.ndim == 2
@@ -338,9 +347,7 @@ class EnergyBinReducer(QtWidgets.QWidget):
                 self.detector_axes[2 * i + 1],
                 cmap=cmap,
                 norm=norm,
-                label=(
-                    "Bin Energy (eV)" if self._reduction.has_bin_energies else "Bin #"
-                ),
+                label=("Bin Energy (eV)" if self.reducer.has_bin_energies else "Bin #"),
             )
 
             ax.set_xlabel("Energy (eV)")
@@ -374,7 +381,7 @@ class EnergyBinReducer(QtWidgets.QWidget):
         # Pause QEdit updates while changing values from the span selector
         self.bin_lower.blockSignals(True)
         self.bin_upper.blockSignals(True)
-        if self._reduction.has_bin_energies:
+        if self.reducer.has_bin_energies:
             self.bin_lower.setText(str(xmin))
             self.bin_upper.setText(str(xmax))
         else:
@@ -394,11 +401,13 @@ class EnergyBinReducerDialog(QtWidgets.QDialog):
         subsampling: int = 5,
         parent=None,
     ):
-        super().__init__(parent)
+        super().__init__(parent=parent)
 
-        self.reducer = EnergyBinReducer(energies, dataset, bin_energies, subsampling)
+        self.reducerUI = EnergyBinReducer(
+            energies, dataset, bin_energies, subsampling, parent=self
+        )
         self._layout = QtWidgets.QVBoxLayout()
-        self._layout.addWidget(self.reducer)
+        self._layout.addWidget(self.reducerUI)
         self.setLayout(self._layout)
         self.setWindowTitle("Energy Bin Reducer")
 
@@ -419,6 +428,18 @@ class EnergyBinReducerDialog(QtWidgets.QDialog):
         self._layout.addWidget(self._buttonBox)
 
     @property
+    def reducer(self) -> reducer:
+        """
+        Returns the reducer object.
+
+        Returns
+        -------
+        reducer
+            The reducer object.
+        """
+        return self.reducerUI.reducer
+
+    @property
     def domain_incidies(self) -> list[tuple[int, int]]:
         """
         Returns the selected energy domain indices for each detector.
@@ -428,7 +449,7 @@ class EnergyBinReducerDialog(QtWidgets.QDialog):
         list[tuple[int, int]]
             List of the lower and upper selected bin indices for each detector.
         """
-        return self.reducer.domain_incidies
+        return self.reducerUI.domain_incidies
 
     @property
     def domain(self) -> tuple[float, float] | tuple[int, int]:
@@ -441,7 +462,21 @@ class EnergyBinReducerDialog(QtWidgets.QDialog):
             The lower and upper selected energies/indexes.
             If energies, a tuple of floats is returned, otherwise a tuple of integers for indices.
         """
-        return self.reducer.domain
+        return self.reducerUI.domain
+
+    @property
+    def result_sum(self) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Returns the sum of counts for the selected energy domain.
+
+        Returns
+        -------
+        tuple[npt.NDArray, npt.NDArray]
+            The sum of counts for the selected energy domain.
+            The first array is the sum of counts for each detector.
+            The second array is the sum of counts for all detectors.
+        """
+        return self.reducer.reduce_by_sum(bin_domain=self.domain)
 
     def accept(self):
         # Check if all settings are valid
@@ -464,7 +499,10 @@ class EnergyBinReducerDialog(QtWidgets.QDialog):
             event.key() == QtCore.Qt.Key.Key_Return
             or event.key() == QtCore.Qt.Key.Key_Enter
         ):
-            if self.reducer.bin_lower.hasFocus() or self.reducer.bin_upper.hasFocus():
+            if (
+                self.reducerUI.bin_lower.hasFocus()
+                or self.reducerUI.bin_upper.hasFocus()
+            ):
                 # Ignore the event when editing.
                 return
             else:
@@ -487,13 +525,14 @@ if __name__ == "__main__":
 
     # Convert MEX2 Data
     energies = data1D[:, 0] * 1000  # Convert keV to eV
-    span = [96, 500]
+    span = [80, 900]
     binned_data = data2D[:, span[0] : span[1], :]
     TOTAL_BINS = span[1] - span[0]
     BIN_ENERGY = 11.935
     BIN_96_ENERGY = 1146.7
+    BIN_I_ENERGY = BIN_96_ENERGY - (95 - span[0]) * BIN_ENERGY
     bin_energies = np.linspace(
-        BIN_96_ENERGY, BIN_96_ENERGY + TOTAL_BINS * BIN_ENERGY, TOTAL_BINS
+        BIN_I_ENERGY, BIN_I_ENERGY + TOTAL_BINS * BIN_ENERGY, TOTAL_BINS
     )
 
     app = QtWidgets.QApplication([])

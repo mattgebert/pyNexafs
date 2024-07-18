@@ -11,7 +11,7 @@ import typing
 import os
 from pyNexafs.utils.mda import MDAFileReader
 import matplotlib.pyplot as plt, matplotlib as mpl
-from typing import Callable
+from typing import Callable, Literal, Union
 
 
 class reducer:
@@ -368,7 +368,7 @@ class reducer:
 
     def reduce(
         self,
-        f: Callable[[npt.NDArray, npt.NDArray, npt.NDArray], npt.NDArray],
+        fn: Callable[[npt.NDArray, npt.NDArray, npt.NDArray], npt.NDArray],
         bin_domain: (
             list[tuple[float, float] | tuple[int, int]]
             | tuple[float, float]
@@ -386,8 +386,11 @@ class reducer:
             Parameters (in order) are energies, dataset, bin_energies.
             See examples for usage.
 
-        domain : _type_, optional
-            _description_, by default None
+        bin_domain : list[tuple[float, float] | tuple[int, int]] | tuple[float, float] | tuple[int, int] | None, optional
+            The energy/index domain to reduce the dataset energy bins to. If None, the dataset is not reduced.
+            If a single tuple is provided, the domain is applied to all detectors.
+            If a list of tuples is provided, the domain is applied to each detector.
+            The tuples should be in the form (min, max) for each detector.
 
         Returns
         -------
@@ -410,15 +413,38 @@ class reducer:
         # and add 0.01 so that the log is not undefined.
         def positive_definite(energies, dataset, bin_energies):
             return np.log(dataset - dataset.min() + 1e-2)
-
         """
-        energies = self.energies
+        # Check the validity of the fn input.
+        if not callable(fn):
+            raise ValueError("`fn` must be a callable function.")
+
+        # Collect possible inputs for the function
+        kw_pairs = {
+            "energies": self.energies,
+            "dataset": self.dataset,
+            "bin_energies": self.bin_energies,
+        }
+
+        # Check that the function signature contains the correct variable names,
+        # and collect the correct inputs for the function.
+        kwargs = {}
+        for kw in fn.__code__.co_varnames:
+            if kw not in kw_pairs:
+                raise ValueError(
+                    f"`fn` {fn} has an invalid keyword: {kw}."
+                    + "Only allowed parameters are `energies`, `dataset`, and `bin_energies`."
+                )
+            else:
+                # Add to kwargs
+                kwargs[kw] = kw_pairs[kw]
+
         if bin_domain is not None:
             bin_energies, dataset = self.reduce_domain(bin_domain)
         else:
-            dataset, bin_energies = self.dataset.copy(), self.bin_energies.copy()
+            bin_energies, dataset = self.bin_energies.copy(), self.dataset.copy()
+
         # Apply the function to the sub_domain dataset
-        reduced_dset = f(energies, dataset, bin_energies)
+        reduced_dset = fn(**kwargs)
         # Return the reduced dataset. Don't need to return bin_energies as
         return bin_energies, reduced_dset
 
@@ -430,31 +456,43 @@ class reducer:
             | tuple[int, int]
             | None
         ) = None,
+        axis: Literal["bin_energies", "detectors"] | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """
-        Reduces the dataset into a single value for each beam energy by summing over dimensions.
+        Reduces the dataset into a single value for each beam energy.
+
+        The single value is created by summing over all dimensions (bin_energies, detectors),
+        unless dimensions are specified by `axis`, in which case the sum is only over the specified axes.
 
         Parameters
         ----------
         domain : list[tuple[float, float] | tuple[int, int]] | tuple[float, float] | tuple[int, int] | None, optional
-            The domain to reduce the dataset to. If None, the dataset is not reduced.
+            The energy/index domain to reduce the dataset to. If None, the dataset is not reduced.
             If a single tuple is provided, the domain is applied to all detectors.
             If a list of tuples is provided, the domain is applied to each detector.
             The tuples should be in the form (min, max) for each detector.
+        axis : Literal["bin_energies", "detectors"] | None, optional
+            The axis or axes to sum over. If None, the dataset is summed over all axes.
 
         Returns
         -------
         reduced_bin_energies : npt.NDArray
-            The reduced energy values for each detection energy bin.
-            If bin_energies is not set, the values correspond bin indexes.
-            Like `reduced_dataset`, `reduced_bin_energies` has as dimensions (N, D).
+            The domain-reduced energy values for each detection energy bin.
+            If `bin_energies` is not set, the values correspond bin indexes.
+            The dimensions are (N, D), where N is the reduced number of
+            detection energy bins, and D is the number of detectors.
         reduced_dataset : npt.NDArray
-            The reduced NEXAFS dataset, with dimensions (M, N, D),
-            where M is the number of beam energies,
-            N is the reduced number of detection energy bins according to the provided domain,
-            and D is the number of detectors.
+            The reduced NEXAFS dataset, with dimensions (M)
+            where M is the number of incident beam energies.
         """
-        f = lambda energies, dataset, bin_energies: dataset.sum(axis=(1, 2))
+        if axis is not None and axis not in ["bin_energies", "detectors"]:
+            raise ValueError("`axis` must be either 'bin_energies' or 'detectors'.")
+        if axis == "bin_energies":
+            f = lambda energies, dataset, bin_energies: dataset.sum(axis=1)
+        elif axis == "detectors":
+            f = lambda energies, dataset, bin_energies: dataset.sum(axis=2)
+        else:
+            f = lambda energies, dataset, bin_energies: dataset.sum(axis=(1, 2))
         return self.reduce(f, bin_domain)
 
     def reduce_to_bin_features(self) -> tuple[npt.NDArray, npt.NDArray]:
