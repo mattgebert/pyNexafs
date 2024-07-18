@@ -45,7 +45,7 @@ class MEX2_NEXAFS_META(parser_meta):
     ) -> "MEX2_NEXAFS":
 
         # Add extra class property for MEX2 mda data, to track binning settings
-        cls.reduction_bin_indexes: list[tuple[int, int]] | None = None
+        cls.reduction_bin_indices: list[tuple[int, int]] | None = None
         """Tracker for the binning settings used in the most recent data reduction."""
         return super().__init__(name=name, bases=bases, namespace=namespace, **kwds)
 
@@ -607,10 +607,12 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                     :, INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1], :
                 ]
                 bin_e = INTERESTING_BINS_ENERGIES  # pre-calibrated.
+                print("0 Bin:", bin_e[0])
+                print(f"{len(bin_e)} Bin:", bin_e[-1])
 
                 # Perform binning on 2D array:
-                if use_recent_binning and cls.reduction_bin_indexes is not None:
-                    cls.reduction_bin_indexes
+                if use_recent_binning and cls.reduction_bin_indices is not None:
+                    cls.reduction_bin_indices
                     red = reducer(energies, dataset, bin_e)
                 else:
                     # Create a QT application to run the dialog.
@@ -623,17 +625,20 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                     window.show()
                     if window.exec():
                         # If successful, store the binning settings.
-                        cls.reduction_bin_indexes = window.domain_incidies
+                        cls.reduction_bin_indices = window.domain_indices
                         red = window.reducer
+                        print("Dom:", window.domain)
                     else:
                         raise ValueError("No binning settings selected.")
 
+                print("Red Idx:", cls.reduction_bin_indices)
+                print("Reduced:", bin_e[cls.reduction_bin_indices])
                 # Use the binning settings to reduce the data.
                 _, reduced_single_data = red.reduce_by_sum(
-                    bin_domain=cls.reduction_bin_indexes
+                    bin_domain=cls.reduction_bin_indices
                 )
                 _, reduced_detector_data = red.reduce_by_sum(
-                    bin_domain=cls.reduction_bin_indexes, axis="bin_energies"
+                    bin_domain=cls.reduction_bin_indices, axis="bin_energies"
                 )
 
             # 3D array unhandled.
@@ -982,3 +987,19 @@ if __name__ == "__main__":
     test2 = MEX2_NEXAFS(mda_path1, header_only=False)
     # Check if previous binning is applied to new data.
     test3 = MEX2_NEXAFS(mda_path2, header_only=False, use_recent_binning=True)
+
+    import matplotlib.pyplot as plt
+
+    plt.close("all")
+    subplts = plt.subplots(1, 1)
+    fig: plt.Figure = subplts[0]
+    ax: plt.Axes = subplts[1]
+    idx = -1
+    ax.plot(test2.data[:, 0], test2.data[:, idx], label="Test2" + test2.labels[idx])
+    ax.plot(test3.data[:, 0], test3.data[:, idx], label="Test3" + test3.labels[idx])
+    ax.legend()
+    # plt.ioff()
+
+    plt.ion()
+    # plt.show(block=False)
+    plt.show(block=True)

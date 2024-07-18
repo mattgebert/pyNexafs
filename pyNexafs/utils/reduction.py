@@ -439,14 +439,17 @@ class reducer:
                 kwargs[kw] = kw_pairs[kw]
 
         if bin_domain is not None:
-            bin_energies, dataset = self.reduce_domain(bin_domain)
+            reduced_bin_energies, kwargs["dataset"] = self.reduce_domain(bin_domain)
         else:
-            bin_energies, dataset = self.bin_energies.copy(), self.dataset.copy()
+            reduced_bin_energies, kwargs["dataset"] = (
+                self.bin_energies.copy(),
+                self.dataset.copy(),
+            )
 
         # Apply the function to the sub_domain dataset
         reduced_dset = fn(**kwargs)
         # Return the reduced dataset. Don't need to return bin_energies as
-        return bin_energies, reduced_dset
+        return reduced_bin_energies, reduced_dset
 
     def reduce_by_sum(
         self,
@@ -493,7 +496,7 @@ class reducer:
             f = lambda energies, dataset, bin_energies: dataset.sum(axis=2)
         else:
             f = lambda energies, dataset, bin_energies: dataset.sum(axis=(1, 2))
-        return self.reduce(f, bin_domain)
+        return self.reduce(fn=f, bin_domain=bin_domain)
 
     def reduce_to_bin_features(self) -> tuple[npt.NDArray, npt.NDArray]:
         """
@@ -629,27 +632,10 @@ if __name__ == "__main__":
     ax[0].set_ylabel("Intensity")
     ax[0].legend()
 
-    def see_bin_features(energies, dataset, bin_energies):
-        # Subtract average of each detector along the bin axis for each energy (this removes constant background)
-        # ds_sub: np.ndarray = (
-        #         dataset[:, :, :] - np.mean(dataset[:, :, :], axis=1)[:, np.newaxis, :]
-        # )
-        ds_sub = dataset
-        # Sum over all energies to find the energy bins with signal.
-        ds_sum: np.ndarray = ds_sub.sum(axis=0)
-        # Translate every bin to be positive definite, and add a base 1e-2 so we can log plot
-        if np.any(ds_sum <= 1e-2):
-            if dataset.ndim == 2:  # Single detector
-                ds_sum += 1e-2 - ds_sum.min()
-            else:  # Multiple detectors
-                ds_sum += 1e-2 - ds_sum.min(axis=0)
-        return ds_sum
-
-    logdata = see_bin_features(energies, binned_data, bin_energies)
-    [
-        ax[1].plot(bin_energies, logdata[:, i], label=f"Detector {i}")
-        for i in range(reduced_data.shape[1])
-    ]
+    # Now use the reducer
+    red = reducer(energies, binned_data, bin_energies)
+    bin_features, dataset_sum = red.reduce_to_bin_features()
+    ax[1].plot(bin_features, dataset_sum, label=[f"Detector {i}" for i in [1, 2, 3, 4]])
     ax[1].set_title("Raw data, summed over all beam energies")
     ax[1].set_yscale("log")
     # ax[1].set_ylim(1e-2, logdata.max()*5)
@@ -657,24 +643,15 @@ if __name__ == "__main__":
     ax[1].set_ylabel("Intensity")
     ax[1].legend()
 
-    # Now use the reducer
-    red = reducer(energies, binned_data, bin_energies)
     # Demonstrate bin domain use
     domain = (3300, 3700)
-    reduced_bin_energies, reduced_dset = red.reduce_domain(domain)
-    [
-        ax[2].plot(
-            energies, np.sum(reduced_dset[:, :, i], axis=1), label=f"Detector {i}"
-        )
-        for i in range(red.detectors)
-    ]
-    ax[2].set_title("Reduced NEXAFS data")
-    ax[2].set_xlabel("Beam Energy (eV)")
-    ax[2].set_ylabel("Intensity")
     # Demonstrate bin reduction
     reduced_bin_energies, reduced_dset = red.reduce_by_sum(bin_domain=domain)
     ax[2].plot(energies, reduced_dset, label="Reduced")
     ax[2].legend()
+    ax[2].set_title("Reduced NEXAFS data")
+    ax[2].set_xlabel("Beam Energy (eV)")
+    ax[2].set_ylabel("Intensity")
 
     fig.tight_layout()
     plt.show()

@@ -382,8 +382,8 @@ class EnergyBinReducer(QtWidgets.QWidget):
         self.bin_lower.blockSignals(True)
         self.bin_upper.blockSignals(True)
         if self.reducer.has_bin_energies:
-            self.bin_lower.setText(str(xmin))
-            self.bin_upper.setText(str(xmax))
+            self.bin_lower.setText(f"{xmin:.6f}")
+            self.bin_upper.setText(f"{xmin:.6f}")
         else:
             self.bin_lower.setText(str(int(round(xmin))))
             self.bin_upper.setText(str(int(round(xmax))))
@@ -440,7 +440,7 @@ class EnergyBinReducerDialog(QtWidgets.QDialog):
         return self.reducerUI.reducer
 
     @property
-    def domain_incidies(self) -> list[tuple[int, int]]:
+    def domain_indices(self) -> list[tuple[int, int]]:
         """
         Returns the selected energy domain indices for each detector.
 
@@ -543,6 +543,6 @@ if __name__ == "__main__":
     if win.exec():
         print("OK")
         print("Selected Domain:", win.domain)
-        print("Selected Domain Indices for detectors:", win.domain_incidies)
+        print("Selected Domain Indices for detectors:", win.domain_indices)
     else:
         print("Cancel")
