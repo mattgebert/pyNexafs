@@ -95,13 +95,15 @@ class NEXAFS_NavQT(NavTBQT, QtWidgets.QToolBar):
     @overrides.overrides
     def _icon(
         self,
-        name: str
-        | QtGui.QIcon
-        | QStyle.StandardPixmap
-        | tuple[
-            str | QtGui.QIcon | QStyle.StandardPixmap,
-            str | QtGui.QIcon | QStyle.StandardPixmap,
-        ],
+        name: (
+            str
+            | QtGui.QIcon
+            | QStyle.StandardPixmap
+            | tuple[
+                str | QtGui.QIcon | QStyle.StandardPixmap,
+                str | QtGui.QIcon | QStyle.StandardPixmap,
+            ]
+        ),
         light_theme: bool = True,
     ) -> QtGui.QIcon:
         """
