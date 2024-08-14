@@ -1,6 +1,6 @@
 
 #%%
-%matplotlib qt 
+%matplotlib qt
 import hyperspy.api as hs
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,5 +11,5 @@ s = hs.signals.Signal1D(my_np_array)
 s
 
 # %%
-hs.preferences.gui() 
+hs.preferences.gui()
 # %%
