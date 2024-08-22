@@ -5,7 +5,7 @@ Current facilities supported include are exclusively:
 - Australian Synchrotron.
 """
 
-from .aus_sync import (
+from pyNexafs.parsers.au.aus_sync import (
     SXR_NEXAFS,
     MEX1_NEXAFS,
     MEX1_to_QANT_AUMainAsc,

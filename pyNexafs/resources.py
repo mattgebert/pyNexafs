@@ -1,3 +1,7 @@
+"""
+This file contains the paths to file resources, used in the GUI or by the package.
+"""
+
 import os
 
 root = os.path.dirname(os.path.abspath(__file__))

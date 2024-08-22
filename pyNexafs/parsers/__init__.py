@@ -6,10 +6,10 @@ in GUI applications.
 """
 
 # Base objects
-from ._base import parser_base, parser_meta
+from pyNexafs.parsers._base import parser_base, parser_meta
 
 # Specific Parsers
-from . import au
+from pyNexafs.parsers import au
 
 # Define loaders with string representation.
 parser_loaders = {
@@ -23,6 +23,7 @@ for parser in parser_loaders.values():
     assert issubclass(
         parser, parser_base
     ), f"{parser} is not a subclass of parser_base."
+
 # Check that no parser names overlap. Important for GUIs.
 parser_names = [parser_name for parser_name in parser_loaders.keys()]
 assert len(parser_names) == len(set(parser_names)), "Parser names overlap."
