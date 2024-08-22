@@ -43,7 +43,14 @@ class converterWidget(QtWidgets.QWidget):
         # Remove parsers other than MEX2 from the loader.
         self.loader.nexafs_parser_selector.blockSignals(True)
         for key in list(self.loader.nexafs_parser_selector.parsers.keys()):
-            if not (key == "au MEX2:NEXAFS" or key == ""):
+            if not (
+                key
+                in [
+                    "au MEX1:NEXAFS",
+                    "au MEX2:NEXAFS",
+                    "",  # Empty key is used for GUI init.
+                ]
+            ):
                 self.loader.nexafs_parser_selector.parsers.pop(key)
         self.loader.nexafs_parser_selector.update_combo_list()
         self.loader.nexafs_parser_selector.blockSignals(False)

@@ -241,13 +241,16 @@ class nexafsViewer(QWidget):
                     for i in previousIndexes:
                         self._dataseries_list_view.item(i).setSelected(True)
                     self._dataseries_list_view.setFocus()
-
         else:
             self._dataseries_list = []
             self._dataseries_list_view.clear()
 
         # Reset the updating flag.
         self._updating = False
+
+        # Update the normalisation graph.
+        # TODO: DEBUG THIS TO ENABLE!
+        # self.on_label_selection_change()
 
     @property
     def dataseries_selected(self) -> list[str] | None:
@@ -301,7 +304,9 @@ class nexafsViewer(QWidget):
             ds_list = self.dataseries_selected
             # Propogate dataseries selection to normalisation widget.
             self._normGraph.graph_scans = scans_subset
-            self._normGraph.dataseries_selection = ds_list
+            self._normGraph.dataseries_selection = (
+                ds_list if ds_list is not None else []
+            )
             self._normGraph.graph_selection()
 
     def on_normalisation_change(self) -> None:
@@ -344,10 +349,10 @@ class normalisingGraph(QWidget):
         self._layout.addWidget(self._canvas)
 
         # Update toolbar settings.
-        self._toolbar.graph_scans = graph_scans
-        self._toolbar.dataseries_selection = dataseries_selection
-        self._toolbar.background_fixed_scans = background_fixed_scans
-        self._toolbar.norm_settings = norm_settings
+        self.graph_scans = graph_scans
+        self.dataseries_selection = dataseries_selection
+        self.background_fixed_scans = background_fixed_scans
+        self.norm_settings = norm_settings
 
     @property
     def graph_scans(self) -> list[Type[scan_abstract | parser_base]]:
@@ -355,15 +360,17 @@ class normalisingGraph(QWidget):
 
     @graph_scans.setter
     def graph_scans(self, scans: list[Type[scan_abstract | parser_base]]):
-        self.toolbar.graph_scans = scans.copy()
+        self.toolbar.graph_scans = scans.copy() if scans is not None else None
 
     @property
     def dataseries_selection(self) -> list[str]:
-        return self._toolbar.dataseries_selection.copy()
+        return self.toolbar.dataseries_selection.copy()
 
     @dataseries_selection.setter
     def dataseries_selection(self, labels: list[str]):
-        self.toolbar.dataseries_selection = labels
+        self.toolbar.dataseries_selection = (
+            labels.copy() if labels is not None else None
+        )
 
     @property
     def background_fixed_scans(self) -> list[Type[scan_abstract | parser_base]]:
@@ -371,7 +378,9 @@ class normalisingGraph(QWidget):
 
     @background_fixed_scans.setter
     def background_fixed_scans(self, scans: list[Type[scan_abstract | parser_base]]):
-        self.toolbar.background_fixed_scans = scans.copy()
+        self.toolbar.background_fixed_scans = (
+            scans.copy() if scans is not None else None
+        )
 
     @property
     def norm_settings(self) -> normaliserSettings:
@@ -379,7 +388,7 @@ class normalisingGraph(QWidget):
 
     @norm_settings.setter
     def norm_settings(self, settings: normaliserSettings):
-        self.toolbar.norm_settings = settings
+        self.toolbar.norm_settings = settings if settings is not None else None
 
     @property
     def figure(self) -> matplotlib.figure.Figure:

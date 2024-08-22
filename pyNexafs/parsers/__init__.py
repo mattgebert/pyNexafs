@@ -14,6 +14,7 @@ from . import au
 # Define loaders with string representation.
 parser_loaders = {
     "au SXR:NEXAFS": au.SXR_NEXAFS,
+    "au MEX1:NEXAFS": au.MEX1_NEXAFS,
     "au MEX2:NEXAFS": au.MEX2_NEXAFS,
 }
 

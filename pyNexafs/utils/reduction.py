@@ -65,6 +65,14 @@ class reducer:
         # Check validity of input
         self._validify_inputs(energies, dataset, bin_energies)
 
+        # Generate bin numbers if not provided
+        if bin_energies is None:
+            # Create bin numbers:
+            bin_energies = np.linspace(0, dataset.shape[1], dataset.shape[1])
+            self._bins_assigned = False
+        else:
+            self._bins_assigned = True
+
         # Assign attributes
         self._energies: np.ndarray = energies
         self._dataset: np.ndarray = dataset
@@ -73,15 +81,6 @@ class reducer:
         # New boolean attribute to track if bin_energies has been set
         self._bins_assigned: bool
         """Tracks if bin_energies has been set."""
-
-        if bin_energies is None:
-            # Create bin numbers:
-            bin_energies = np.linspace(
-                0, self._dataset.shape[1], self._dataset.shape[1]
-            )
-            self._bins_assigned = False
-        else:
-            self._bins_assigned = True
 
     @property
     def energies(self) -> npt.NDArray:
@@ -192,13 +191,15 @@ class reducer:
         else:
             return self._dataset.shape[2]
 
-    def domain_to_detector_bin_indexes(
+    def domain_to_detector_bin_index_range(
         self, bin_domain: tuple[int, int] | tuple[float, float], detector_idx: int = 0
     ) -> tuple[int, int]:
         """
         Converts an energy|bin domain to bin indexes for a given detector.
 
         By default, the first detector is assumed.
+        If `bin_energies` are set, the index of the closest energy value to the domain is used.
+        If no `bin_energies` are set, the domain is converted to the nearest integer and applied directly.
 
         Parameters
         ----------
@@ -236,7 +237,7 @@ class reducer:
                     )
                 return (lb, ub)
 
-    def domain_to_indexes(
+    def domain_to_index_range(
         self,
         bin_domain: (
             list[tuple[int, int] | tuple[float, float]]
@@ -260,7 +261,7 @@ class reducer:
 
         Returns
         -------
-        list[tuple[int, int]]
+        Index_ranges : list[tuple[int, int]]
             The lower and upper selected bin indexes for each detector.
         """
         if bin_domain is None:
@@ -268,18 +269,20 @@ class reducer:
             return [(0, self.bin_energies.shape[0])] * self.detectors
         elif isinstance(bin_domain, list):
             return [
-                self.domain_to_detector_bin_indexes(bin_domain=domain, detector_idx=i)
+                self.domain_to_detector_bin_index_range(
+                    bin_domain=domain, detector_idx=i
+                )
                 for i, domain in enumerate(bin_domain)
             ]
         else:
             if not self.has_bin_energies:
                 # Can repeat the domain for each detector; indexing is the same
                 return [
-                    self.domain_to_detector_bin_indexes(bin_domain=bin_domain)
+                    self.domain_to_detector_bin_index_range(bin_domain=bin_domain)
                 ] * self.detectors
             else:
                 return [
-                    self.domain_to_detector_bin_indexes(
+                    self.domain_to_detector_bin_index_range(
                         bin_domain=bin_domain, detector_idx=i
                     )
                     for i in range(self.detectors)
@@ -304,6 +307,8 @@ class reducer:
             If a single tuple is provided, the domain is applied to all detectors.
             If a list of tuples is provided, the domain is applied to each detector.
             The tuples should be in the form (min, max) for each detector.
+            By default `bin_domain` is treated as a set of energy values.
+            If has_bin_energies is False, the domain is applied to the bin indexes instead.
 
         Returns
         -------
@@ -332,25 +337,29 @@ class reducer:
                     + f" the number of detectors ({self.detectors}) i.e. `[(min1, max1), ..., (minN, maxN)]`."
                 )
 
-            # Reduce the dataset to the domain
-            reduced_idxs = self.domain_to_indexes(bin_domain)
+            # Reduce the dataset to the domain and a numpy array
+            reduced_idxs = np.asarray(self.domain_to_index_range(bin_domain))
+            # always 2D ^
 
-            if len(reduced_idxs) == 1 and self.dataset.ndim == 2:
-                lb, ub = reduced_idxs[0]
-                if self.has_bin_energies:
-                    # Same logic for single or multiple detectors:
-                    return self.bin_energies[lb:ub], self.dataset[:, lb:ub]
+            if reduced_idxs.ndim == 2 and self.dataset.ndim == 2:
+                if reduced_idxs.shape[0] == 1:
+                    lb, ub = reduced_idxs[0]
+                    if self.has_bin_energies:
+                        # Same logic for single or multiple detectors:
+                        return self.bin_energies[lb:ub], self.dataset[:, lb:ub]
+                    else:
+                        return np.arange(lb, ub), self.dataset[:, lb:ub]
                 else:
-                    return np.arange(lb, ub), self.dataset[:, lb:ub]
-            else:
+                    raise ValueError(
+                        f"Cannot reduce a single detector dataset (shape: {self.dataset.shape}) with multiple detector domains {bin_domain}."
+                    )
+            elif reduced_idxs.ndim == 2 and self.dataset.ndim == 3:
                 data = []
                 bins = []
                 for i, (lb, ub) in enumerate(reduced_idxs):
-                    # Singular detector or not
-                    if i == 1 and self.dataset.ndim == 2:
-                        data.append(self.dataset[:, lb:ub])
-                    else:
-                        data.append(self.dataset[:, lb:ub, i])
+                    # Add the slice of the dataset
+                    data.append(self.dataset[:, lb:ub, i])
+                    # Add the slice of the bin_energies
                     if self.has_bin_energies:
                         if self.bin_energies.ndim == 1:
                             bins.append(self.bin_energies[lb:ub])
@@ -365,6 +374,10 @@ class reducer:
                 data = np.moveaxis(data, 0, -1)
                 bins = np.moveaxis(bins, 0, -1) if bins.ndim == 2 else bins
                 return bins, data
+            else:
+                raise ValueError(
+                    f"Invalid domain shape {reduced_idxs.shape} for dataset shape {self.dataset.shape}."
+                )
 
     def reduce(
         self,
@@ -445,6 +458,7 @@ class reducer:
                 self.bin_energies.copy(),
                 self.dataset.copy(),
             )
+        # print(reduced_bin_energies)
 
         # Apply the function to the sub_domain dataset
         reduced_dset = fn(**kwargs)

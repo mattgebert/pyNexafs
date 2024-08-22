@@ -7,4 +7,5 @@ Current beamlines supported include are:
 """
 
 from .SXR import SXR_NEXAFS
+from .MEX1 import MEX1_NEXAFS, MEX1_to_QANT_AUMainAsc
 from .MEX2 import MEX2_NEXAFS, MEX2_to_QANT_AUMainAsc

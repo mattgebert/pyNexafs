@@ -573,7 +573,7 @@ class parser_base(metaclass=parser_meta):
 
     @classmethod
     def file_parser(
-        cls,
+        cls: type[Self],
         file: TextIOWrapper,
         header_only: bool = False,
         **kwargs,
@@ -623,16 +623,42 @@ class parser_base(metaclass=parser_meta):
                 # Attempt to use parse functions that contain a string that matches the extension
                 if extension in parse_fn.__name__:
                     try:
-                        arg_names = parse_fn.__code__.co_varnames[
-                            : parse_fn.__code__.co_argcount
-                        ]
+                        # Get the argument names of the parse function.
+                        arg_names = list(
+                            parse_fn.__code__.co_varnames[
+                                : parse_fn.__code__.co_argcount
+                            ]
+                        )
+                        default_args = arg_names.copy()[-len(parse_fn.__defaults__) :]
+
+                        # Remove the file_parser arguments from the list.
+                        for name in ["cls", "file"]:  # Non-optionals
+                            if name in arg_names:
+                                arg_names.remove(name)
+
                         # Check all keyword args are in the arg_names, otherwise skip the method.
-                        if not all([kw in arg_names for kw in kwargs.keys()]):
-                            continue
+                        if not all([kw in kwargs.keys() for kw in arg_names]):
+                            missing_args = [
+                                kw for kw in arg_names if kw not in kwargs.keys()
+                            ]
+
+                            # Check if the argument has a default value.
+                            for arg in missing_args:
+                                if arg not in default_args:
+                                    # Skip method if argument is NOT covered by a default value.
+                                    print(
+                                        f"Skipping {parse_fn.__name__} due to missing argument {arg}."
+                                    )
+                                    continue
+
+                        # Copy kwargs and only use the arguments that are in the method signature.
+                        fn_kwargs = {
+                            kw: kwargs[kw] for kw in arg_names if kw in kwargs.keys()
+                        }
 
                         if type(parse_fn) == types.FunctionType:  # staticmethod
                             obj = (
-                                parse_fn(file, header_only, **kwargs)
+                                parse_fn(file, header_only, **fn_kwargs)
                                 if "header_only" in arg_names
                                 else parse_fn(file)
                             )
@@ -645,7 +671,7 @@ class parser_base(metaclass=parser_meta):
                             # type(parse_fn == types.MethodType)
                             # cls is the first argument of the method, already incorporated into the function call.
                             obj = (
-                                parse_fn(file, header_only, **kwargs)
+                                parse_fn(file, header_only, **fn_kwargs)
                                 if "header_only" in arg_names
                                 else parse_fn(file)
                             )

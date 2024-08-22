@@ -4,7 +4,7 @@ from pyNexafs.nexafs.scan import scan_base
 from typing import Type
 import sys
 from pyNexafs.gui.widgets.io.dir_selection import directory_selector
-from pyNexafs.parsers.au import MEX2_to_QANT_AUMainAsc
+import pyNexafs.parsers.au as AU_PARSERS
 from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas, NEXAFS_NavQT
 import warnings
 from enum import Enum
@@ -403,7 +403,16 @@ class nexafsParserConverter(QtWidgets.QWidget):
                     stacklevel=2,
                 )
             # Run the conversion on the first file.
-            lines = MEX2_to_QANT_AUMainAsc(self._conversions[0])
+            parser_type = type(self.parsers[0])
+            match parser_type:
+                case AU_PARSERS.MEX1_NEXAFS:
+                    lines = AU_PARSERS.MEX1_to_QANT_AUMainAsc(self._conversions[0])
+                case AU_PARSERS.MEX2_NEXAFS:
+                    lines = AU_PARSERS.MEX2_to_QANT_AUMainAsc(self._conversions[0])
+                case _:
+                    raise NotImplementedError(
+                        f"Conversion for this parser type {type(self.parsers[0])} has not been implemented."
+                    )
             cb = QtGui.QGuiApplication.clipboard()
             cb.setText("".join(lines), mode=QtGui.QClipboard.Mode.Clipboard)
         else:
@@ -416,6 +425,13 @@ class nexafsParserConverter(QtWidgets.QWidget):
         if len(self._conversions) > 0:
             self.progress.setRange(0, len(self._conversions))
             for parser in self._conversions:
+                ptype = type(parser)
+                converter: function
+                match ptype:
+                    case AU_PARSERS.MEX1_NEXAFS:
+                        converter = AU_PARSERS.MEX1_to_QANT_AUMainAsc
+                    case AU_PARSERS.MEX2_NEXAFS:
+                        converter = AU_PARSERS.MEX2_to_QANT_AUMainAsc
                 self.progress.setValue(self.progress.value() + 1)
                 # Convert to ascii format.
                 file = "".join(parser.filename.split(".")[:-1]) + ".asc"
@@ -439,12 +455,12 @@ class nexafsParserConverter(QtWidgets.QWidget):
                                 init_override = True
                             case QtWidgets.QMessageBox.StandardButton.Yes:
                                 with open(path, "w") as f:
-                                    f.write("".join(MEX2_to_QANT_AUMainAsc(parser)))
+                                    f.write("".join(converter(parser)))
                             case _:
                                 pass
                     else:
                         with open(path, "w") as f:
-                            f.write("".join(MEX2_to_QANT_AUMainAsc(parser)))
+                            f.write("".join(converter(parser)))
                 elif os.path.exists(path):
                     diag = QtWidgets.QMessageBox(self)
                     diag.setWindowTitle("Files Exist")
@@ -823,7 +839,7 @@ class nexafsParserConverter(QtWidgets.QWidget):
 
     @property
     def conversions(self) -> list[Type[parser_base]]:
-        return
+        return self._conversions
 
     @property
     def num_files(self):

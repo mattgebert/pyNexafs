@@ -181,11 +181,15 @@ class EnergyBinReducer(QtWidgets.QWidget):
         which will also trigger onselect.
         """
         lb, ub = self.bin_lower.text(), self.bin_upper.text()
-        if self.reducer.has_bin_energies:
-            lb, ub = float(lb), float(ub)
-        else:
-            lb, ub = int(lb), int(ub)
-        self.span.extents = (lb, ub)
+        try:
+            if self.reducer.has_bin_energies:
+                lb, ub = float(lb), float(ub)
+            else:
+                lb, ub = int(lb), int(ub)
+            self.span.extents = (lb, ub)
+        except ValueError:
+            # Do nothing if the values are invalid.
+            pass
 
     @property
     def dataset(self) -> npt.NDArray:
@@ -290,7 +294,7 @@ class EnergyBinReducer(QtWidgets.QWidget):
         list[tuple[int, int]]
             List of the lower and upper selected bin indices for each detector.
         """
-        return self.reducer.domain_to_indexes(self.domain)
+        return self.reducer.domain_to_index_range(self.domain)
 
     def plot(self, bin_domain: tuple[int, int] | None = None):
         """
@@ -383,7 +387,7 @@ class EnergyBinReducer(QtWidgets.QWidget):
         self.bin_upper.blockSignals(True)
         if self.reducer.has_bin_energies:
             self.bin_lower.setText(f"{xmin:.6f}")
-            self.bin_upper.setText(f"{xmin:.6f}")
+            self.bin_upper.setText(f"{xmax:.6f}")
         else:
             self.bin_lower.setText(str(int(round(xmin))))
             self.bin_upper.setText(str(int(round(xmax))))

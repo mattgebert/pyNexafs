@@ -1,5 +1,5 @@
 """
-Parser classes for the Medium Energy X-ray 2 (MEX2) beamline at the Australian Synchrotron.
+Parser classes for the Medium Energy X-ray 2 (MEX1) beamline at the Australian Synchrotron.
 """
 
 import PyQt6
@@ -19,38 +19,40 @@ import os
 from pyNexafs.utils.reduction import reducer
 import traceback
 
-
-# Additional data provided by the MEX2 beamline for the data reduction
-BIN_ENERGY_DELTA = 11.935
-BIN_96_ENERGY = 1146.7
+# TODO: What are the values for MEX1? What are the bins?
+# Additional data provided by the MEX1 beamline for the data reduction
+# BIN_ENERGY_DELTA = 11.935
+# BIN_96_ENERGY = 1146.7
 TOTAL_BINS = 4096
-TOTAL_BIN_ENERGIES = np.linspace(
-    start=BIN_96_ENERGY - 95 * BIN_ENERGY_DELTA,
-    stop=BIN_96_ENERGY + (TOTAL_BINS - 96) * BIN_ENERGY_DELTA,
-    num=TOTAL_BINS,
-)
-INTERESTING_BINS_IDX = [80, 900]
-INTERESTING_BINS_ENERGIES = TOTAL_BIN_ENERGIES[
-    INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1]
-]
+# TOTAL_BIN_ENERGIES = np.linspace(
+#     start=BIN_96_ENERGY - 95 * BIN_ENERGY_DELTA,
+#     stop=BIN_96_ENERGY + (TOTAL_BINS - 96) * BIN_ENERGY_DELTA,
+#     num=TOTAL_BINS,
+# )
+INTERESTING_BINS_IDX = [80, 2000]  # 80 to 900 for MEX2.
+# INTERESTING_BINS_ENERGIES = TOTAL_BIN_ENERGIES[
+# INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1]
+# ]
 
 
-class MEX2_NEXAFS_META(parser_meta):
+class MEX1_NEXAFS_META(parser_meta):
     def __init__(
         cls: type,
         name: str,
         bases: tuple[type, ...],
         namespace: dict[str, Any],
         **kwds: Any,
-    ) -> "MEX2_NEXAFS":
+    ) -> "MEX1_NEXAFS":
 
-        # Add extra class property for MEX2 mda data, to track binning settings
+        # Create an extra class property for MEX1 mda data, to track binning settings
         cls.reduction_bin_domain: list[tuple[int, int]] | None = None
         """Tracker for the binning settings used in the most recent data reduction."""
+
+        # Perform the normal class creation via parser_meta.
         return super().__init__(name=name, bases=bases, namespace=namespace, **kwds)
 
 
-class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
+class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
     """
     Australian Synchrotron Soft X-ray (SXR) NEXAFS parser.
 
@@ -110,281 +112,131 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
     }
 
     RELABELS = {
-        # MDA File
-        "MEX2DCM01:ENERGY": "Energy Setpoint",
-        "MEX2ES01ZEB01:CALC_ENERGY_EV": "Energy",
-        "MEX2ES01ZEB01:GATE_TIME_SET": "Gate Time Setpoint",
-        "MEX2SSCAN01:saveData_comment1": "Comment 1",
-        "MEX2SSCAN01:saveData_comment2": "Comment 2",
-        "MEX2ES01ZEB01:BRAGG_WITH_OFFSET": "Bragg",
-        "SR11BCM01:CURRENT_MONITOR": "Current Monitor",  # What is this? I0?
-        "MEX2ES01DAQ01:ch1:S:MeanValue_RBV": "Beam Intensity Monitor",  # Beam Intensity Monitor
-        "MEX2ES01DAQ01:ch2:S:MeanValue_RBV": "I0",
-        "MEX2ES01DAQ01:ch3:S:MeanValue_RBV": "SampleDrain",
-        # 'MEX2ES01DAQ01:ch4:S:MeanValue_RBV',
-        "MEX2ES01DPP01:dppAVG:InputCountRate": "ICR_AVG",
-        "MEX2ES01DPP01:dppAVG:OutputCountRate": "OCR_AVG",
-        # 'MEX2ES01DPP01:R:AVG:kCPS',
-        "MEX2ES01DPP01:dppAVG:ElapsedLiveTime": "Count Time",
-        # 'MEX2ES01ZEB01:PC_GATE_WID:RBV',
-        # 'MEX2ES01DAQ01:ArrayCounter_RBV',
-        # 'MEX2ES01DPP01:R:1:Total_RBV',
-        # 'MEX2ES01DPP01:R:2:Total_RBV',
-        # 'MEX2ES01DPP01:R:3:Total_RBV',
-        # 'MEX2ES01DPP01:R:4:Total_RBV',
-        # 'MEX2ES01DPP01:dpp1:InputCountRate',
-        # 'MEX2ES01DPP01:dpp2:InputCountRate',
-        # 'MEX2ES01DPP01:dpp3:InputCountRate',
-        # 'MEX2ES01DPP01:dpp4:InputCountRate',
-        # 'MEX2ES01DPP01:dpp1:OutputCountRate',
-        # 'MEX2ES01DPP01:dpp2:OutputCountRate',
-        # 'MEX2ES01DPP01:dpp3:OutputCountRate',
-        # 'MEX2ES01DPP01:dpp4:OutputCountRate',
-        # 'MEX2ES01DPP01:dpp1:ElapsedRealTime',
-        # 'MEX2ES01DPP01:dpp2:ElapsedRealTime',
-        # 'MEX2ES01DPP01:dpp3:ElapsedRealTime',
-        # 'MEX2ES01DPP01:dpp4:ElapsedRealTime',
-        # 'MEX2ES01DPP01:dpp1:ElapsedLiveTime',
-        # 'MEX2ES01DPP01:dpp2:ElapsedLiveTime',
-        # 'MEX2ES01DPP01:dpp3:ElapsedLiveTime',
-        # 'MEX2ES01DPP01:dpp4:ElapsedLiveTime',
-        # 'MEX2ES01DPP01:dpp1:DeadTime',
-        # 'MEX2ES01DPP01:dpp2:DeadTime',
-        # 'MEX2ES01DPP01:dpp3:DeadTime',
-        # 'MEX2ES01DPP01:dpp4:DeadTime',
-        # 'MEX2ES01DPP01:dpp1:PileUp',
-        # 'MEX2ES01DPP01:dpp2:PileUp',
-        # 'MEX2ES01DPP01:dpp3:PileUp',
-        # 'MEX2ES01DPP01:dpp4:PileUp',
-        # 'MEX2ES01DPP01:dpp1:F1PileUp',
-        # 'MEX2ES01DPP01:dpp2:F1PileUp',
-        # 'MEX2ES01DPP01:dpp3:F1PileUp',
-        # 'MEX2ES01DPP01:dpp4:F1PileUp',
-        # 'MEX2ES01DPP01:dpp1:Triggers',
-        # 'MEX2ES01DPP01:dpp2:Triggers',
-        # 'MEX2ES01DPP01:dpp3:Triggers',
-        # 'MEX2ES01DPP01:dpp4:Triggers',
-        # 'MEX2ES01DPP01:dpp1:Events',
-        # 'MEX2ES01DPP01:dpp2:Events',
-        # 'MEX2ES01DPP01:dpp3:Events',
-        # 'MEX2ES01DPP01:dpp4:Events',
-        # 'MEX2ES01DPP01:dpp1:F1DeadTime',
-        # 'MEX2ES01DPP01:dpp2:F1DeadTime',
-        # 'MEX2ES01DPP01:dpp3:F1DeadTime',
-        # 'MEX2ES01DPP01:dpp4:F1DeadTime',
-        # 'MEX2ES01DPP01:dpp1:FastDeadTime',
-        # 'MEX2ES01DPP01:dpp2:FastDeadTime',
-        # 'MEX2ES01DPP01:dpp3:FastDeadTime',
-        # 'MEX2ES01DPP01:dpp4:FastDeadTime',
-        # 'MEX2ES01DPP01:dpp1:InUse',
-        # 'MEX2ES01DPP01:dpp2:InUse',
-        # 'MEX2ES01DPP01:dpp3:InUse',
-        # 'MEX2ES01DPP01:dpp4:InUse',
-        # 'MEX2ES01DPP01:dpp:ArrayCounter_RBV'
-        "MEX2SSCAN01:saveData_comment1": "Comment 1",
-        "MEX2SSCAN01:saveData_comment2": "Comment 2",
-        # MEX2SSCAN01:saveData_realTime1D
-        # MEX2SSCAN01:saveData_fileSystem
-        # MEX2SSCAN01:saveData_subDir
-        # MEX2SSCAN01:saveData_fileName
-        # MEX2SSCAN01:scan1.P1SM
-        # MEX2SSCAN01:scan1.P2SM
-        # MEX2SSCAN01:scan1.P3SM
-        # MEX2SSCAN01:scan1.P4SM
-        # MEX2SSCAN01:scanTypeSpec
-        # MEX2SSCAN01:scan1.BSPV
-        # MEX2SSCAN01:scan1.BSCD
-        # MEX2SSCAN01:scan1.BSWAIT
-        # MEX2SSCAN01:scan1.ASPV
-        # MEX2SSCAN01:scan1.ASCD
-        # MEX2SSCAN01:scan1.ASWAIT
-        # MEX2SSCAN01:scan1.PDLY
-        # MEX2SSCAN01:scan1.DDLY
-        # MEX1ES01GLU01:MEX_TIME
-        # MEX2MIR01MOT01.RBV
-        # MEX2MIR01MOT02.RBV
-        # MEX2MIR01MOT03.RBV
-        # MEX2MIR01MOT04.RBV
-        # MEX2MIR01MOT09.RBV
-        # MEX2MIR01MOT10.RBV
-        # MEX2MIR01MOT11.RBV
-        # MEX2MIR01MOT12.RBV
-        # MEX2FE01MIR01:X.RBV
-        # MEX2FE01MIR01:Y.RBV
-        "MEX2FE01MIR01:PITCH.RBV": "PITCH",
-        "MEX2FE01MIR01:YAW.RBV": "YAW",
-        # MEX2FE01MIR01:ENC_X.RBV
-        # MEX2FE01MIR01:ENC_Y.RBV
-        # MEX2FE01MIR01:ENC_PITCH.RBV
-        # MEX2FE01MIR01:ENC_YAW.RBV
-        # MEX2SLT01MOT01.RBV
-        # MEX2SLT01MOT02.RBV
-        # MEX2SLT01MOT03.RBV
-        # MEX2SLT01MOT04.RBV
-        # MEX2SLT01:VSIZE.RBV
-        # MEX2SLT01:VCENTRE.RBV
-        # MEX2SLT01:HSIZE.RBV
-        # MEX2SLT01:HCENTRE.RBV
-        # MEX2SLT01:VSIZE.OFF
-        # MEX2SLT01:VCENTRE.OFF
-        # MEX2SLT01:HSIZE.OFF
-        # MEX2SLT01:HCENTRE.OFF
-        # MEX2MIR02MOT01.RBV
-        # MEX2MIR02MOT02.RBV
-        # MEX2MIR02MOT03.RBV
-        # MEX2MIR02MOT04.RBV
-        # MEX2MIR02MOT05.RBV
-        # MEX2MIR02:TRANS.RBV
-        "MEX2MIR02:PITCH.RBV": "PITCH2",
-        # MEX2MIR02:HEIGHT.RBV
-        # MEX2MIR02:ROLL.RBV
-        "MEX2MIR02:YAW.RBV": "YAW2",
-        # MEX2MIR02TES04:TEMPERATURE_MONITOR
-        # MEX2SLT02MOT01.RBV
-        # MEX2SLT02MOT02.RBV
-        # MEX2SLT02MOT03.RBV
-        # MEX2SLT02MOT04.RBV
-        # MEX2SLT02:VSIZE.RBV
-        # MEX2SLT02:VCENTRE.RBV
-        # MEX2SLT02:HSIZE.RBV
-        # MEX2SLT02:HCENTRE.RBV
-        # MEX2SLT02:VSIZE.OFF
-        # MEX2SLT02:VCENTRE.OFF
-        # MEX2SLT02:HSIZE.OFF
-        # MEX2SLT02:HCENTRE.OFF
-        # MEX2DCM01:ENERGY_RBV
-        # MEX2DCM01:ENERGY_EV_RBV
-        # MEX2DCM01:OFFSET_RBV
-        # MEX2DCM01:XTAL_INBEAM.RVAL
-        # MEX2DCM01:FINE_PITCH_MRAD_RBV
-        # MEX2DCM01:FINE_ROLL_MRAD_RBV
-        # MEX2DCM01MOT01.RBV
-        # MEX2DCM01MOT02.RBV
-        # MEX2DCM01MOT05.RBV
-        # MEX2DCM01MOT03.RBV
-        # MEX2DCM01MOT04.RBV
-        # MEX2DCM01MOT01.OFF
-        # MEX2DCM01MOT02.OFF
-        # MEX2DCM01:y2_track
-        # MEX2DCM01:y2_mvmin
-        # MEX2DCM01:th_mvmin
-        # MEX2DCM01:Dspace
-        # MEX2DCM01:Mono111DSpace
-        # MEX2DCM01:Mono111ThetaOffset
-        # MEX2DCM01:Mono111HeightOffset
-        # MEX2DCM01:Mono111Pitch
-        # MEX2DCM01:Mono111Roll
-        # MEX2DCM01:Mono111Centre
-        # MEX2DCM01:MonoInSbDSpace
-        # MEX2DCM01:MonoInSbThetaOffset
-        # MEX2DCM01:MonoInSbHeightOffset
-        # MEX2DCM01:MonoInSbPitch
-        # MEX2DCM01:MonoInSbRoll
-        # MEX2DCM01:MonoInSbCentre
-        # MEX2AUTOROCK:PITCH_SCAN.P1WD
-        # MEX2AUTOROCK:PITCH_SCAN.P1SI
-        # MEX2AUTOROCK:PITCH_SCAN.NPTS
-        # MEX2AUTOROCK:DETECTOR_SELECT
-        # MEX2AUTOROCK:COUNTER
-        # MEX2BIM01MOT01.RBV
-        # MEX2BIM01:FOIL:select
-        # MEX2BIM01AMP01:sens_put
-        # MEX2BIM01AMP01:offset_put
-        # MEX2BIM01AMP01:offset_on
-        # MEX2BIM01AMP01:invert_on
-        # MEX2BIM01AMP01:filter_type.RVAL
-        # MEX2BIM01AMP01:low_freq.RVAL
-        # MEX2REF01MOT01.RBV
-        # MEX2REF01:REF:select
-        # MEX2REF01AMP01:sens_put
-        # MEX2REF01AMP01:offset_put
-        # MEX2REF01AMP01:offset_on
-        # MEX2REF01AMP01:invert_on
-        # MEX2REF01AMP01:filter_type.RVAL
-        # MEX2REF01AMP01:low_freq.RVAL
-        # MEX2SLT03MOT01.RBV
-        # MEX2SLT03MOT02.RBV
-        # MEX2SLT03MOT03.RBV
-        # MEX2SLT03MOT04.RBV
-        # MEX2SLT03:VSIZE.RBV
-        # MEX2SLT03:VCENTRE.RBV
-        # MEX2SLT03:HSIZE.RBV
-        # MEX2SLT03:HCENTRE.RBV
-        # MEX2SLT03:VSIZE.OFF
-        # MEX2SLT03:VCENTRE.OFF
-        # MEX2SLT03:HSIZE.OFF
-        # MEX2SLT03:HCENTRE.OFF
-        # MEX2STG01MOT01.RBV
-        # MEX2STG01MOT02.RBV
-        # MEX2STG01MOT03.RBV
-        # MEX2STG01:XHAT.RBV
-        # MEX2STG01:ZHAT.RBV
-        # MEX2ES01MOT01.RBV
-        # MEX2ES01AMP01:sens_put
-        # MEX2ES01AMP01:offset_put
-        # MEX2ES01AMP01:offset_on
-        # MEX2ES01AMP01:invert_on
-        # MEX2ES01AMP01:filter_type.RVAL
-        # MEX2ES01AMP01:low_freq.RVAL
-        # MEX2ES01AMP02:sens_put
-        # MEX2ES01AMP02:offset_put
-        # MEX2ES01AMP02:offset_on
-        # MEX2ES01AMP02:invert_on
-        # MEX2ES01AMP02:filter_type.RVAL
-        # MEX2ES01AMP02:low_freq.RVAL
-        # MEX2BLSH01SHT01:OPEN_CLOSE_STATUS
-        # MEX2SZ03KSW01:KEY_CACHE_STATUS
-        # MEX2SZ03KSW02:KEY_CACHE_STATUS
-        # MEX2ES01DPP01:mca1.R0LO
-        # MEX2ES01DPP01:mca1.R0HI
-        # MEX2ES01DPP01:mca2.R0LO
-        # MEX2ES01DPP01:mca2.R0HI
-        # MEX2ES01DPP01:mca3.R0LO
-        # MEX2ES01DPP01:mca3.R0HI
-        # MEX2ES01DPP01:mca4.R0LO
-        # MEX2ES01DPP01:mca4.R0HI
-        # MEX2ES01DPP01:dpp1:InUse
-        # MEX2ES01DPP01:dpp2:InUse
-        # MEX2ES01DPP01:dpp3:InUse
-        # MEX2ES01DPP01:dpp4:InUse
-        # MEX2SSCAN01:PHASE_BOUNDARY_VALUE
-        # MEX2SSCAN01:PHASE_STEP_VALUE
-        # MEX2SSCAN01:PHASE_DURATION_VALUE
-        # MEX2SSCAN01:PHASE_NUMBER_OF_POINTS
-        # MEX2SSCAN01:PHASE_IN_USE
-        # MEX2SSCAN01:PHASE_USES_KSPACE
-        # MEX2SSCAN01:PHASE_USES_SQTIME
-        # MEX2SSCAN01:TOTAL_NUMBER_OF_POINTS
-        # MEX2SSCAN01:MODE
-        # MEX2SSCAN01:EDGE_ENERGY
-        "MEX2SSCAN01:SIMPLE_START_1_VALUE": "E1",
-        # MEX2SSCAN01:SIMPLE_STEP_1_VALUE
-        "MEX2SSCAN01:SIMPLE_END_1_VALUE": "E2",
-        "MEX2SSCAN01:SIMPLE_START_2_VALUE": "E3",
-        # MEX2SSCAN01:SIMPLE_STEP_2_VALUE
-        "MEX2SSCAN01:SIMPLE_END_2_VALUE": "E4",
-        # MEX2SSCAN01:SIMPLE_DURATION_VALUE
-        # MEX2SSCAN01:SIMPLE_NUMBER_OF_POINTS
-        "MEX2ES01DPP01:ch1:W:ArrayData": "Fluorescence Detector 1",
-        "MEX2ES01DPP01:ch2:W:ArrayData": "Fluorescence Detector 2",
-        "MEX2ES01DPP01:ch3:W:ArrayData": "Fluorescence Detector 3",
-        "MEX2ES01DPP01:ch4:W:ArrayData": "Fluorescence Detector 4",
-        # XDI File:
-        # "energy": "Energy",
-        # "bragg": "Bragg",
-        # "count_time": "Count Time",
-        # "BIM": "BIM",
-        # "i0": "IO",
-        # "SampleDrain": "Sample Drain",
-        #### XDI Names ####
-        "OCR_AVG": "Output Average Count Rate",
-        "ICR_AVG": "Input Average Count Rate",
-        "ROI_AD_AVG": "ROI Average",
-        "ifluor": "Fluorescence",
-        "ROI.start_bin": "E1",
-        "ROI.end_bin": "E2",
-        "Element.symbol": "Element",
-        "Element.edge": "Absorption Edge",
+        # -------------------MDA File-------------------
+        # 'MEX1SSCAN01:saveData_comment1':,
+        # 'MEX1SSCAN01:saveData_comment2':,
+        # 'MEX1SSCAN01:saveData_realTime1D':,
+        # 'MEX1SSCAN01:saveData_fileSystem':,
+        # 'MEX1SSCAN01:saveData_subDir':,
+        # 'MEX1SSCAN01:saveData_fileName':,
+        # 'MEX1SSCAN01:scan1.P1SM':,
+        # 'MEX1SSCAN01:scan1.P2SM':,
+        # 'MEX1SSCAN01:scan1.P3SM':,
+        # 'MEX1SSCAN01:scan1.P4SM':,
+        # 'MEX1SSCAN01:scanTypeSpec':,
+        # 'MEX1SSCAN01:scan1.BSPV':,
+        # 'MEX1SSCAN01:scan1.BSCD':,
+        # 'MEX1SSCAN01:scan1.BSWAIT':,
+        # 'MEX1SSCAN01:scan1.ASPV':,
+        # 'MEX1SSCAN01:scan1.ASCD':,
+        # 'MEX1SSCAN01:scan1.ASWAIT':,
+        # 'MEX1SSCAN01:scan1.PDLY':,
+        # 'MEX1SSCAN01:scan1.DDLY':,
+        # 'TS01:SECONDS_MONITOR':,
+        # 'MEX1ES01GLU01:MEX_TIME':,
+        # 'MEX1SLT01:VSIZE.RBV':,
+        # 'MEX1SLT01:VCENTRE.RBV':,
+        # 'MEX1SLT01:HSIZE.RBV':,
+        # 'MEX1SLT01:HCENTRE.RBV':,
+        # 'MEX1SLT01:VSIZE.OFF':,
+        # 'MEX1SLT01:VCENTRE.OFF':,
+        # 'MEX1SLT01:HSIZE.OFF':,
+        # 'MEX1SLT01:HCENTRE.OFF':,
+        # 'MEX1SLT01MOT01.RBV':,
+        # 'MEX1SLT01MOT03.RBV':,
+        # 'MEX1SLT01MOT02.RBV':,
+        # 'MEX1SLT01MOT04.RBV':,
+        # 'MEX1SCRN01LGHT01:BRIGHTNESS_MONITOR':,
+        # 'MEX1SCRN01ACTP01:INSERT_WITHDRAW_STATUS':,
+        # 'MEX1MIR01:POSITIONER:select.RVAL':,
+        # 'MEX1MIR01:TRANS.RBV':,
+        # 'MEX1MIR01:YAW.RBV':,
+        # 'MEX1MIR01MOT06.RBV':,
+        # 'MEX1MIR01:HEIGHT.RBV':,
+        # 'MEX1MIR01:ROLL.RBV':,
+        # 'MEX1MIR01:PITCH.RBV':,
+        # 'MEX1MIR01MOT01.RBV':,
+        # 'MEX1MIR01MOT02.RBV':,
+        # 'MEX1MIR01MOT03.RBV':,
+        # 'MEX1MIR01MOT04.RBV':,
+        # 'MEX1MIR01MOT05.RBV':,
+        # 'MEX1DCM01:ENERGY_RBV':,
+        # 'MEX1DCM01:ENERGY_EV_RBV':,
+        # 'MEX1DCM01:OFFSET_RBV':,
+        # 'MEX1DCM01:XTAL_INBEAM.RVAL':,
+        # 'MEX1DCM01:FINE_PITCH_MRAD_RBV':,
+        # 'MEX1DCM01:FINE_ROLL_MRAD_RBV':,
+        # 'MEX1DCM01MOT01.RBV':,
+        # 'MEX1DCM01MOT02.RBV':,
+        # 'MEX1DCM01MOT05.RBV':,
+        # 'MEX1DCM01MOT03.RBV':,
+        # 'MEX1DCM01MOT04.RBV':,
+        # 'MEX1DCM01MOT01.OFF':,
+        # 'MEX1DCM01MOT02.OFF':,
+        # 'MEX1DCM01:y2_track':,
+        # 'MEX1DCM01:y2_mvmin':,
+        # 'MEX1DCM01:th_mvmin':,
+        # 'MEX1DCM01:Dspace':,
+        # 'MEX1DCM01:Mono1110DSpace':,
+        # 'MEX1DCM01:Mono1110ThetaOffset':,
+        # 'MEX1DCM01:Mono1110HeightOffset':,
+        # 'MEX1DCM01:Mono1110Pitch':,
+        # 'MEX1DCM01:Mono1110Roll':,
+        # 'MEX1DCM01:Mono1110Centre':,
+        # 'MEX1DCM01:Mono11130DSpace':,
+        # 'MEX1DCM01:Mono11130ThetaOffset':,
+        # 'MEX1DCM01:Mono11130HeightOffset':,
+        # 'MEX1DCM01:Mono11130Pitch':,
+        # 'MEX1DCM01:Mono11130Roll':,
+        # 'MEX1DCM01:Mono11130Centre':,
+        "MEX1ES01DET01:MCA1:ArrayData": "MCA Ch1",
+        "MEX1ES01DET01:MCA2:ArrayData": "MCA Ch2",
+        "MEX1ES01DET01:MCA3:ArrayData": "MCA Ch3",
+        "MEX1ES01DET01:MCA4:ArrayData": "MCA Ch4",
+        # -------------------XDI File-------------------
+        # 'Facility.name':,
+        # 'Beamline.name':,
+        # 'Mono.d_spacing':,
+        # 'Element.symbol':,
+        # 'Element.edge':,
+        # 'Processing.version':,
+        # 'Reference.Element':,
+        # 'ROI.start_bin':,
+        # 'ROI.end_bin':,
+        # 'File.Name':,
+        "MEX1ES01ZEB01:CALC_ENERGY_EV": "energy",
+        "MEX1ES01ZEB01:BRAGG_WITH_OFFSET": "bragg",
+        "SR11BCM01:CURRENT_MONITOR": "ring_current",
+        "MEX1ES01ZEB01:GATE_TIME_SET": "count_time",
+        "MEX1ES01DAQ01:ch1:S:MeanValue_RBV": "i0",
+        "MEX1ES01DAQ01:ch2:S:MeanValue_RBV": "i1",
+        "MEX1ES01DAQ01:ch3:S:MeanValue_RBV": "i2",
+        "MEX1ES01DET01:C1SCA:0:Value_RBV": "S1_clock_ticks",
+        "MEX1ES01DET01:C2SCA:0:Value_RBV": "S2_clock_ticks",
+        "MEX1ES01DET01:C3SCA:0:Value_RBV": "S3_clock_ticks",
+        "MEX1ES01DET01:C4SCA:0:Value_RBV": "S4_clock_ticks",
+        "MEX1ES01DET01:C1SCA:5:Value_RBV": "S1_window1",
+        "MEX1ES01DET01:C2SCA:5:Value_RBV": "S2_window1",
+        "MEX1ES01DET01:C3SCA:5:Value_RBV": "S3_window1",
+        "MEX1ES01DET01:C4SCA:5:Value_RBV": "S4_window1",
+        "MEX1ES01DET01:C1SCA:8:Value_RBV": "S1_DTFactor",
+        "MEX1ES01DET01:C2SCA:8:Value_RBV": "S2_DTFactor",
+        "MEX1ES01DET01:C3SCA:8:Value_RBV": "S3_DTFactor",
+        "MEX1ES01DET01:C4SCA:8:Value_RBV": "S4_DTFactor",
+        "S1_real_time - S1_clock_ticks / 80MHz (clock rate xspress3 mini)": "S1_real_time (clock_ticks / 80MHz)",
+        "S2_real_time - S2_clock_ticks / 80MHz (clock rate xspress3 mini)": "S2_real_time",
+        "S3_real_time - S3_clock_ticks / 80MHz (clock rate xspress3 mini)": "S3_real_time",
+        "S4_real_time - S4_clock_ticks / 80MHz (clock rate xspress3 mini)": "S4_real_time",
+        "S1_ifluor - S1_window1 * S1_DTFactor / S1_real_time": "S1_ifluor (window * dead_time / real_time)",
+        "S2_ifluor - S2_window1 * S2_DTFactor / S2_real_time": "S2_ifluor",
+        "S3_ifluor - S3_window1 * S3_DTFactor / S3_real_time": "S3_ifluor",
+        "S4_ifluor - S4_window1 * S4_DTFactor / S4_real_time": "S4_ifluor",
+        "avg_ifluor - (ifluor_S1 + ifluor_S2 + ifluor_S3 + ifluor_S4)/4 -- deadtime correction and time normalisation per sensor": "ifluor_avg_corr",
+        "S1_mufluor - S1_ifluor / i0": "S1_mufluor (normalised by i0)",
+        "S2_mufluor - S2_ifluor / i0": "S2_mufluor",
+        "S3_mufluor - S3_ifluor / i0": "S3_mufluor",
+        "S4_mufluor - S4_ifluor / i0": "S4_mufluor",
+        "avg_mufluor - ifluor_avg_corr / i0 -- deadtime correction and time normalisation per sensor, normalised by i0": "mufluor_avg_corr",
     }
 
     def __init__(
@@ -401,12 +253,12 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         super().__init__(filepath, header_only, relabel, **kwargs)
 
     @classmethod
-    def parse_xdi(
+    def parse_xdi_2024_08(
         cls,
         file: TextIOWrapper,
         header_only: bool = False,
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
-        """Reads Australian Synchrotron .xdi files.
+        """Reads Australian Synchrotron MEX1 .xdi files, as of 2024-Aug.
 
         Parameters
         ----------
@@ -499,10 +351,18 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         line = file.readline()
         # Some xdi conversion have a "default mda2xdi" line.
         try:
-            assert line == "# xdi from default mda2xdi preset for mex2.\n"
-            assert file.readline() == "#--------\n"
+            assert line == "# xdi from default mda2xdi preset for mex1.\n"
+            line = file.readline()
         except AssertionError:
-            assert line == "#--------\n"
+            pass
+        # Some xdi files have error messages
+        while (
+            line.strip()
+            == "# All values in column i1 replaced with 1 because consecutive negatives were detected."
+        ):
+            line = file.readline()
+        # Always ends with a line of "#--------\n" before data.
+        assert line == "#--------\n"
 
         # Read data columns
         header_line = file.readline()
@@ -526,17 +386,17 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         return data, labels, units, params
 
     @classmethod
-    def parse_mda_2024_04(
+    def parse_mda_2024_08(
         cls,
         file: TextIOWrapper,
         header_only: bool = False,
         use_recent_binning: bool = False,
-        energy_bin_domain: tuple[float, float] | None = None,
+        energy_bin_range: tuple[float, float] | None = None,
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
         """
-        Reads Australian Synchrotron .mda files for MEX2 Data
+        Reads Australian Synchrotron .mda files for MEX1 Data
 
-        Created for data as of 2024-Apr.
+        Created for data as of 2024-Aug.
 
         Parameters
         ----------
@@ -598,10 +458,10 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                 mda_2d_scan = mda_scans[1]
                 # Check 'multi-channel-analyser-spectra of fluorescence-detector' names are as expected
                 florescence_labels = [
-                    "MEX2ES01DPP01:ch1:W:ArrayData",
-                    "MEX2ES01DPP01:ch2:W:ArrayData",
-                    "MEX2ES01DPP01:ch3:W:ArrayData",
-                    "MEX2ES01DPP01:ch4:W:ArrayData",
+                    "MEX1ES01DET01:MCA1:ArrayData",
+                    "MEX1ES01DET01:MCA2:ArrayData",
+                    "MEX1ES01DET01:MCA3:ArrayData",
+                    "MEX1ES01DET01:MCA4:ArrayData",
                 ]
                 assert mda_2d_scan.labels() == florescence_labels
 
@@ -610,13 +470,13 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                 dataset = mda_2d[
                     :, INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1], :
                 ]
-                bin_e = INTERESTING_BINS_ENERGIES  # pre-calibrated.
+                bin_e = None  # INTERESTING_BINS_ENERGIES  # pre-calibrated.
 
                 ## Perform binning on 2D array:
                 # Is an existing binning range available?
-                if energy_bin_domain is not None:
+                if energy_bin_range is not None:
                     # Update the class variable with the new binning settings.
-                    cls.reduction_bin_domain = energy_bin_domain
+                    cls.reduction_bin_domain = energy_bin_range
                     red = reducer(energies, dataset, bin_e)
                 elif use_recent_binning and cls.reduction_bin_domain is not None:
                     # Uses the most recent binning settings.
@@ -629,6 +489,7 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                     window = EnergyBinReducerDialog(
                         energies=energies, dataset=dataset, bin_energies=bin_e
                     )
+                    # window.reducerUI.bin_axes.set_xlabel("")
                     window.show()
                     if window.exec():
                         # If successful, store the binning settings and data reducer
@@ -713,25 +574,24 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
             mda_1d = np.c_[mda_1d, reduced_single_detector_data, reduced_summed_data]
             # Add labels and units for reduced data
             # (Detector data labels/units already added via positioners and detectors above.)
-            labels += ["Florescence Sum (Reduced)"]
+            labels += ["MCA Sum (Reduced)"]
             units += ["a.u."]
         # Use scan time if available, otherwise let system time be used.
         if "MEX1ES01GLU01:MEX_TIME" in params:
             params["created"] = params["MEX1ES01GLU01:MEX_TIME"]
-
         return mda_1d, labels, units, params
 
 
-def MEX2_to_QANT_AUMainAsc(
+def MEX1_to_QANT_AUMainAsc(
     parser: parser_base,
     extrainfo_mapping={
-        "SR14ID01MCS02FAM:X.RBV": None,
+        "SR14ID01MCS02FAM:X.RBV": None,  # "Mono.d_spacing",
         "SR14ID01MCS02FAM:Y.RBV": None,
         "SR14ID01MCS02FAM:Z.RBV": None,
         "SR14ID01MCS02FAM:R1.RBV": None,
         "SR14ID01MCS02FAM:R2.RBV": None,
         "SR14ID01NEXSCAN:saveData_comment1": "Sample",
-        "SR14ID01NEXSCAN:saveData_comment2": None,
+        "SR14ID01NEXSCAN:saveData_comment2": None,  # "Reference.Element",
     },
 ) -> list[str]:
     """
@@ -979,26 +839,18 @@ if __name__ == "__main__":
     # Example usage
     path = os.path.dirname(__file__)
     package_path = os.path.normpath(os.path.join(path, "../../../../"))
-    mda_paths = [
-        os.path.normpath(
-            os.path.join(package_path, f"tests/test_data/au/MEX2/MEX2_564{i}.mda")
-        )
-        for i in range(4)
-        if i != 1
-    ]
-    mda_path1, mda_path2, mda_path3 = mda_paths
-    # mda_path1, mda_path2, mda_path3, mda_path4, mda_path5 = mda_paths
-    print(mda_path1)
-    print(mda_path2)
+
+    # Open an mdi file
+    mda_path = os.path.normpath(
+        os.path.join(package_path, "tests/test_data/au/MEX1/MEX1_40747.mda")
+    )
+
     # HEADER
-    test1 = MEX2_NEXAFS(mda_path1, header_only=True)
+    test1 = MEX1_NEXAFS(mda_path, header_only=True)
     # BODY
-    test2 = MEX2_NEXAFS(mda_path1, header_only=False)
+    test2 = MEX1_NEXAFS(mda_path, header_only=False)
     # Check if previous binning is applied to new data.
-    tests = [
-        MEX2_NEXAFS(mda_path, header_only=False, use_recent_binning=True)
-        for mda_path in mda_paths[1:]
-    ]
+    test3 = MEX1_NEXAFS(mda_path, header_only=False)
 
     import matplotlib.pyplot as plt
 
@@ -1006,17 +858,30 @@ if __name__ == "__main__":
     subplts = plt.subplots(1, 1)
     fig: plt.Figure = subplts[0]
     ax: plt.Axes = subplts[1]
-    idx = -1
-    ax.plot(test2.data[:, 0], test2.data[:, idx], label="Test2" + test2.labels[idx])
-    [
-        ax.plot(
-            test.data[:, 0], test.data[:, idx], label=f"Test{i+3}" + test.labels[idx]
-        )
-        for i, test in enumerate(tests)
-    ]
-    ax.legend()
+    ave_mca_idx = -1
+    energy_idx = test2.search_label_index("ring_current")
+    ax.plot(
+        test2.data[:, energy_idx],
+        test2.data[:, ave_mca_idx],
+        label="Test2" + test2.labels[ave_mca_idx],
+    )
+    ax.set_xlabel(test2.labels[energy_idx])
     # plt.ioff()
 
+    # Also open an xdi file
+    xdi_path = os.path.normpath(
+        os.path.join(package_path, "tests/test_data/au/MEX1/MEX1_40747_processed.xdi")
+    )
+    test4 = MEX1_NEXAFS(xdi_path, header_only=False)
+    energy_idx2 = test4.search_label_index("ring_current")
+    ax.plot(
+        test4.data[:, energy_idx2],
+        test4.data[:, ave_mca_idx],
+        label="Test4" + test4.labels[ave_mca_idx],
+    )
+    print(test4.labels[energy_idx2])
+
+    ax.legend()
     plt.ion()
     # plt.show(block=False)
     plt.show(block=True)
