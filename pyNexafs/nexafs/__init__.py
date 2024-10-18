@@ -9,4 +9,5 @@ from pyNexafs.nexafs.scan_normalised import (
     scan_normalised,
     scan_normalised_edges,
     scan_background_subtraction,
+    scan_normalised_background_channel,
 )

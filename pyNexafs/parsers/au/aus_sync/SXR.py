@@ -43,8 +43,19 @@ class SXR_NEXAFS(parser_base):
     COLUMN_ASSIGNMENTS = {
         "x": "SR14ID01PGM_CALC_ENERGY_MONITOR.P",
         "y": [
-            "SR14ID01PGM:LOCAL_SP",
-            "SR14ID01IOC68:scaler1.S20",
+            # "SR14ID01PGM:LOCAL_SP",
+            "SR14ID01IOC68:scaler1.S20",  # Drain Current VF
+            "SR14ID01IOC68:scaler1.S17",  # Direct PHD VF
+            "SR14ID01IOC68:scaler1.S18",  # I0 VF
+            "SR14ID01IOC68:scaler1.S19",  # Ref Foil VF
+            "SR14ID01IOC68:scaler1.S20",  # Drain Current VF
+            "SR14ID01IOC68:scaler1.S21",  # Channeltron Front (PEY)
+            "SR14ID01IOC68:scaler1.S22",  # MCP (TFY)
+            "SR14ID01IOC68:scaler1.S23",  # Hemispherical Analyser (AEY)
+            # No longer included in files...?
+            # "SR14ID01IOC68:scaler1.S3", # I0 VF
+            # "SR14ID01IOC68:scaler1.S4", # Ref Foil VF
+            # "SR14ID01IOC68:scaler1.S8", # Direct PHD VF
         ],
         "y_errs": None,
         "x_errs": None,

@@ -9,6 +9,7 @@ import numpy as np
 import numpy.typing as npt
 import typing
 import os
+import warnings
 from pyNexafs.utils.mda import MDAFileReader
 import matplotlib.pyplot as plt, matplotlib as mpl
 from typing import Callable, Literal, Union
@@ -327,6 +328,14 @@ class reducer:
             # Return the full dataset window if no domain
             return self.bin_energies.copy(), self.dataset.copy()
         else:
+            # Check if list of int/float, without tuples and length 2, then convert to tuple.
+            if (
+                isinstance(bin_domain, list)
+                and len(bin_domain) == 2
+                and all(isinstance(i, (int, float)) for i in bin_domain)
+            ):
+                bin_domain = tuple(bin_domain)
+
             # Convert non-list to list
             if not isinstance(bin_domain, list):
                 bin_domain = [bin_domain] * self.detectors

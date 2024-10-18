@@ -16,6 +16,7 @@ import ast
 import warnings
 import datetime as dt
 import os
+import json, io
 from pyNexafs.utils.reduction import reducer
 import traceback
 
@@ -98,12 +99,16 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         "x": "Energy|Energy Setpoint|energy",
         "y": [
             "Bragg|bragg",
-            "Fluorescence|iflour|Fluorescence Sum",
+            "Fluorescence|iflour|Fluorescence Sum|Florescence Sum (Reduced)",
             "Count Time|count_time",
             "I0|i0",
             "Sample Drain|SampleDrain",
             "ICR_AVG",
             "OCR_AVG",
+            "Fluorescence Detector 1",
+            "Fluorescence Detector 2",
+            "Fluorescence Detector 3",
+            "Fluorescence Detector 4",
         ],
         "y_errs": None,
         "x_errs": None,
@@ -393,11 +398,15 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         header_only: bool = False,
         relabel: bool | None = None,
         use_recent_binning: bool = True,
+        **kwargs,
     ) -> None:
         # Manually add kwargs
-        kwargs = {}
+        common_kwargs = {}
         if use_recent_binning is not None:
-            kwargs.update(use_recent_binning=use_recent_binning)
+            common_kwargs.update(use_recent_binning=use_recent_binning)
+        # User kwargs override common kwargs
+        kwargs.update(common_kwargs)
+        # Init
         super().__init__(filepath, header_only, relabel, **kwargs)
 
     @classmethod
@@ -545,8 +554,8 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         header_only : bool, optional
             If True, then only the header of the file is read and
             NDArray is returned as None, by default False
-        energy_bin_range : tuple[float, float] | None, optional
-            The energy range to bin the data, by default None
+        energy_bin_domain : tuple[float, float] | None, optional
+            The energy domain to bin the data, by default None
         use_recent_binning : bool, optional
             If True, then the most recent binning settings are used
             Ignored if `energy_bin_range` is specified.
@@ -1000,6 +1009,14 @@ if __name__ == "__main__":
         for mda_path in mda_paths[1:]
     ]
 
+    # Check that the domain can be manually applied.
+    test3 = MEX2_NEXAFS(
+        mda_path2,
+        header_only=False,
+        use_recent_binning=False,
+        energy_bin_domain=(3.1e3, 3.8e3),
+    )
+
     import matplotlib.pyplot as plt
 
     plt.close("all")
@@ -1010,10 +1027,11 @@ if __name__ == "__main__":
     ax.plot(test2.data[:, 0], test2.data[:, idx], label="Test2" + test2.labels[idx])
     [
         ax.plot(
-            test.data[:, 0], test.data[:, idx], label=f"Test{i+3}" + test.labels[idx]
+            test.data[:, 0], test.data[:, idx], label=f"Tests[{i}]" + test.labels[idx]
         )
         for i, test in enumerate(tests)
     ]
+    ax.plot(test3.data[:, 0], test3.data[:, idx], label="Test3" + test3.labels[idx])
     ax.legend()
     # plt.ioff()
 

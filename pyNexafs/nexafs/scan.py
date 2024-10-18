@@ -25,6 +25,7 @@ from scipy import optimize as sopt
 from enum import Enum
 from types import NoneType
 from typing import Type, TypeVar, TYPE_CHECKING, Self
+from pyNexafs.utils.decorators import y_property
 
 if TYPE_CHECKING:
     from ..parsers import parser_base
@@ -104,6 +105,7 @@ class scan_abstract(metaclass=abc.ABCMeta):
         if self._x_errs is not None and self._x_errs.shape != self._x.shape:
             self._x_errs = None
 
+    # @y_property
     @property
     def y(self) -> npt.NDArray:
         """
@@ -125,6 +127,7 @@ class scan_abstract(metaclass=abc.ABCMeta):
     def y(
         self, vals: npt.NDArray | list[list[int | float]] | list[int | float]
     ) -> None:
+        # Set Y values
         if isinstance(vals, np.ndarray):
             if len(vals.shape) == 2:
                 self._y = vals.copy()
@@ -140,13 +143,44 @@ class scan_abstract(metaclass=abc.ABCMeta):
         else:
             raise ValueError("Is not a list or a np.ndarray.")
 
-        # Remove attributes if dimensions have changed.
+        # Remove errs if number of yvals have changed.
         if self.y_errs is not None and self.y_errs.shape != self._y.shape:
             self.y_errs = None
-        if len(self.y_labels) != len(self._y.shape[1]):
+
+        # Remove unit/labels if number of yvals have changed
+        ylabels = self.y_labels
+        if ylabels is not None and len(ylabels) != self._y.shape[1]:
             self.y_labels = None
-        if len(self.y_units) != len(self._y.shape[1]):
+        if self.y_units is not None and len(self.y_units) != self._y.shape[1]:
             self.y_units = None
+
+    # @y.getter_item
+    # def y(self, key: int | str) -> npt.NDArray:
+    #     """
+    #     Returns a single Y channel from the Y data.
+
+    #     Parameters
+    #     ----------
+    #     index : int | str
+    #         Index of the Y channel to return, or the label of the Y channel if defined in y_labels.
+
+    #     Returns
+    #     -------
+    #     npt.NDArray
+    #         The Y channel data.
+    #     """
+    #     print("Getting Y data.")
+    #     if isinstance(key, int):
+    #         return self._y[:, key]
+    #     elif isinstance(key, str):
+    #         if self._y_labels is not None:
+    #             try:
+    #                 index = self._y_labels.index(key)
+    #                 return self._y[:, index]
+    #             except ValueError:
+    #                 raise ValueError(f"Label {key} not found in y_labels.")
+    #         else:
+    #             raise ValueError("No y_labels defined.")
 
     @property
     def y_errs(self) -> npt.NDArray | None:
@@ -212,20 +246,25 @@ class scan_abstract(metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        label : str
+        label : str | None
             String to replace existing x label.
 
         Returns
         -------
         str
             The x label.
+            Defaults to "Energy" if no label is defined.
         """
+        if self._x_label is None:
+            return "Energy"
         return self._x_label
 
     @x_label.setter
-    def x_label(self, label: str):
+    def x_label(self, label: str | None) -> None:
         if isinstance(label, str):
             self._x_label = label
+        elif label is None:
+            self._x_label = None
         else:
             raise ValueError(f"New label `{label}` is not string.")
 
@@ -251,17 +290,19 @@ class scan_abstract(metaclass=abc.ABCMeta):
         if self._y_labels is not None:
             return self._y_labels
         else:
-            chars_col_len = np.ceil(
-                np.log10(self.y.shape[1] + 1)
+            chars_col_len = int(
+                np.ceil(np.log10(self.y.shape[1] + 1))
             )  # Gets number of characters for a given number.
-            ylabel_fmt_str = "Data Col. {:" + str(chars_col_len) + "d}"
             self._y_labels = [
-                ylabel_fmt_str.format(i + 1) for i in range(self.y.shape[1])
+                str(i + 1).zfill(chars_col_len) for i in range(self.y.shape[1])
             ]
+            raise ValueError("TESTING")
             return self._y_labels
 
     @y_labels.setter
-    def y_labels(self, labels: list[str]) -> None:
+    def y_labels(self, labels: list[str] | None) -> None:
+        if labels is None:
+            raise ValueError("Cannot set y_labels to None.")
         if isinstance(labels, list) and np.all(
             [isinstance(label, str) for label in labels]
         ):
@@ -271,6 +312,8 @@ class scan_abstract(metaclass=abc.ABCMeta):
                 raise ValueError(
                     f"Number of labels ({len(labels)}) does not match y data columns ({self.y.shape[1]})."
                 )
+        elif labels is None:
+            self._y_labels = None
         else:
             raise ValueError(
                 f"Provided `labels` {labels} is not a list of only strings."

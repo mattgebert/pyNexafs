@@ -100,18 +100,6 @@ class scan_abstract_normalised(scan_abstract, metaclass=abc.ABCMeta):
         self._scale_from_normalisation_data()
         return
 
-    @property
-    def origin(self) -> Type[scan_base]:
-        """
-        Property for the original scan object.
-
-        Returns
-        -------
-        scan_base
-            The original scan object.
-        """
-        return self._origin
-
     @scan_abstract.x_label.getter
     def x_label(self) -> str:
         """
@@ -160,6 +148,44 @@ class scan_abstract_normalised(scan_abstract, metaclass=abc.ABCMeta):
         """
         self.origin.x_unit = unit
 
+    @scan_abstract.y.setter
+    def y(
+        self, vals: npt.NDArray | list[list[int | float]] | list[int | float]
+    ) -> None:
+        """
+        Property setter for the y data.
+
+        Similar to @scan_abstract.y, but avoids resetting the `y_units`
+        and `y_labels` attributes when setting the y data dimension, as
+        labels should always be inherited from the original scan object.
+
+        Parameters
+        ----------
+        values : npt.NDArray
+            The new y data.
+        """
+        # Set Y values
+        if isinstance(vals, np.ndarray):
+            if len(vals.shape) == 2:
+                self._y = vals.copy()
+            else:
+                # Add additional axis to make y 2D instead of 1D
+                self._y = vals.copy()[:, np.newaxis]
+        elif isinstance(vals, list):
+            if isinstance(vals[0], list):
+                self._y = np.array(vals)
+            else:
+                # Assuming int/floats, add additional axis as well.
+                self._y = np.array(vals)[:, np.newaxis]
+        else:
+            raise ValueError("Is not a list or a np.ndarray.")
+
+        # Remove errs if number of yvals have changed.
+        if self.y_errs is not None and self.y_errs.shape != self._y.shape:
+            self.y_errs = None
+
+        # Do not remove unit/labels if number of yvals have changed!
+
     @scan_abstract.y_labels.getter
     def y_labels(self) -> list[str]:
         """
@@ -173,7 +199,7 @@ class scan_abstract_normalised(scan_abstract, metaclass=abc.ABCMeta):
         return self.origin.y_labels
 
     @y_labels.setter
-    def y_labels(self, labels: list[str]) -> None:
+    def y_labels(self, labels: list[str] | None) -> None:
         """
         Property setter for the y-axis labels, to the origin scan.
 
@@ -277,7 +303,7 @@ class scan_normalised(scan_abstract_normalised):
     norm_channel : int | str | None, optional
         The y-channel name corresponding to normalisation data.
     norm_data : npt.NDArray | None, optional
-        Custom data to normalise the y data. Must match y-data length.
+        An alternative to y-channel; Custom data to normalise the y data. Must match y-data length.
 
     Raises
     ------
@@ -291,7 +317,7 @@ class scan_normalised(scan_abstract_normalised):
     @overrides.overrides
     def __init__(
         self,
-        scan: Type[scan_base] | scan_base,
+        scan: Type[scan_base],
         norm_channel: str | None = None,
         norm_data: npt.NDArray | None = None,
         norm_data_errs: npt.NDArray | None = None,
@@ -310,8 +336,13 @@ class scan_normalised(scan_abstract_normalised):
 
             # Store provided normalisation data
             self._norm_channel = norm_channel
+            """The normalisation channel label, if defined."""
+            self._norm_idx: int | None = None
+            """The index of the normalisation channel in the origin scan, if `norm_channel` was provided."""
             self._norm_data = norm_data
+            """The normalisation data, if defined."""
             self._norm_data_errs = norm_data_errs
+            """The normalisation data errors, if defined."""
 
             # Process normalisation data if conditions are met.
             if norm_channel is not None or len(norm_data) == len(scan.y):
@@ -425,7 +456,11 @@ class scan_normalised(scan_abstract_normalised):
             else None
         )
         # Scale y, yerr data by normalisation.
-        self._y /= scaled_norm
+        if len(self._y.shape) == 1:
+            self._y /= scaled_norm
+        else:
+            self._y /= scaled_norm[:, np.newaxis]
+
         # Scale y_errs if defined
         if self._y_errs is not None:
             if self._norm_data_errs is not None:
@@ -449,12 +484,12 @@ class scan_normalised(scan_abstract_normalised):
         """
         Re-loads data, refreshing data, errors, labels and units for x,y variables.
 
-        Overrides `scan_abstract_normalised._load_from_origin` depending on the `_norm_channel` attribute being NoneType.
+        Overrides `scan_abstract_normalised._load_from_origin` depending on the `_norm_channel` attribute being None.
         """
         # Y Reloading
         if self._norm_channel is not None:
             # Collect index of normalisation data
-            ind = self._origin.y_labels.index(self._norm_channel)
+            self._norm_idx = ind = self._origin.y_labels.index(self._norm_channel)
             # Collect normalisaton data:
             self._norm_data = self._origin.y[:, ind]
             self._norm_data_errs = (
@@ -470,22 +505,85 @@ class scan_normalised(scan_abstract_normalised):
                 if self._origin.y_errs is not None
                 else None
             )
-            self._y_labels = (
-                self._origin.y_labels[0:ind] + self._origin.y_labels[ind + 1 :]
-            )
-            self._y_units = (
-                self._origin.y_units[0:ind] + self._origin.y_units[ind + 1 :]
-            )
+
             # Collect X data normally.
             self._x = self._origin.x.copy()
             self._x_errs = (
                 self._origin.x_errs.copy() if self._origin.x_errs is not None else None
             )
-            self._x_label = self._origin.x_label
-            self._x_unit = self._origin.x_unit
         else:
             # Load x and y data regularly.
             super()._load_from_origin()
+
+    @scan_abstract_normalised.y_labels.getter
+    def y_labels(self) -> list[str]:
+        """
+        Property for the y-axis labels, from the origin scan object.
+        When the normalisation channel is defined, the labels are adjusted to remove the normalisation channel.
+
+        Parameters
+        ----------
+        labels : list[str] | None
+            The new y-axis labels.
+
+        Returns
+        -------
+        list[str]
+            The y-axis labels.
+        """
+        origin_labels = self._origin.y_labels
+        idx = self._norm_idx
+        if idx is not None:
+            return origin_labels[0:idx] + origin_labels[idx + 1 :]
+        else:
+            return origin_labels
+
+    @y_labels.setter
+    def y_labels(self, labels: list[str] | None) -> None:
+        idx = self._norm_idx
+        if idx is not None:
+            if labels is not None:
+                # Include the normalisation channel in the labels when setting.
+                self._origin.y_labels = (
+                    labels[0:idx] + [self._norm_channel] + labels[idx:]
+                )
+        # Otherwise set labels normally.
+        self._origin.y_labels = labels
+
+    @scan_abstract_normalised.y_units.getter
+    def y_units(self) -> list[str] | None:
+        """
+        Property for the y-axis units, from the origin scan object.
+        When the normalisation channel is defined, the units are adjusted to remove the normalisation channel.
+
+        Parameters
+        ----------
+        labels : list[str] | None
+            The new y-axis units.
+
+        Returns
+        -------
+        list[str] | None
+            The y-axis units.
+        """
+        origin_units = self._origin.y_units
+        idx = self._norm_idx
+        if idx is not None and origin_units is not None:
+            return origin_units[0:idx] + origin_units[idx + 1 :]
+        else:
+            return origin_units
+
+    @y_units.setter
+    def y_units(self, units: list[str] | None) -> None:
+        idx = self._norm_idx
+        if idx is not None:
+            if units is not None:
+                # Include the normalisation channel in the units when setting.
+                self._origin.y_units = units[0:idx] + [self._norm_channel] + units[idx:]
+                return
+        # Otherwise, set units normally.
+        self._origin.y_units = units
+        return
 
 
 class scan_normalised_background_channel(scan_normalised):
@@ -590,8 +688,43 @@ class scan_normalised_edges(scan_abstract_normalised):
         EXPONENTIAL = 3
 
     DEFAULT_PRE_EDGE_LEVEL_CONSTANT = 0.0
+    """The constant offset for the pre-edge normalisation. I.e. Pre-edge at 0.0"""
+
     DEFAULT_PRE_EDGE_LEVEL_LINEAR = 0.0
-    DEFAULT_PRE_EDGE_LEVEL_EXP = 0.1
+    """The constant gradient for the pre-edge normalisation. I.e. Linear gradient at 0.0"""
+
+    DEFAULT_PRE_EDGE_LEVEL_EXP = 0.0
+    """The constant exponential level for the pre-edge normalisation. I.e. Exponential level at 0.0"""
+
+    LIN_FN = lambda x, m, c: m * x + c
+    """
+    A function to define a linear fit.
+
+    Parameters
+    ----------
+    x : ArrayLike
+        The x value.
+    m : float
+        The gradient of the line.
+    c : float
+        The y-intercept of the line.
+    """
+
+    EXP_FN_OFFSET = lambda x, a, b, c: a * np.exp(b * (x - x.min())) + c
+    """
+    A function to define an exponential fit, adjusted to the minimum x value.
+
+    Parameters
+    ----------
+    x : ArrayLike
+        The x value.
+    a : float
+        The amplitude of the exponential.
+    b : float
+        The decay constant of the exponential.
+    c : float
+        The offset of the exponential.
+    """
 
     class POSTEDGE_NORM_TYPE(Enum):
         """
@@ -609,32 +742,42 @@ class scan_normalised_edges(scan_abstract_normalised):
         CONSTANT = 1
 
     DEFAULT_POST_EDGE_LEVEL_CONSTANT = 1.0
+    """The constant offset for the post-edge normalisation. I.e. Post-edge at 1.0"""
 
     def __init__(
         self,
-        scan: Type[scan_base] | scan_base,
+        scan: Type[scan_base],
         pre_edge_domain=list[int] | tuple[float, float] | None,
         post_edge_domain=list[int] | tuple[float, float] | None,
         pre_edge_normalisation: PREEDGE_NORM_TYPE = PREEDGE_NORM_TYPE.CONSTANT,
-        post_edge_normalisation: POSTEDGE_NORM_TYPE = PREEDGE_NORM_TYPE.CONSTANT,
-        pre_edge_level: float = DEFAULT_PRE_EDGE_LEVEL_CONSTANT,
-        post_edge_level: float = DEFAULT_POST_EDGE_LEVEL_CONSTANT,
+        post_edge_normalisation: POSTEDGE_NORM_TYPE = POSTEDGE_NORM_TYPE.CONSTANT,
+        pre_edge_level: float | None = None,
+        post_edge_level: float | None = None,
     ) -> None:
-
+        # Initialize the scan_abstract_normalised class.
         super().__init__(scan)
+        # Pre-init vars
+        self._pre_edge_normalisation = scan_normalised_edges.PREEDGE_NORM_TYPE.NONE
+        self._post_edge_normalisation = scan_normalised_edges.POSTEDGE_NORM_TYPE.NONE
+        self._pre_edge_level = None
+        self._post_edge_level = None
         # Use properties to define the values.
         self.pre_edge_domain = pre_edge_domain
         self.post_edge_domain = post_edge_domain
+        # Setup normalisation types
         self.pre_edge_normalisation = pre_edge_normalisation
         self.post_edge_normalisation = post_edge_normalisation
-        # Level defined after normalisation.
-        self.pre_edge_level = pre_edge_level
-        self.post_edge_level = post_edge_level
+        # Level defined after normalisation type
+        if pre_edge_level is not None:
+            self.pre_edge_level = pre_edge_level
+        if post_edge_level is not None:
+            self.post_edge_level = post_edge_level
         # Define variables for edge fitting
-        self.pre_edge_fit_params = None
-        self.post_edge_fit_params = None
+        self.pre_edge_fit_params: list | None = None
+        self.post_edge_fit_params: list | None = None
+
         # Perform normalisation
-        self._scale_from_normalisation_data()
+        self.load_and_normalise()
         return
 
     @overrides.overrides
@@ -643,120 +786,137 @@ class scan_normalised_edges(scan_abstract_normalised):
         Scales y data by the normalisation regions.
         """
         # Define fitting functions
-        lin_fn = lambda x, m, c: m * x + c
-        exp_fn = lambda x, a, b, c: a * np.exp(b * x) + c
-        # Perform dual normalisation
+        lin_fn = scan_normalised_edges.LIN_FN
+        exp_fn = scan_normalised_edges.EXP_FN_OFFSET
+        # Perform dual normalisation, sequentially to avoid duplicate code.
+
+        ## PRE-EDGE
         if (
             self.pre_edge_normalisation
             is not scan_normalised_edges.PREEDGE_NORM_TYPE.NONE
-            and self.post_edge_normalisation
-            is not scan_normalised_edges.POSTEDGE_NORM_TYPE.NONE
             and self._pre_edge_domain is not None
-            and self._post_edge_domain is not None
         ):
 
             # Collect pre-edge indexes
             if isinstance(self.pre_edge_domain, list):
+                # Use the list of indexes
                 pre_inds = self.pre_edge_domain
+                if len(pre_inds) == 0:
+                    raise ValueError("Pre-edge index list is empty.")
             elif isinstance(self.pre_edge_domain, tuple):
-                pre_inds = np.where(
+                # Use the domain range
+                pre_inds = np.asarray(
                     (self.x >= self.pre_edge_domain[0])
                     & (self.x <= self.pre_edge_domain[1])
-                )
+                ).nonzero()
+                # Check indexes of each tuple element
+                if len(pre_inds[0]) == 0:
+                    raise ValueError("Pre-edge domain is empty.")
             else:
                 raise AttributeError(
                     "Pre-edge domain is not defined correctly. Should be a list of indexes or the range in a tuple."
                 )
 
+            # Calculate pre-edge on all y values and normalise
+            match self.pre_edge_normalisation:
+                case scan_normalised_edges.PREEDGE_NORM_TYPE.CONSTANT:
+                    mean = np.mean(self.y[pre_inds], axis=0)
+                    stdev = np.std(self.y[pre_inds], axis=0)
+                    self.y += -mean + self.pre_edge_level
+                    self.pre_edge_fit_params = mean.tolist()
+                    # if self.y_errs is not None:
+                    #     # Add the standard deviation
+                    #     self.y_errs = np.sqrt(np.square(self.y_errs) + stdev ** 2)
+
+                case scan_normalised_edges.PREEDGE_NORM_TYPE.LINEAR:
+                    params: list = []
+                    for i in range(self.y.shape[1]):
+                        popt, pcov = sopt.curve_fit(
+                            lin_fn, self.x[pre_inds], self.y[:, i][pre_inds]
+                        )
+                        self.pre_edge_fit_params = popt.tolist()
+                        self.y[:, i] += -lin_fn(self.x, *popt) + self.pre_edge_level
+                        params += popt.tolist()
+
+                    self.pre_edge_fit_params = params
+
+                case scan_normalised_edges.PREEDGE_NORM_TYPE.EXPONENTIAL:
+                    params: list = []
+                    for i in range(self.y.shape[1]):
+                        # Subtract offset to fit
+                        xfit = self.x[pre_inds] - self.x[pre_inds].min()
+                        x = self.x - self.x[pre_inds].min()
+                        a0 = self.y[:, i][pre_inds].max() - self.y[:, i][pre_inds].min()
+                        # Fit
+                        popt, pcov = sopt.curve_fit(
+                            exp_fn,
+                            xfit,
+                            self.y[:, i][pre_inds],
+                            p0=(a0, -0.5, 0),
+                            bounds=[(-np.inf, -np.inf, -np.inf), (np.inf, 0, np.inf)],
+                            maxfev=10000,
+                        )
+                        self.y[:, i] += -exp_fn(x, *popt) + self.pre_edge_level
+                        params += popt.tolist()
+
+                    self.pre_edge_fit_params = params
+
+                case scan_normalised_edges.PREEDGE_NORM_TYPE.NONE:
+                    # Do nothing for no pre-edge normalisation
+                    pass
+                case _:
+                    # Should never reach here, and dual normalisation excludes None type.
+                    raise ValueError("Pre-edge normalisation type not defined.")
+
+        ## POST-EDGE
+        if (
+            self.post_edge_normalisation
+            is not scan_normalised_edges.POSTEDGE_NORM_TYPE.NONE
+            and self._post_edge_domain is not None
+        ):
+
             # Collect post-edge indexes:
             if isinstance(self.post_edge_domain, list):
                 post_inds = self.post_edge_domain
+                if len(post_inds) == 0:
+                    raise ValueError("Pre-edge index list is empty.")
             elif isinstance(self.post_edge_domain, tuple):
                 post_inds = np.where(
                     (self.x >= self.post_edge_domain[0])
                     & (self.x <= self.post_edge_domain[1])
                 )
+                # Check indexes of each tuple element
+                if len(post_inds[0]) == 0:
+                    raise ValueError("Pre-edge domain is empty.")
             else:
                 raise AttributeError(
                     "Post-edge domain is not defined correctly. Should be a list of indexes or the range in a tuple."
                 )
 
-            # Calculate pre-edge and normalise
-            match self.pre_edge_normalisation:
-                case scan_normalised_edges.PREEDGE_NORM_TYPE.CONSTANT:
-                    mean = np.mean(self.y[pre_inds])
-                    stdev = np.std(self.y[pre_inds])
-                    self.pre_edge_fit_params = mean.tolist()
-                    self.y -= mean + self.DEFAULT_PRE_EDGE_LEVEL_CONSTANT
-                    if self.y_errs is not None:
-                        self.y_errs = np.sqrt(np.square(self.y_errs) + np.square())
-                case scan_normalised_edges.PREEDGE_NORM_TYPE.LINEAR:
-                    popt, pcov = sopt.curve_fit(
-                        lin_fn, self.x[pre_inds], self.y[pre_inds]
-                    )
-                    self.pre_edge_fit_params = popt
-                    self.y -= lin_fn(popt) + self.DEFAULT_PRE_EDGE_LEVEL_LINEAR
-                case scan_normalised_edges.PREEDGE_NORM_TYPE.EXPONENTIAL:
-                    popt, pcov = sopt.curve_fit(
-                        exp_fn, self.x[pre_inds], self.y[pre_inds]
-                    )
-                    self.y = self.y - exp_fn(popt) + self.DEFAULT_PRE_EDGE_LEVEL_EXP
+            if len(post_inds) == 0:
+                raise ValueError("Post-edge domain is empty.")
+
+            # Calculate post-edge and normalise. Note, y data is already normalised by pre-edge.
+            match self.post_edge_normalisation:
+                case scan_normalised_edges.POSTEDGE_NORM_TYPE.CONSTANT:
+                    # Get the mean of the post-edge from the pre-edge level.
+                    postave = np.mean(self.y[post_inds] - self.pre_edge_level, axis=0)
+                    # Scale to difference from pre-edge level to post-edge level. Ignore zero values.
+                    scale = np.zeros(postave.shape)
+                    scale[postave != 0] = (
+                        self.post_edge_level - self.pre_edge_level
+                    ) / postave[postave != 0]
+                    self.y = (
+                        self.y - self.pre_edge_level
+                    ) * scale + self.pre_edge_level
+                    pass
+                case scan_normalised_edges.POSTEDGE_NORM_TYPE.NONE:
+                    # Do nothing
+                    pass
                 case _:
                     # Should never reach here, and dual normalisation excludes None type.
-                    raise ValueError("Pre-edge normalisation type not defined.")
+                    raise ValueError("Post-edge normalisation type not defined.")
 
-            # Calculate post-edge and normalise
-            postave = np.mean(self.y[post_inds])
-
-            # Normalise data.
-
-        # Perform single normalisation
-        elif (
-            self.pre_edge_normalisation
-            is not scan_normalised_edges.PREEDGE_NORM_TYPE.NONE
-        ):
-            # Collect pre-edge indexes
-            if isinstance(self.pre_edge_domain, list):
-                pre_inds = self.pre_edge_domain
-            elif isinstance(self.pre_edge_domain, tuple):
-                pre_inds = np.where(
-                    (self.x >= self.pre_edge_domain[0])
-                    & (self.x <= self.pre_edge_domain[1])
-                )
-            else:
-                raise AttributeError("Pre-edge domain is not defined correctly.")
-
-            # Calculate pre-edge and normalise
-            match self.pre_edge_normalisation:
-                case scan_normalised_edges.EDGE_NORM_TYPE.CONSTANT:
-                    mean = np.mean(self.y[pre_inds])
-                    self.pre_edge_fit_params = mean.tolist()
-                    self.y -= mean + self.DEFAULT_PRE_EDGE_LEVEL_CONSTANT
-                case scan_normalised_edges.EDGE_NORM_TYPE.LINEAR:
-                    popt, pcov = sopt.curve_fit(
-                        lin_fn, self.x[pre_inds], self.y[pre_inds]
-                    )
-                    self.pre_edge_fit_params = popt
-                    self.y -= lin_fn(popt) + self.DEFAULT_PRE_EDGE_LEVEL_LINEAR
-                case scan_normalised_edges.EDGE_NORM_TYPE.EXPONENTIAL:
-                    popt, pcov = sopt.curve_fit(
-                        exp_fn, self.x[pre_inds], self.y[pre_inds]
-                    )
-                    self.y = self.y - exp_fn(popt) + self.DEFAULT_PRE_EDGE_LEVEL_EXP
-                case _:
-                    # Should never reach here, and dual normalisation excludes None type.
-                    raise ValueError("Pre-edge normalisation type not defined.")
-
-        # Perform single normalisation
-        elif (
-            self.post_edge_normalisation
-            is not scan_normalised_edges.EDGE_NORM_TYPE.NONE
-        ):
-            raise NotImplemented("Incomplete function.")
-
-        # No normalisation specified, do nothing.
-        else:
-            pass
         return
 
     @property
@@ -795,17 +955,19 @@ class scan_normalised_edges(scan_abstract_normalised):
             )
         # Default normalisation to linear if not already defined.
         if (
-            self._pre_edge_normalisation is scan_normalised_edges.EDGE_NORM_TYPE.NONE
+            self._pre_edge_normalisation is scan_normalised_edges.PREEDGE_NORM_TYPE.NONE
             and vals is not None
         ):
-            self._pre_edge_normalisation = scan_normalised_edges.EDGE_NORM_TYPE.LINEAR
+            self._pre_edge_normalisation = (
+                scan_normalised_edges.PREEDGE_NORM_TYPE.LINEAR
+            )
 
     @pre_edge_domain.deleter
     def pre_edge_domain(self):
         self._post_edge_domain = None
 
     @property
-    def pre_edge_normalisation(self) -> scan_normalised_edges.EDGE_NORM_TYPE:
+    def pre_edge_normalisation(self) -> scan_normalised_edges.PREEDGE_NORM_TYPE:
         """
         Property to define the type of normalisation performed on the pre-edge.
 
@@ -819,19 +981,40 @@ class scan_normalised_edges(scan_abstract_normalised):
         scan_normalised_edges.EDGE_NORM_TYPE
             The current normalisation type.
         """
-        return self._post_edge_normalisation
+        return self._pre_edge_normalisation
 
     @pre_edge_normalisation.setter
     def pre_edge_normalisation(
-        self, vals: scan_normalised_edges.EDGE_NORM_TYPE
+        self, vals: scan_normalised_edges.PREEDGE_NORM_TYPE
     ) -> None:
-        if vals in scan_normalised_edges.EDGE_NORM_TYPE:
+        if vals in scan_normalised_edges.PREEDGE_NORM_TYPE:
             self._pre_edge_normalisation = vals
         else:
-            raise ValueError(f"{vals} not in {scan_normalised_edges.EDGE_NORM_TYPE}.")
+            raise ValueError(
+                f"{vals} not in {scan_normalised_edges.PREEDGE_NORM_TYPE}."
+            )
+        # If pre-edge not defined, set to default level
+        if self._pre_edge_level is None:
+            match vals:
+                case scan_normalised_edges.PREEDGE_NORM_TYPE.CONSTANT:
+                    self._pre_edge_level = (
+                        scan_normalised_edges.DEFAULT_PRE_EDGE_LEVEL_CONSTANT
+                    )
+                case scan_normalised_edges.PREEDGE_NORM_TYPE.LINEAR:
+                    self._pre_edge_level = (
+                        scan_normalised_edges.DEFAULT_PRE_EDGE_LEVEL_LINEAR
+                    )
+                case scan_normalised_edges.PREEDGE_NORM_TYPE.EXPONENTIAL:
+                    self._pre_edge_level = (
+                        scan_normalised_edges.DEFAULT_PRE_EDGE_LEVEL_EXP
+                    )
+                case _:
+                    # Do nothing if not defined / NONE.
+                    pass
+
         # Change pre-edge level by default to a reasonable value if setting exponential.
         if (
-            vals is scan_normalised_edges.EDGE_NORM_TYPE.EXPONENTIAL
+            vals is scan_normalised_edges.PREEDGE_NORM_TYPE.EXPONENTIAL
             and self.pre_edge_level <= 0
         ):
             self._pre_edge_level = scan_normalised_edges.DEFAULT_PRE_EDGE_LEVEL_EXP
@@ -843,7 +1026,7 @@ class scan_normalised_edges(scan_abstract_normalised):
     @property
     def pre_edge_level(self) -> float:
         """
-        Property to define the normalisation level for the pre-edge.
+        Property to define the normalisation level (constant) for the pre-edge.
 
         Parameters
         ----------
@@ -861,7 +1044,7 @@ class scan_normalised_edges(scan_abstract_normalised):
     def pre_edge_level(self, vals: float) -> None:
         if (
             self.pre_edge_normalisation
-            is scan_normalised_edges.EDGE_NORM_TYPE.EXPONENTIAL
+            is scan_normalised_edges.PREEDGE_NORM_TYPE.EXPONENTIAL
         ):
             if vals <= 0:
                 raise ValueError(
@@ -873,7 +1056,7 @@ class scan_normalised_edges(scan_abstract_normalised):
     def pre_edge_level(self) -> None:
         if (
             self.pre_edge_normalisation
-            is scan_normalised_edges.EDGE_NORM_TYPE.EXPONENTIAL
+            is scan_normalised_edges.PREEDGE_NORM_TYPE.EXPONENTIAL
         ):
             self._pre_edge_level = scan_normalised_edges.DEFAULT_PRE_EDGE_LEVEL_EXP
         # elif self.pre_edge_normalisation is scan_normalised_edges.EDGE_NORM_TYPE.LINEAR:
@@ -915,19 +1098,22 @@ class scan_normalised_edges(scan_abstract_normalised):
             raise ValueError(
                 "The post-edge domain needs to be defined by a list of integer indices, a tuple of inclusive endpoints or None."
             )
-        # Default normalisation to linear if not already defined.
+        # Default normalisation to constant if not already defined.
         if (
-            self._post_edge_normalisation is scan_normalised_edges.EDGE_NORM_TYPE.NONE
+            self._post_edge_normalisation
+            is scan_normalised_edges.POSTEDGE_NORM_TYPE.NONE
             and vals is not None
         ):
-            self._post_edge_normalisation = scan_normalised_edges.EDGE_NORM_TYPE.LINEAR
+            self._post_edge_normalisation = (
+                scan_normalised_edges.POSTEDGE_NORM_TYPE.CONSTANT
+            )
 
     @post_edge_domain.deleter
     def post_edge_domain(self):
         self._post_edge_domain = None
 
     @property
-    def post_edge_normalisation(self) -> scan_normalised_edges.EDGE_NORM_TYPE:
+    def post_edge_normalisation(self) -> scan_normalised_edges.POSTEDGE_NORM_TYPE:
         """
         Property to define the type of normalisation performed on the post-edge.
 
@@ -945,12 +1131,25 @@ class scan_normalised_edges(scan_abstract_normalised):
 
     @post_edge_normalisation.setter
     def post_edge_normalisation(
-        self, vals: scan_normalised_edges.EDGE_NORM_TYPE
+        self, vals: scan_normalised_edges.POSTEDGE_NORM_TYPE
     ) -> None:
-        if vals in scan_normalised_edges.EDGE_NORM_TYPE:
+        if vals in scan_normalised_edges.POSTEDGE_NORM_TYPE:
             self._post_edge_normalisation = vals
         else:
-            raise ValueError(f"{vals} not in {scan_normalised_edges.EDGE_NORM_TYPE}.")
+            raise ValueError(
+                f"{vals} not in {scan_normalised_edges.POSTEDGE_NORM_TYPE}."
+            )
+
+        # Set default if None
+        if self._post_edge_level is None:
+            match vals:
+                case scan_normalised_edges.POSTEDGE_NORM_TYPE.CONSTANT:
+                    self._post_edge_level = (
+                        scan_normalised_edges.DEFAULT_POST_EDGE_LEVEL_CONSTANT
+                    )
+                case _:
+                    # Do nothing if not defined / NONE.
+                    pass
 
     @post_edge_normalisation.deleter
     def post_edge_normalisation(self) -> None:
@@ -959,7 +1158,7 @@ class scan_normalised_edges(scan_abstract_normalised):
     @property
     def post_edge_level(self) -> float:
         """
-        Property to define the normalisation level for the post-edge.
+        Property to define the normalisation level (constant) for the post-edge.
 
         Parameters
         ----------
@@ -975,24 +1174,160 @@ class scan_normalised_edges(scan_abstract_normalised):
 
     @post_edge_level.setter
     def post_edge_level(self, vals: float) -> None:
-        if (
-            self.post_edge_normalisation
-            is scan_normalised_edges.EDGE_NORM_TYPE.EXPONENTIAL
-        ):
-            if vals <= 0:
-                raise ValueError(
-                    "Exponential normalisation requires a positive, non-zero level."
-                )
+        # if (
+        #     self.post_edge_normalisation
+        #     is scan_normalised_edges.POSTEDGE_NORM_TYPE.EXPONENTIAL
+        # ):
+        #     if vals <= 0:
+        #         raise ValueError(
+        #             "Exponential normalisation requires a positive, non-zero level."
+        #         )
         self._post_edge_level = vals
 
     @post_edge_level.deleter
     def post_edge_level(self) -> None:
         if (
-            self.post_edge_normalisation
-            is scan_normalised_edges.EDGE_NORM_TYPE.EXPONENTIAL
+            # self.post_edge_normalisation
+            # is scan_normalised_edges.POSTEDGE_NORM_TYPE.EXPONENTIAL
+            False
         ):
             self._post_edge_level = scan_normalised_edges.DEFAULT_PRE_EDGE_LEVEL_EXP
         # elif self.pre_edge_normalisation is scan_normalised_edges.EDGE_NORM_TYPE.LINEAR:
         # self._pre_edge_level = scan_normalised_edges.DEFAULT_PRE_EDGE_LEVEL_LINEAR
         else:
             self._post_edge_level = scan_normalised_edges.DEFAULT_PRE_EDGE_LEVEL_LINEAR
+
+
+if __name__ == "__main__":
+    import os
+    import matplotlib.pyplot as plt
+
+    # Create a basic scan object form test data
+    MEX2_MDA_PATH = os.path.normpath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..\\..\\tests\\test_data\\au\\MEX2\\MEX2_5640.mda",
+        )
+    )
+    SXR_MDA_PATH = os.path.normpath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..\\..\\tests\\test_data\\au\\SXR\\sxr129598.mda",
+        )
+    )
+    from pyNexafs.parsers.au import MEX2_NEXAFS, SXR_NEXAFS
+
+    # MEX2 example
+    parser_mex2 = MEX2_NEXAFS(
+        MEX2_MDA_PATH, relabel=True, energy_bin_domain=(3300, 3700)
+    )
+    scan_mex2 = parser_mex2.to_scan()
+
+    # SXR Oxygen example
+    parser_sxr = SXR_NEXAFS(SXR_MDA_PATH, relabel=True)
+    scan_sxr = parser_sxr.to_scan()
+    assert scan_sxr.y_labels[2] == "I0 VF", scan_sxr.y_labels[2]
+
+    examples = [
+        {
+            "scan": scan_mex2,
+            "norm_channel": "I0",
+            "pre_edge_domain": (2460, 2465),
+            "post_edge_domain": (2520, 2530),
+            "idx": 1,
+        },
+        {
+            "scan": scan_sxr,
+            "norm_channel": scan_sxr.y_labels[2],
+            "pre_edge_domain": (515, 525),
+            "post_edge_domain": (570, 580),
+            "idx": 0,
+        },
+    ]
+
+    # plt.subplots(1,2, figsize=(10,5))
+    # plt.plot(scan_sxr.x, scan_sxr.y[:,2], label="I0")
+    # plt.show()
+
+    for ex in examples[1:]:
+        scan = ex["scan"]
+        norm_channel = ex["norm_channel"]
+        pre_edge_domain = ex["pre_edge_domain"]
+        post_edge_domain = ex["post_edge_domain"]
+        idx = ex["idx"]
+
+        # Normalise to a channel
+        norm = scan_normalised(scan, norm_channel=norm_channel)
+
+        # Normalise to the edges
+        edge_c = scan_normalised_edges(
+            scan, pre_edge_domain=pre_edge_domain, post_edge_domain=post_edge_domain
+        )
+        edge_l = scan_normalised_edges(
+            scan,
+            pre_edge_domain=pre_edge_domain,
+            post_edge_domain=post_edge_domain,
+            pre_edge_normalisation=scan_normalised_edges.PREEDGE_NORM_TYPE.LINEAR,
+        )
+
+        edge_e = scan_normalised_edges(
+            scan,
+            pre_edge_domain=pre_edge_domain,
+            post_edge_domain=post_edge_domain,
+            pre_edge_normalisation=scan_normalised_edges.PREEDGE_NORM_TYPE.EXPONENTIAL,
+        )
+
+        # Plot each normalisation step
+        fig, ax = plt.subplots(1, 3, sharex=True, figsize=(15, 5))
+        ax[0].plot(
+            scan.x,
+            scan.y[:, idx],
+            label=f"{type(scan_mex2).__name__}\n{scan.y_labels[idx]}",
+        )
+
+        l = ax[1].plot(
+            norm.x, norm.y[:, idx], label=f"{type(norm).__name__}\n{norm.y_labels[idx]}"
+        )
+        ax[1].plot(
+            scan.x,
+            scan.y[:, idx],
+            "--",
+            label=f"{type(scan_mex2).__name__}\n{scan.y_labels[idx]}",
+        )  # c=l[0].get_color()
+
+        l = ax[2].plot(
+            edge_c.x,
+            edge_c.y[:, idx],
+            label=f"{type(edge_c).__name__}\nConstant\n{edge_c.y_labels[idx]}",
+        )
+        l = ax[2].plot(
+            edge_l.x,
+            edge_l.y[:, idx],
+            label=f"{type(edge_l).__name__}\nLinear\n{edge_l.y_labels[idx]}",
+        )
+        l = ax[2].plot(
+            edge_e.x,
+            edge_e.y[:, idx],
+            label=f"{type(edge_e).__name__}\nExponential\n{edge_e.y_labels[idx]}",
+        )
+        ax[1].plot(
+            edge_e.x,
+            scan_normalised_edges.EXP_FN_OFFSET(
+                edge_e.x, *edge_e.pre_edge_fit_params[3 * idx : 3 * (idx + 1)]
+            ),
+            "--",
+            c=l[0].get_color(),
+            label="Exponential Subtraction",
+        )
+
+        ax[2].set_xlabel("Energy (eV)")
+        for a in ax:
+            a.set_ylabel("Intensity (a.u.)")
+            a.legend()
+
+        ax[0].set_title("Original")
+        ax[1].set_title("Normalised to I0")
+        ax[2].set_title("Normalised to Edges")
+        # ax[2].set_yscale("log")
+        fig.tight_layout()
+        plt.show()
