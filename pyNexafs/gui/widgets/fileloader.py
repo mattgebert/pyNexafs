@@ -937,7 +937,7 @@ class directory_viewer_table(QTableView):
                                 os.path.join(self.directory, file), header_only=True
                             )
                         # Catch unimplemented and import errors.
-                        except (NotImplementedError, ImportError) as e:
+                        except (NotImplementedError, ImportError, PermissionError) as e:
                             self._parser_headers[file] = None
                     if self.progress_bar is not None:
                         # self.progress_bar.setValue(int((i + 1) / files_len * 100))

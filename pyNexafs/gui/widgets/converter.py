@@ -540,6 +540,9 @@ class nexafsParserConverter(QtWidgets.QWidget):
                 for j, column in enumerate(copy_parser.data.T):
                     nan_values = np.isnan(column)
                     if nan_values.any():
+                        if not (True in nan_values and False in nan_values):
+                            # All NaN values, skip.
+                            continue
                         # Uses linear interpolation to fill in NaN values.
                         if j == x_idx:
                             # Assume equal separation between x values
