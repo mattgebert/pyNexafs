@@ -374,7 +374,12 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         "MEX2ES01DPP01:ch2:W:ArrayData": "Fluorescence Detector 2",
         "MEX2ES01DPP01:ch3:W:ArrayData": "Fluorescence Detector 3",
         "MEX2ES01DPP01:ch4:W:ArrayData": "Fluorescence Detector 4",
-        # XDI File:
+        #### ASC Files:
+        "mda_version": "MDA File Version",
+        "mda_scan_number": "Scan Number",
+        "mda_rank": "Overall scan dimension",
+        "mda_dimensions": "Total requested scan size",
+        #### XDI File:
         # "energy": "Energy",
         # "bragg": "Bragg",
         # "count_time": "Count Time",

@@ -204,11 +204,15 @@ class nexafsParserConverter(QtWidgets.QWidget):
         self._override_checkbox = override_checkbox = QtWidgets.QCheckBox(
             "Override Existing Files?"
         )
+        self._rename_checkbox = rename_checkbox = QtWidgets.QCheckBox(
+            "Rename? (`<sample>_<scan_id>.asc`)"
+        )
         exec_layout.addWidget(conversion_text, 0, 0, 1, 2)
         exec_layout.addWidget(copy_button, 0, 2, 1, 2)
         exec_layout.addWidget(override_checkbox, 1, 0, 1, 2)
-        exec_layout.addWidget(save_button, 1, 2, 1, 2)
-        exec_layout.addWidget(progress, 3, 0, 1, 4)
+        exec_layout.addWidget(rename_checkbox, 1, 2, 1, 2)
+        exec_layout.addWidget(progress, 2, 0, 1, 4)
+        exec_layout.addWidget(save_button, 3, 0, 1, 4)
 
         ## Difference viewer
         diff_widget = QtWidgets.QWidget()
@@ -434,7 +438,34 @@ class nexafsParserConverter(QtWidgets.QWidget):
                         converter = AU_PARSERS.MEX2_to_QANT_AUMainAsc
                 self.progress.setValue(self.progress.value() + 1)
                 # Convert to ascii format.
-                file = "".join(parser.filename.split(".")[:-1]) + ".asc"
+                if self._rename_checkbox.isChecked() and (
+                    "SR14ID01NEXSCAN:saveData_comment1" in parser.params
+                    or "Comment 1" in parser.params
+                    or "Sample" in parser.params
+                ):
+                    # Get the sample name
+                    if "SR14ID01NEXSCAN:saveData_comment1" in parser.params:
+                        sample = parser.params["SR14ID01NEXSCAN:saveData_comment1"]
+                    elif "Comment 1" in parser.params:
+                        sample = parser.params["Comment 1"]
+                    elif "Sample" in parser.params:
+                        sample = parser.params["Sample"]
+                    else:
+                        print(f"Name error, skipping {parser}")
+                        continue
+
+                    # Get the scan ID / number
+                    if "mda_scan_number" in parser.params:
+                        scan_id = parser.params["mda_scan_number"]
+                    elif "Scan Number" in parser.params:
+                        scan_id = parser.params["Scan Number"]
+                    else:
+                        # use the filename?
+                        scan_id = "".join(parser.filename.split(".")[:-1])
+                    # Create the new filename
+                    file = f"{sample}_{scan_id}.asc"
+                else:
+                    file = "".join(parser.filename.split(".")[:-1]) + ".asc"
                 path = os.path.join(base_dir, file)
                 exists = os.path.exists(path)
                 if self._override_checkbox.isChecked() or not exists:
