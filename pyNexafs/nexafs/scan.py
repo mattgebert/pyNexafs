@@ -50,6 +50,44 @@ class scan_abstract(metaclass=abc.ABCMeta):
         self._y_units = []  # List[str]
         return
 
+    @abc.abstractmethod
+    def copy(self, *args, **kwargs) -> scan_abstract:
+        """
+        Creates a copy of the scan object.
+        Reloads parser object data, but links to the same parser object as `self`.
+
+        Returns
+        -------
+        scan_abstract
+            A copy of the scan object with unique data.
+        """
+        newobj = type(self)(*args, **kwargs)
+
+        # Copy Data
+        newobj._x = self._x.copy() if self._x is not None else None
+        newobj._y = self._y.copy() if self._y is not None else None
+        newobj._y_errs = self._y_errs.copy() if self._y_errs is not None else None
+        newobj._x_errs = self._x_errs.copy() if self._x_errs is not None else None
+
+        # Copy Labels and Units
+        newobj._x_label = self._x_label
+        newobj._x_unit = self._x_unit
+        if self._y_labels is not None:
+            if isinstance(self._y_labels, list):
+                newobj._y_labels = [label for label in self._y_labels]
+            else:  # string
+                newobj._y_labels = self._y_labels
+        else:
+            newobj._y_labels = None
+        if self._y_units is not None:
+            if isinstance(self._y_units, list):
+                newobj._y_units = [unit for unit in self._y_units]
+            else:  # string
+                newobj._y_units = self._y_units
+        else:
+            newobj._y_units = None
+        return newobj
+
     @property
     def ctime(self) -> datetime.datetime:
         """
@@ -366,44 +404,6 @@ class scan_abstract(metaclass=abc.ABCMeta):
             raise ValueError(f"Provided 'units' {units} is not a list of strings.")
         return
 
-    def copy(self, *args, **kwargs) -> Type[Self]:
-        """
-        Creates a copy of the scan object.
-        Does reload parser object data, but does link to the same parser object.
-
-        Returns
-        -------
-        Type[scan_base]
-            A copy of the scan object with unique data.
-        """
-        newobj = type(self)(parser=None, *args, **kwargs)
-        newobj.parser = self.parser
-
-        # Copy Data
-        newobj._x = self._x.copy()
-        newobj._y = self._y.copy()
-        newobj._y_errs = self._y_errs.copy() if self._y_errs is not None else None
-        newobj._x_errs = self._x_errs.copy() if self._x_errs is not None else None
-
-        # Copy Labels and Units
-        newobj._x_label = self._x_label
-        newobj._x_unit = self._x_unit
-        if self._y_labels is not None:
-            if isinstance(self._y_labels, list):
-                newobj._y_labels = [label for label in self._y_labels]
-            else:  # string
-                newobj._y_labels = self._y_labels
-        else:
-            newobj._y_labels = None
-        if self._y_units is not None:
-            if isinstance(self._y_units, list):
-                newobj._y_units = [unit for unit in self._y_units]
-            else:  # string
-                newobj._y_units = self._y_units
-        else:
-            newobj._y_units = None
-        return newobj
-
     def snapshot(self, columns: int = None) -> matplotlib.figure.Figure:
         """
         Generates a grid of plots, showing all scan data.
@@ -436,6 +436,31 @@ class scan_abstract(metaclass=abc.ABCMeta):
         Alternatively scan labels can be manually set.
         """
         pass
+
+
+class scan_simple(scan_abstract):
+    """
+    Basic interface class for raw data that is not bundled in a parser object.
+    """
+
+    def __init__(self, x: npt.NDArray, y: npt.NDArray, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._x = x
+        self._y = y
+        return
+
+    def reload_labels_from_parser(self) -> None:
+        return None
+
+    @overrides.overrides
+    def copy(self) -> scan_simple:
+        """
+        Creates a copy of the scan object.
+
+        Data is unique for a `scan_simple` object, so no need to reload parser data unlike scan_abstract.
+        """
+        new_obj = scan_simple(x=self.x.copy(), y=self.y.copy())
+        return new_obj
 
 
 class scan_base(scan_abstract):
@@ -480,6 +505,13 @@ class scan_base(scan_abstract):
         if self.parser is not None:
             self._load_from_parser(load_all_columns=load_all_columns)
             self._all_columns_loaded = load_all_columns
+
+    @overrides.overrides
+    def copy(self) -> type[scan_base]:
+        newobj = super().copy(
+            parser=self.parser, load_all_columns=self._all_columns_loaded
+        )
+        return newobj
 
     @property
     def ctime(self) -> datetime.datetime:

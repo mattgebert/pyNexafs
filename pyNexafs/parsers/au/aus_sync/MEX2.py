@@ -9,7 +9,7 @@ from pyNexafs.nexafs.scan import scan_base
 from pyNexafs.utils.mda import MDAFileReader
 from pyNexafs.gui.widgets.reducer import EnergyBinReducerDialog
 from io import TextIOWrapper
-from typing import Any, Self
+from typing import Any, Self, Hashable
 from numpy.typing import NDArray
 import numpy as np
 import ast
@@ -186,7 +186,7 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         # 'MEX2ES01DPP01:dpp3:InUse',
         # 'MEX2ES01DPP01:dpp4:InUse',
         # 'MEX2ES01DPP01:dpp:ArrayCounter_RBV'
-        "MEX2SSCAN01:saveData_comment1": "Comment 1",
+        "MEX2SSCAN01:saveData_comment1": "Sample",
         "MEX2SSCAN01:saveData_comment2": "Comment 2",
         # MEX2SSCAN01:saveData_realTime1D
         # MEX2SSCAN01:saveData_fileSystem
@@ -319,9 +319,9 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         # MEX2SLT03:VCENTRE.OFF
         # MEX2SLT03:HSIZE.OFF
         # MEX2SLT03:HCENTRE.OFF
-        # MEX2STG01MOT01.RBV
-        # MEX2STG01MOT02.RBV
-        # MEX2STG01MOT03.RBV
+        "MEX2STG01MOT01.RBV": "Sample X",
+        "MEX2STG01MOT02.RBV": "Sample Y",
+        "MEX2STG01MOT03.RBV": "Sample Z",
         # MEX2STG01:XHAT.RBV
         # MEX2STG01:ZHAT.RBV
         # MEX2ES01MOT01.RBV
@@ -453,7 +453,7 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
 
         ### Read file
         # Check header is correct
-        assert file.readline() == "# XDI/1.0\n"
+        assert file.readline() == "# XDI/1.0\n", "Invalid XDI file header."
 
         ## 1 Initial Parameters
         column_descriptions = {}
@@ -501,26 +501,35 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
             line = file.readline()
             i += 1
 
-        assert line == "# ///\n"  # Check end of initial parameters
+        assert (
+            line == "# ///\n"
+        ), "End of initial parameter values"  # Check end of initial parameters
 
-        # Get samplename
+        # Get samplename from first comment line
         line = file.readline()
         sample_name = line[2:].strip()
         params["Sample"] = sample_name
+        params["Comment 1"] = sample_name
 
-        # Skip header lines before data
-        assert file.readline() == "# \n"
+        # Read the second comment line:
         line = file.readline()
+        if line != "# \n":
+            comment2 = line[2:].strip()
+            params["Comment 2"] = comment2
+
         # Some xdi conversion have a "default mda2xdi" line.
+        line = file.readline()
         try:
-            assert line == "# xdi from default mda2xdi preset for mex2.\n"
-            assert file.readline() == "#--------\n"
+            assert (
+                line == "# xdi from default mda2xdi preset for mex2.\n"
+            ), "Conversion line"
+            assert file.readline() == "#--------\n", "Conversion line"
         except AssertionError:
-            assert line == "#--------\n"
+            assert line == "#--------\n", "Conversion line"
 
         # Read data columns
         header_line = file.readline()
-        assert header_line[0:2] == "# "
+        assert header_line[0:2] == "# ", "Start of data columns"
         labels = (
             header_line[2:].strip().split()
         )  # split on whitespace, even though formatting seems to use "   " (i.e. three spaces).
@@ -738,13 +747,14 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
 
 def MEX2_to_QANT_AUMainAsc(
     parser: parser_base,
-    extrainfo_mapping={
+    extrainfo_mapping: dict[str, None | str] = {
         "SR14ID01MCS02FAM:X.RBV": None,
         "SR14ID01MCS02FAM:Y.RBV": None,
         "SR14ID01MCS02FAM:Z.RBV": None,
         "SR14ID01MCS02FAM:R1.RBV": None,
         "SR14ID01MCS02FAM:R2.RBV": None,
         "SR14ID01NEXSCAN:saveData_comment1": "Sample",
+        # "SR14ID01NEXSCAN:saveData_comment1": "MEX2SSCAN01:saveData_comment1",
         "SR14ID01NEXSCAN:saveData_comment2": None,
     },
 ) -> list[str]:
@@ -755,9 +765,9 @@ def MEX2_to_QANT_AUMainAsc(
     ----------
     parser : parser_base
         The parser object (with data, labels, units, and params loaded) to convert.
-    extrainfo_mapping : dict[str:str|None], optional
+    extrainfo_mapping : dict[str, str | None], optional
         Optional mapping for known read-values for the QANT AUMainAsc format to
-        parser parameter names. By default the dictionary key values are:
+        parser parameter names. By default the dictionary key values (readable by QANT) are:
             {"SR14ID01MCS02FAM:X.RBV": None,
             "SR14ID01MCS02FAM:Y.RBV": None,
             "SR14ID01MCS02FAM:Z.RBV": None,
@@ -787,8 +797,17 @@ def MEX2_to_QANT_AUMainAsc(
                 raise ValueError(f"Parameter {value} not found in parser params.")
             elif key not in possible_read_values:
                 raise ValueError(f"Parameter {key} not found in possible read values.")
+
     # Create reverse dict
-    extrainfo_remapping = {v: k for k, v in extrainfo_mapping.items()}
+    extrainfo_remapping = {}
+    for k, v in extrainfo_mapping.items():
+        if v is None:
+            continue
+        if v in extrainfo_remapping:
+            raise ValueError(
+                f"Value {v} already in remapping - conflicting mapping for `{extrainfo_remapping[v]}` and `{k}`."
+            )
+        extrainfo_remapping[v] = k
 
     # Check vailidty of parser object:
     if parser.data is None:
@@ -863,7 +882,8 @@ def MEX2_to_QANT_AUMainAsc(
                 for val in parser.params[param]:
                     wval = (
                         val
-                        if val not in extrainfo_remapping
+                        if not isinstance(val, Hashable)
+                        or val not in extrainfo_remapping
                         or extrainfo_remapping[val] is None
                         else extrainfo_remapping[val]
                     )
@@ -939,7 +959,7 @@ def MEX2_to_QANT_AUMainAsc(
             # Create index column if not present.
             ostrs.append(f"#{1:5}  [     Index      ]\n")
             init_idx = 2  # Because of added extra index.
-        for i, col in enumerate(parser.params["column_descriptions"]):
+        for i, col in parser.params["column_descriptions"].items():
             if "column_type_assignments" in parser.params:
                 col_type = parser.params["column_type_assignments"][i]
             else:

@@ -8,7 +8,7 @@ import datetime
 from scipy import optimize as sopt
 from enum import Enum
 from types import NoneType
-from typing import Type
+from typing import Type, Self
 from pyNexafs.nexafs.scan import scan_base, scan_abstract
 
 
@@ -22,12 +22,26 @@ class scan_abstract_normalised(scan_abstract, metaclass=abc.ABCMeta):
         A scan object. Could be already normalised scan or a scan_base object.
     """
 
-    def __init__(self, scan: Type[scan_abstract]):
+    def __init__(self, scan: scan_abstract):
         self._origin = scan
         return
 
+    @overrides.overrides
+    @abc.abstractmethod
+    def copy(self) -> scan_abstract_normalised:
+        """
+        Returns a copy of the scan object.
+
+        Returns
+        -------
+        scan_abstract
+            A copy of the scan object.
+        """
+        copy_obj = type(self)(scan=self._origin)
+        return copy_obj
+
     @property
-    def origin(self) -> Type[scan_base]:
+    def origin(self) -> scan_abstract:
         """
         Property for the original scan object.
 
@@ -113,7 +127,7 @@ class scan_abstract_normalised(scan_abstract, metaclass=abc.ABCMeta):
         return self.origin.x_label
 
     @x_label.setter
-    def x_label(self, label: str) -> None:
+    def x_label(self, label: str | None) -> None:
         """
         Property setter for the x-axis label, to the origin scan.
 
@@ -223,7 +237,7 @@ class scan_abstract_normalised(scan_abstract, metaclass=abc.ABCMeta):
         return self.origin.y_units
 
     @y_units.setter
-    def y_units(self, units: list[str]) -> None:
+    def y_units(self, units: list[str] | None) -> None:
         """
         Property setter for the y-axis units, to the origin scan.
 
@@ -245,8 +259,12 @@ class scan_background_subtraction(scan_abstract_normalised):
             raise ValueError("X data for scan and background scan do not match.")
         if scan.y.shape != scan_background.y.shape:
             raise ValueError("Y data for scan and background scan do not match.")
-        self._origin = scan
+
+        super().__init__(scan)
         self._background = scan_background
+
+        # Run the normalisation
+        self.load_and_normalise()
         return
 
     @overrides.overrides
@@ -286,6 +304,10 @@ class scan_background_subtraction(scan_abstract_normalised):
                 f"Scan Y labels {self.y_labels} don't match background Y labels {self._background.y_labels}"
             )
         return
+
+    @overrides.overrides
+    def copy(self) -> scan_background_subtraction:
+        return scan_background_subtraction(self._origin, self._background)
 
 
 class scan_normalised(scan_abstract_normalised):
@@ -585,6 +607,17 @@ class scan_normalised(scan_abstract_normalised):
         self._origin.y_units = units
         return
 
+    def copy(self) -> Self:
+        """
+        Returns a copy of the scan object.
+
+        Returns
+        -------
+        scan_abstract
+            A copy of the scan object.
+        """
+        return scan_normalised(self._origin, norm_channel=self._norm_channel)
+
 
 class scan_normalised_background_channel(scan_normalised):
     """
@@ -599,8 +632,8 @@ class scan_normalised_background_channel(scan_normalised):
     @overrides.overrides
     def __init__(
         self,
-        scan: Type[scan_abstract],
-        background_scan: Type[scan_abstract],
+        scan: scan_abstract,
+        background_scan: scan_abstract,
         norm_channel: str,
     ) -> None:
         # Save background scan and channel information
@@ -619,7 +652,8 @@ class scan_normalised_background_channel(scan_normalised):
     @overrides.overrides
     def _load_from_origin(self):
         # Reload background_scan data
-        self._background_scan.load_from_origin()
+        if hasattr(self._background_scan, "_load_from_origin"):
+            self._background_scan.load_from_origin()
         # Reload scan data
         super()._load_from_origin()
 
@@ -746,9 +780,9 @@ class scan_normalised_edges(scan_abstract_normalised):
 
     def __init__(
         self,
-        scan: Type[scan_base],
-        pre_edge_domain=list[int] | tuple[float, float] | None,
-        post_edge_domain=list[int] | tuple[float, float] | None,
+        scan: Type[scan_abstract],
+        pre_edge_domain: list[int] | tuple[float, float] | None,
+        post_edge_domain: list[int] | tuple[float, float] | None,
         pre_edge_normalisation: PREEDGE_NORM_TYPE = PREEDGE_NORM_TYPE.CONSTANT,
         post_edge_normalisation: POSTEDGE_NORM_TYPE = POSTEDGE_NORM_TYPE.CONSTANT,
         pre_edge_level: float | None = None,
@@ -781,6 +815,19 @@ class scan_normalised_edges(scan_abstract_normalised):
         return
 
     @overrides.overrides
+    def copy(self) -> scan_normalised_edges:
+        clone = scan_normalised_edges(
+            self._origin,
+            pre_edge_domain=self._pre_edge_domain,
+            post_edge_domain=self._post_edge_domain,
+            pre_edge_normalisation=self.pre_edge_normalisation,
+            post_edge_normalisation=self.post_edge_normalisation,
+            pre_edge_level=self._pre_edge_level,
+            post_edge_level=self._post_edge_level,
+        )
+        return clone
+
+    @overrides.overrides
     def _scale_from_normalisation_data(self) -> None:
         """
         Scales y data by the normalisation regions.
@@ -811,7 +858,9 @@ class scan_normalised_edges(scan_abstract_normalised):
                 ).nonzero()
                 # Check indexes of each tuple element
                 if len(pre_inds[0]) == 0:
-                    raise ValueError("Pre-edge domain is empty.")
+                    raise ValueError(
+                        f"Pre-edge domain ({self.pre_edge_domain[0]} to {self.pre_edge_domain[1]}) contains no datapoints."
+                    )
             else:
                 raise AttributeError(
                     "Pre-edge domain is not defined correctly. Should be a list of indexes or the range in a tuple."
@@ -879,7 +928,7 @@ class scan_normalised_edges(scan_abstract_normalised):
             if isinstance(self.post_edge_domain, list):
                 post_inds = self.post_edge_domain
                 if len(post_inds) == 0:
-                    raise ValueError("Pre-edge index list is empty.")
+                    raise ValueError("Post-edge index list is empty.")
             elif isinstance(self.post_edge_domain, tuple):
                 post_inds = np.where(
                     (self.x >= self.post_edge_domain[0])
@@ -887,7 +936,9 @@ class scan_normalised_edges(scan_abstract_normalised):
                 )
                 # Check indexes of each tuple element
                 if len(post_inds[0]) == 0:
-                    raise ValueError("Pre-edge domain is empty.")
+                    raise ValueError(
+                        f"Post-edge domain ({self.post_edge_domain[0]} to {self.post_edge_domain[1]}) contains no datapoints."
+                    )
             else:
                 raise AttributeError(
                     "Post-edge domain is not defined correctly. Should be a list of indexes or the range in a tuple."
