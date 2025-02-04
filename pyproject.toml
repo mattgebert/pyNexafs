@@ -1,58 +1,72 @@
+## What system to build the project with? I.e. Setuptools, Wheel, Poetry, etc.
+## Using `setuptools` here.
+
 [build-system]
-requires = [
-    "setuptools>=60",
-    "setuptools-scm>=8.0"
-]
-build-backend = "setuptools.build_meta"
+    requires = [
+        "setuptools>=60",
+        "setuptools-scm>=8.0"
+    ]
+    build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyNexafs"
-# https://packaging.python.org/en/latest/specifications/version-specifiers/#version-specifiers
-# Use Major.Minor.Micro versioning.
-# version = "0.1.0"
-# https://pypi.org/project/setuptools-scm/ Generate a dynamic version based on .git information.
-dynamic = ["version"]
-dependencies = [
-    "scipy",
-    "numpy",
-    "pandas",
-    "overrides",
-    "xdrlib3" # for reading binary mda files
-]
-description = "A package for processing and analyzing NEXAFS data."
-license = {file = "LICENSE"}
-authors = [
-    {name = "Matthew Gebert", email="matthew.gebert@monash.edu"},
+    # Project information
+    name = "pyNexafs"
+    version = "0.1.0"
+    description = "A package for processing and analysing NEXAFS data."
+    readme = "README.md"
+    license = {file = "LICENSE"}
+    keywords = ["NEXAFS", "XANES", "Near", "Edge", "X-ray", "Absorption", "Fine", "Structure", "Spectroscopy", "Optical Data", "XAS", "Synchrotron"]
+    authors = [
+        {name = "Matthew Gebert", email="matthew.gebert@monash.edu"},
+        ]
+    maintainers = [
+        {name = "Matthew Gebert", email="matthew.gebert@monash.edu"},
     ]
-maintainers = [
-    {name = "Matthew Gebert", email="matthew.gebert@monash.edu"},
-]
-readme = "README.md"
-keywords = ["NEXAFS", "XAS", "synchrotron"]
 
-[tool.setuptools.packages.find] # All the following settings are optional:
-where = ["."]  # Root directory
-include = ["pyNexafs*"]
-exclude = []
+    # Project compatibility:
+    requires-python = ">=3.10"
+    dependencies = [
+        "numpy",
+        "overrides", # for type hinting
+        "scipy",
+        "xdrlib3" # function bindings for reading binary data from mda files
+    ]
+
+[project.urls]
+    # Website, documentation and other continuous integration URLS.
+    code = "https://github.com/mattgebert/pyNexafs"
+    documentation = "https://pyNexafs.readthedocs.io/en/latest/"
+
+[project.optional-dependencies]
+    gui = [
+        "matplotlib",
+        "pandas",
+        "pyqt6",
+    ]
+    dev = [
+        "commitizen",
+        "numpydoc",
+        "pre-commit",
+        "pytest",
+        "python-semantic-release",
+        "sphinx",
+        "sphinx-rtd-theme",
+    ]
+    docs = [
+        "sphinx",
+        "sphinx-rtd-theme",
+        "numpydoc",
+    ]
+
+# [tool.setuptools.packages.find] # All the following settings are optional:
+#     where = ["."]  # Root directory
+#     include = ["pyNexafs*"]
+#     exclude = []
 
 [tool.numpydoc_validation]
-checks = [
-    "all",   # report on all checks, except the below
-    "EX01",
-    "SA01",
-    "ES01",
-]
-
-# namespaces = true  # true by default
-
-### Example dependency usage
-# example <= 0.4
-# allowed operators <, >, <=, >=, == or !=,
-
-### Example inlcude
-# ["*"] by default
-
-### Example exclude
-# [] by default
-# "pyNexafs.tests*",
-# "pyNexafs.test_data*,
+    checks = [
+        "all",   # report on all checks, except the below
+        "EX01",
+        "SA01",
+        "ES01",
+    ]
