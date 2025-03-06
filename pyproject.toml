@@ -42,6 +42,7 @@
         "matplotlib",
         "pandas",
         "pyqt6",
+        "pyyaml",
     ]
     dev = [
         "commitizen",
@@ -69,4 +70,8 @@
         "EX01",
         "SA01",
         "ES01",
+    ]
+
+    exclude = [
+        'tests*',
     ]
