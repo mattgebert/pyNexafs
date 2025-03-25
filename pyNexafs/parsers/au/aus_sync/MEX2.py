@@ -5,7 +5,7 @@ Parser classes for the Medium Energy X-ray 2 (MEX2) beamline at the Australian S
 import PyQt6
 from PyQt6 import QtWidgets
 from pyNexafs.parsers import parser_base, parser_meta
-from pyNexafs.nexafs.scan import scan_base
+from pyNexafs.nexafs.scan import scanBase
 from pyNexafs.utils.mda import MDAFileReader
 from pyNexafs.gui.widgets.reducer import EnergyBinReducerDialog
 from io import TextIOWrapper
@@ -18,45 +18,123 @@ import datetime as dt
 import os
 import json, io
 from pyNexafs.utils.reduction import reducer
+from pyNexafs.parsers.au.aus_sync.MEX2_relabels import RELABELS
 import traceback
 
 
-# Additional data provided by the MEX2 beamline for the data reduction
-BIN_ENERGY_DELTA = 11.935
-BIN_96_ENERGY = 1146.7
-TOTAL_BINS = 4096
-TOTAL_BIN_ENERGIES = np.linspace(
-    start=BIN_96_ENERGY - 95 * BIN_ENERGY_DELTA,
-    stop=BIN_96_ENERGY + (TOTAL_BINS - 96) * BIN_ENERGY_DELTA,
-    num=TOTAL_BINS,
-)
-INTERESTING_BINS_IDX = [80, 900]
-INTERESTING_BINS_ENERGIES = TOTAL_BIN_ENERGIES[
-    INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1]
-]
+class DanteFluorescence:
+    """Configuration for interpreting the Dante MCA Fluorescence data."""
+
+    FLUOR_NAMES: list[str] = [
+        "MEX2ES01DPP01:ch1:W:ArrayData",
+        "MEX2ES01DPP01:ch2:W:ArrayData",
+        "MEX2ES01DPP01:ch3:W:ArrayData",
+        "MEX2ES01DPP01:ch4:W:ArrayData",
+    ]
+    BIN_ENERGY_DELTA: float = 11.935
+    """The energy difference (eV) between each bin in the MEX2 data."""
+    BIN_96_ENERGY: float = 96 * BIN_ENERGY_DELTA - 1146.7
+    """The energy (eV) of the 96th bin in the MEX2 data."""
+    TOTAL_BINS: int = 4096
+    """The total number of bins in the MEX2 data."""
+    TOTAL_BIN_ENERGIES: NDArray = np.linspace(
+        start=BIN_96_ENERGY - 95 * BIN_ENERGY_DELTA,
+        stop=BIN_96_ENERGY + (TOTAL_BINS - 96) * BIN_ENERGY_DELTA,
+        num=TOTAL_BINS,
+    )
+    """The energy (eV) of each bin in the MEX2 data."""
+    INTERESTING_BINS_IDX: tuple[int, int] = (80, 900)
+    """The indices of the interesting bins (non-zero) in the MEX2 data."""
+    INTERESTING_BINS_ENERGIES: NDArray = TOTAL_BIN_ENERGIES[
+        INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1]
+    ]
+    """The energy (eV) of the interesting bins (non-zero) in the MEX2 data."""
+
+
+class Xpress3Fluorescence:
+    """Configuration for interpreting the Xpress3 MCA Fluorescence data."""
+
+    FLUOR_NAMES: list[str] = [
+        "MEX2ES01DPP02:MCA1:ArrayData",  # New MCA
+        "MEX2ES01DPP02:MCA2:ArrayData",
+        "MEX2ES01DPP02:MCA3:ArrayData",
+        "MEX2ES01DPP02:MCA4:ArrayData",
+    ]
+    BIN_ENERGY_DELTA: float = 11.935
+    """The energy difference (eV) between each bin in the MEX2 data."""
+    BIN_96_ENERGY: float = 96 * BIN_ENERGY_DELTA - 1146.7
+    """The energy (eV) of the 96th bin in the MEX2 data."""
+    TOTAL_BINS: int = 4096
+    """The total number of bins in the MEX2 data."""
+    TOTAL_BIN_ENERGIES: NDArray = np.linspace(
+        start=BIN_96_ENERGY - 95 * BIN_ENERGY_DELTA,
+        stop=BIN_96_ENERGY + (TOTAL_BINS - 96) * BIN_ENERGY_DELTA,
+        num=TOTAL_BINS,
+    )
+    """The energy (eV) of each bin in the MEX2 data."""
+    INTERESTING_BINS_IDX: tuple[int, int] = (80, 900)
+    """The indices of the interesting bins (non-zero) in the MEX2 data."""
+    INTERESTING_BINS_ENERGIES: NDArray = TOTAL_BIN_ENERGIES[
+        INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1]
+    ]
+    """The energy (eV) of the interesting bins (non-zero) in the MEX2 data."""
 
 
 class MEX2_NEXAFS_META(parser_meta):
+    """
+    Metaclass for MEX2 NEXAFS, implements a bin domain class property.
+
+    Parameters
+    ----------
+    name : str
+        The name of the class.
+    bases : tuple[type, ...]
+        The base classes of the class.
+    namespace : dict[str, Any]
+        The namespace of the class.
+    **kwds : Any
+        Additional keyword arguments.
+    """
+
     def __init__(
         cls: type,
         name: str,
         bases: tuple[type, ...],
         namespace: dict[str, Any],
         **kwds: Any,
-    ) -> "MEX2_NEXAFS":
+    ) -> None:
 
         # Add extra class property for MEX2 mda data, to track binning settings
         cls.reduction_bin_domain: list[tuple[int, int]] | None = None
         """Tracker for the binning settings used in the most recent data reduction."""
+
         return super().__init__(name=name, bases=bases, namespace=namespace, **kwds)
 
 
 class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
     """
-    Australian Synchrotron Soft X-ray (SXR) NEXAFS parser.
+    Australian Synchrotron Medium X-ray (MEX) NEXAFS parser.
 
-    Parses data formats including '.asc' and '.mda' formats from the SXR
+    Parses data formats including '.xdr' and '.mda' formats from the SXR
     Near Edge X-ray Absorption Fine Structure (NEXAFS) tool.
+
+    Parameters
+    ----------
+    filepath : str | None
+        The file path to the data file.
+    header_only : bool, optional
+        If True, only the header of the file is read, by default False.
+    relabel : bool | None, optional
+        If True, then the parser will relabel the data columns, by default None.
+    energy_bin_domain : tuple[float, float] | None = None
+        The energy domain to bin the data Fluorescence Detector data, if .MDA file.
+        The domain should be specified in eV. By default None.
+    use_recent_binning : bool, optional
+        If True, then the '.mda' parsers will use the most recent class
+        reduction binning settings. By default True, as UIs will use this,
+        and assume the parser will use the same binning settings.
+    **kwargs
+        Additional keyword arguments that will be passed to the `file_parser` method.
 
     Attributes
     ----------
@@ -65,30 +143,16 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
     COLUMN_ASSIGNMENTS
     RELABELS
 
-    Parameters
-    ----------
-    filepath : str | None
-        The file path to the data file.
-    header_only : bool, optional
-        If True, only the header of the file is read, by default False
-    relabel : bool | None, optional
-        If True, then the parser will relabel the data columns, by default None
-    use_recent_binning : bool, optional
-        If True, then the '.mda' parsers will use the most recent class
-        reduction binning settings. By default True, as UIs will use this,
-        and assume the parser will use the same binning settings.
-        TODO: Perhaps make this a property of the base class, that way UIs can
-        reset such settings if needed upon directory change etc.
-
     Notes
     -----
     Implemented for data as of 2024-Mar.
     """
 
-    ALLOWED_EXTENSIONS = [".xdi", ".mda"]
-    SUMMARY_PARAM_RAW_NAMES = [
-        "Sample|Comment 1",
-        "Angle" "Element.symbol",
+    ALLOWED_EXTENSIONS: list[str] = [".xdi", ".mda"]
+    SUMMARY_PARAM_RAW_NAMES: list[str | tuple[str, ...]] = [
+        ("Sample", "Comment 1", "MEX2SSCAN01:saveData_comment1"),
+        "Angle",
+        "Element.symbol",
         "Element.edge",
         "E1",
         "E2",
@@ -96,312 +160,40 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         "E4",
     ]
     COLUMN_ASSIGNMENTS = {
-        "x": "Energy|Energy Setpoint|energy",
+        "x": ("Energy", "Energy Setpoint", "energy"),
         "y": [
-            "Bragg|bragg",
-            "Fluorescence|iflour|Fluorescence Sum|Florescence Sum (Reduced)",
-            "Count Time|count_time",
-            "I0|i0",
-            "Sample Drain|SampleDrain",
+            ("I0", "i0"),
+            ("Sample Drain", "SampleDrain"),
+            (
+                "Fluorescence",
+                "ifluor",
+                "Fluorescence Sum",
+                "Fluorescence Sum (Reduced)",
+            ),
+            ("Count Time", "count_time"),
             "ICR_AVG",
             "OCR_AVG",
             "Fluorescence Detector 1",
             "Fluorescence Detector 2",
             "Fluorescence Detector 3",
             "Fluorescence Detector 4",
+            ("Bragg", "bragg"),
         ],
         "y_errs": None,
         "x_errs": None,
     }
 
-    RELABELS = {
-        # MDA File
-        "MEX2DCM01:ENERGY": "Energy Setpoint",
-        "MEX2ES01ZEB01:CALC_ENERGY_EV": "Energy",
-        "MEX2ES01ZEB01:GATE_TIME_SET": "Gate Time Setpoint",
-        "MEX2SSCAN01:saveData_comment1": "Comment 1",
-        "MEX2SSCAN01:saveData_comment2": "Comment 2",
-        "MEX2ES01ZEB01:BRAGG_WITH_OFFSET": "Bragg",
-        "SR11BCM01:CURRENT_MONITOR": "Current Monitor",  # What is this? I0?
-        "MEX2ES01DAQ01:ch1:S:MeanValue_RBV": "Beam Intensity Monitor",  # Beam Intensity Monitor
-        "MEX2ES01DAQ01:ch2:S:MeanValue_RBV": "I0",
-        "MEX2ES01DAQ01:ch3:S:MeanValue_RBV": "SampleDrain",
-        # 'MEX2ES01DAQ01:ch4:S:MeanValue_RBV',
-        "MEX2ES01DPP01:dppAVG:InputCountRate": "ICR_AVG",
-        "MEX2ES01DPP01:dppAVG:OutputCountRate": "OCR_AVG",
-        # 'MEX2ES01DPP01:R:AVG:kCPS',
-        "MEX2ES01DPP01:dppAVG:ElapsedLiveTime": "Count Time",
-        # 'MEX2ES01ZEB01:PC_GATE_WID:RBV',
-        # 'MEX2ES01DAQ01:ArrayCounter_RBV',
-        # 'MEX2ES01DPP01:R:1:Total_RBV',
-        # 'MEX2ES01DPP01:R:2:Total_RBV',
-        # 'MEX2ES01DPP01:R:3:Total_RBV',
-        # 'MEX2ES01DPP01:R:4:Total_RBV',
-        # 'MEX2ES01DPP01:dpp1:InputCountRate',
-        # 'MEX2ES01DPP01:dpp2:InputCountRate',
-        # 'MEX2ES01DPP01:dpp3:InputCountRate',
-        # 'MEX2ES01DPP01:dpp4:InputCountRate',
-        # 'MEX2ES01DPP01:dpp1:OutputCountRate',
-        # 'MEX2ES01DPP01:dpp2:OutputCountRate',
-        # 'MEX2ES01DPP01:dpp3:OutputCountRate',
-        # 'MEX2ES01DPP01:dpp4:OutputCountRate',
-        # 'MEX2ES01DPP01:dpp1:ElapsedRealTime',
-        # 'MEX2ES01DPP01:dpp2:ElapsedRealTime',
-        # 'MEX2ES01DPP01:dpp3:ElapsedRealTime',
-        # 'MEX2ES01DPP01:dpp4:ElapsedRealTime',
-        # 'MEX2ES01DPP01:dpp1:ElapsedLiveTime',
-        # 'MEX2ES01DPP01:dpp2:ElapsedLiveTime',
-        # 'MEX2ES01DPP01:dpp3:ElapsedLiveTime',
-        # 'MEX2ES01DPP01:dpp4:ElapsedLiveTime',
-        # 'MEX2ES01DPP01:dpp1:DeadTime',
-        # 'MEX2ES01DPP01:dpp2:DeadTime',
-        # 'MEX2ES01DPP01:dpp3:DeadTime',
-        # 'MEX2ES01DPP01:dpp4:DeadTime',
-        # 'MEX2ES01DPP01:dpp1:PileUp',
-        # 'MEX2ES01DPP01:dpp2:PileUp',
-        # 'MEX2ES01DPP01:dpp3:PileUp',
-        # 'MEX2ES01DPP01:dpp4:PileUp',
-        # 'MEX2ES01DPP01:dpp1:F1PileUp',
-        # 'MEX2ES01DPP01:dpp2:F1PileUp',
-        # 'MEX2ES01DPP01:dpp3:F1PileUp',
-        # 'MEX2ES01DPP01:dpp4:F1PileUp',
-        # 'MEX2ES01DPP01:dpp1:Triggers',
-        # 'MEX2ES01DPP01:dpp2:Triggers',
-        # 'MEX2ES01DPP01:dpp3:Triggers',
-        # 'MEX2ES01DPP01:dpp4:Triggers',
-        # 'MEX2ES01DPP01:dpp1:Events',
-        # 'MEX2ES01DPP01:dpp2:Events',
-        # 'MEX2ES01DPP01:dpp3:Events',
-        # 'MEX2ES01DPP01:dpp4:Events',
-        # 'MEX2ES01DPP01:dpp1:F1DeadTime',
-        # 'MEX2ES01DPP01:dpp2:F1DeadTime',
-        # 'MEX2ES01DPP01:dpp3:F1DeadTime',
-        # 'MEX2ES01DPP01:dpp4:F1DeadTime',
-        # 'MEX2ES01DPP01:dpp1:FastDeadTime',
-        # 'MEX2ES01DPP01:dpp2:FastDeadTime',
-        # 'MEX2ES01DPP01:dpp3:FastDeadTime',
-        # 'MEX2ES01DPP01:dpp4:FastDeadTime',
-        # 'MEX2ES01DPP01:dpp1:InUse',
-        # 'MEX2ES01DPP01:dpp2:InUse',
-        # 'MEX2ES01DPP01:dpp3:InUse',
-        # 'MEX2ES01DPP01:dpp4:InUse',
-        # 'MEX2ES01DPP01:dpp:ArrayCounter_RBV'
-        "MEX2SSCAN01:saveData_comment1": "Sample",
-        "MEX2SSCAN01:saveData_comment2": "Comment 2",
-        # MEX2SSCAN01:saveData_realTime1D
-        # MEX2SSCAN01:saveData_fileSystem
-        # MEX2SSCAN01:saveData_subDir
-        # MEX2SSCAN01:saveData_fileName
-        # MEX2SSCAN01:scan1.P1SM
-        # MEX2SSCAN01:scan1.P2SM
-        # MEX2SSCAN01:scan1.P3SM
-        # MEX2SSCAN01:scan1.P4SM
-        # MEX2SSCAN01:scanTypeSpec
-        # MEX2SSCAN01:scan1.BSPV
-        # MEX2SSCAN01:scan1.BSCD
-        # MEX2SSCAN01:scan1.BSWAIT
-        # MEX2SSCAN01:scan1.ASPV
-        # MEX2SSCAN01:scan1.ASCD
-        # MEX2SSCAN01:scan1.ASWAIT
-        # MEX2SSCAN01:scan1.PDLY
-        # MEX2SSCAN01:scan1.DDLY
-        # MEX1ES01GLU01:MEX_TIME
-        # MEX2MIR01MOT01.RBV
-        # MEX2MIR01MOT02.RBV
-        # MEX2MIR01MOT03.RBV
-        # MEX2MIR01MOT04.RBV
-        # MEX2MIR01MOT09.RBV
-        # MEX2MIR01MOT10.RBV
-        # MEX2MIR01MOT11.RBV
-        # MEX2MIR01MOT12.RBV
-        # MEX2FE01MIR01:X.RBV
-        # MEX2FE01MIR01:Y.RBV
-        "MEX2FE01MIR01:PITCH.RBV": "PITCH",
-        "MEX2FE01MIR01:YAW.RBV": "YAW",
-        # MEX2FE01MIR01:ENC_X.RBV
-        # MEX2FE01MIR01:ENC_Y.RBV
-        # MEX2FE01MIR01:ENC_PITCH.RBV
-        # MEX2FE01MIR01:ENC_YAW.RBV
-        # MEX2SLT01MOT01.RBV
-        # MEX2SLT01MOT02.RBV
-        # MEX2SLT01MOT03.RBV
-        # MEX2SLT01MOT04.RBV
-        # MEX2SLT01:VSIZE.RBV
-        # MEX2SLT01:VCENTRE.RBV
-        # MEX2SLT01:HSIZE.RBV
-        # MEX2SLT01:HCENTRE.RBV
-        # MEX2SLT01:VSIZE.OFF
-        # MEX2SLT01:VCENTRE.OFF
-        # MEX2SLT01:HSIZE.OFF
-        # MEX2SLT01:HCENTRE.OFF
-        # MEX2MIR02MOT01.RBV
-        # MEX2MIR02MOT02.RBV
-        # MEX2MIR02MOT03.RBV
-        # MEX2MIR02MOT04.RBV
-        # MEX2MIR02MOT05.RBV
-        # MEX2MIR02:TRANS.RBV
-        "MEX2MIR02:PITCH.RBV": "PITCH2",
-        # MEX2MIR02:HEIGHT.RBV
-        # MEX2MIR02:ROLL.RBV
-        "MEX2MIR02:YAW.RBV": "YAW2",
-        # MEX2MIR02TES04:TEMPERATURE_MONITOR
-        # MEX2SLT02MOT01.RBV
-        # MEX2SLT02MOT02.RBV
-        # MEX2SLT02MOT03.RBV
-        # MEX2SLT02MOT04.RBV
-        # MEX2SLT02:VSIZE.RBV
-        # MEX2SLT02:VCENTRE.RBV
-        # MEX2SLT02:HSIZE.RBV
-        # MEX2SLT02:HCENTRE.RBV
-        # MEX2SLT02:VSIZE.OFF
-        # MEX2SLT02:VCENTRE.OFF
-        # MEX2SLT02:HSIZE.OFF
-        # MEX2SLT02:HCENTRE.OFF
-        # MEX2DCM01:ENERGY_RBV
-        # MEX2DCM01:ENERGY_EV_RBV
-        # MEX2DCM01:OFFSET_RBV
-        # MEX2DCM01:XTAL_INBEAM.RVAL
-        # MEX2DCM01:FINE_PITCH_MRAD_RBV
-        # MEX2DCM01:FINE_ROLL_MRAD_RBV
-        # MEX2DCM01MOT01.RBV
-        # MEX2DCM01MOT02.RBV
-        # MEX2DCM01MOT05.RBV
-        # MEX2DCM01MOT03.RBV
-        # MEX2DCM01MOT04.RBV
-        # MEX2DCM01MOT01.OFF
-        # MEX2DCM01MOT02.OFF
-        # MEX2DCM01:y2_track
-        # MEX2DCM01:y2_mvmin
-        # MEX2DCM01:th_mvmin
-        # MEX2DCM01:Dspace
-        # MEX2DCM01:Mono111DSpace
-        # MEX2DCM01:Mono111ThetaOffset
-        # MEX2DCM01:Mono111HeightOffset
-        # MEX2DCM01:Mono111Pitch
-        # MEX2DCM01:Mono111Roll
-        # MEX2DCM01:Mono111Centre
-        # MEX2DCM01:MonoInSbDSpace
-        # MEX2DCM01:MonoInSbThetaOffset
-        # MEX2DCM01:MonoInSbHeightOffset
-        # MEX2DCM01:MonoInSbPitch
-        # MEX2DCM01:MonoInSbRoll
-        # MEX2DCM01:MonoInSbCentre
-        # MEX2AUTOROCK:PITCH_SCAN.P1WD
-        # MEX2AUTOROCK:PITCH_SCAN.P1SI
-        # MEX2AUTOROCK:PITCH_SCAN.NPTS
-        # MEX2AUTOROCK:DETECTOR_SELECT
-        # MEX2AUTOROCK:COUNTER
-        # MEX2BIM01MOT01.RBV
-        # MEX2BIM01:FOIL:select
-        # MEX2BIM01AMP01:sens_put
-        # MEX2BIM01AMP01:offset_put
-        # MEX2BIM01AMP01:offset_on
-        # MEX2BIM01AMP01:invert_on
-        # MEX2BIM01AMP01:filter_type.RVAL
-        # MEX2BIM01AMP01:low_freq.RVAL
-        # MEX2REF01MOT01.RBV
-        # MEX2REF01:REF:select
-        # MEX2REF01AMP01:sens_put
-        # MEX2REF01AMP01:offset_put
-        # MEX2REF01AMP01:offset_on
-        # MEX2REF01AMP01:invert_on
-        # MEX2REF01AMP01:filter_type.RVAL
-        # MEX2REF01AMP01:low_freq.RVAL
-        # MEX2SLT03MOT01.RBV
-        # MEX2SLT03MOT02.RBV
-        # MEX2SLT03MOT03.RBV
-        # MEX2SLT03MOT04.RBV
-        # MEX2SLT03:VSIZE.RBV
-        # MEX2SLT03:VCENTRE.RBV
-        # MEX2SLT03:HSIZE.RBV
-        # MEX2SLT03:HCENTRE.RBV
-        # MEX2SLT03:VSIZE.OFF
-        # MEX2SLT03:VCENTRE.OFF
-        # MEX2SLT03:HSIZE.OFF
-        # MEX2SLT03:HCENTRE.OFF
-        "MEX2STG01MOT01.RBV": "Sample X",
-        "MEX2STG01MOT02.RBV": "Sample Y",
-        "MEX2STG01MOT03.RBV": "Sample Z",
-        # MEX2STG01:XHAT.RBV
-        # MEX2STG01:ZHAT.RBV
-        # MEX2ES01MOT01.RBV
-        # MEX2ES01AMP01:sens_put
-        # MEX2ES01AMP01:offset_put
-        # MEX2ES01AMP01:offset_on
-        # MEX2ES01AMP01:invert_on
-        # MEX2ES01AMP01:filter_type.RVAL
-        # MEX2ES01AMP01:low_freq.RVAL
-        # MEX2ES01AMP02:sens_put
-        # MEX2ES01AMP02:offset_put
-        # MEX2ES01AMP02:offset_on
-        # MEX2ES01AMP02:invert_on
-        # MEX2ES01AMP02:filter_type.RVAL
-        # MEX2ES01AMP02:low_freq.RVAL
-        # MEX2BLSH01SHT01:OPEN_CLOSE_STATUS
-        # MEX2SZ03KSW01:KEY_CACHE_STATUS
-        # MEX2SZ03KSW02:KEY_CACHE_STATUS
-        # MEX2ES01DPP01:mca1.R0LO
-        # MEX2ES01DPP01:mca1.R0HI
-        # MEX2ES01DPP01:mca2.R0LO
-        # MEX2ES01DPP01:mca2.R0HI
-        # MEX2ES01DPP01:mca3.R0LO
-        # MEX2ES01DPP01:mca3.R0HI
-        # MEX2ES01DPP01:mca4.R0LO
-        # MEX2ES01DPP01:mca4.R0HI
-        # MEX2ES01DPP01:dpp1:InUse
-        # MEX2ES01DPP01:dpp2:InUse
-        # MEX2ES01DPP01:dpp3:InUse
-        # MEX2ES01DPP01:dpp4:InUse
-        # MEX2SSCAN01:PHASE_BOUNDARY_VALUE
-        # MEX2SSCAN01:PHASE_STEP_VALUE
-        # MEX2SSCAN01:PHASE_DURATION_VALUE
-        # MEX2SSCAN01:PHASE_NUMBER_OF_POINTS
-        # MEX2SSCAN01:PHASE_IN_USE
-        # MEX2SSCAN01:PHASE_USES_KSPACE
-        # MEX2SSCAN01:PHASE_USES_SQTIME
-        # MEX2SSCAN01:TOTAL_NUMBER_OF_POINTS
-        # MEX2SSCAN01:MODE
-        # MEX2SSCAN01:EDGE_ENERGY
-        "MEX2SSCAN01:SIMPLE_START_1_VALUE": "E1",
-        # MEX2SSCAN01:SIMPLE_STEP_1_VALUE
-        "MEX2SSCAN01:SIMPLE_END_1_VALUE": "E2",
-        "MEX2SSCAN01:SIMPLE_START_2_VALUE": "E3",
-        # MEX2SSCAN01:SIMPLE_STEP_2_VALUE
-        "MEX2SSCAN01:SIMPLE_END_2_VALUE": "E4",
-        # MEX2SSCAN01:SIMPLE_DURATION_VALUE
-        # MEX2SSCAN01:SIMPLE_NUMBER_OF_POINTS
-        "MEX2ES01DPP01:ch1:W:ArrayData": "Fluorescence Detector 1",
-        "MEX2ES01DPP01:ch2:W:ArrayData": "Fluorescence Detector 2",
-        "MEX2ES01DPP01:ch3:W:ArrayData": "Fluorescence Detector 3",
-        "MEX2ES01DPP01:ch4:W:ArrayData": "Fluorescence Detector 4",
-        #### ASC Files:
-        "mda_version": "MDA File Version",
-        "mda_scan_number": "Scan Number",
-        "mda_rank": "Overall scan dimension",
-        "mda_dimensions": "Total requested scan size",
-        #### XDI File:
-        # "energy": "Energy",
-        # "bragg": "Bragg",
-        # "count_time": "Count Time",
-        # "BIM": "BIM",
-        # "i0": "IO",
-        # "SampleDrain": "Sample Drain",
-        #### XDI Names ####
-        "OCR_AVG": "Output Average Count Rate",
-        "ICR_AVG": "Input Average Count Rate",
-        "ROI_AD_AVG": "ROI Average",
-        "ifluor": "Fluorescence",
-        "ROI.start_bin": "E1",
-        "ROI.end_bin": "E2",
-        "Element.symbol": "Element",
-        "Element.edge": "Absorption Edge",
-    }
+    # See MEX2_relabels.py for the relabels dictionary.
+    RELABELS = RELABELS
 
     def __init__(
         self,
         filepath: str | None,
         header_only: bool = False,
         relabel: bool | None = None,
+        energy_bin_domain: tuple[float, float] | None = None,
+        # TODO Perhaps make `use_recent_binning` a property of the base class,
+        # that way UIs can reset such settings if needed upon directory change etc.
         use_recent_binning: bool = True,
         **kwargs,
     ) -> None:
@@ -409,6 +201,12 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         common_kwargs = {}
         if use_recent_binning is not None:
             common_kwargs.update(use_recent_binning=use_recent_binning)
+        if (
+            energy_bin_domain is not None
+            and filepath is not None
+            and filepath.endswith(".mda")
+        ):
+            common_kwargs.update(energy_bin_domain=energy_bin_domain)
         # User kwargs override common kwargs
         kwargs.update(common_kwargs)
         # Init
@@ -420,14 +218,15 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         file: TextIOWrapper,
         header_only: bool = False,
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
-        """Reads Australian Synchrotron .xdi files.
+        """
+        Read Australian Synchrotron '.xdi' files.
 
         Parameters
         ----------
         file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.xdi', 'r'))
+            TextIOWrapper of the datafile (i.e. open('file.xdi', 'r')).
         header_only : bool, optional
-            If True, then only the header of the file is read and NDArray is returned as None, by default False
+            If True, then only the header of the file is read and NDArray is returned as None, by default False.
 
         Returns
         -------
@@ -549,31 +348,34 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         return data, labels, units, params
 
     @classmethod
-    def parse_mda_2024_04(
+    def parse_mda_2025_02(
         cls,
         file: TextIOWrapper,
         header_only: bool = False,
-        use_recent_binning: bool = False,
         energy_bin_domain: tuple[float, float] | None = None,
+        use_recent_binning: bool = False,
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
         """
-        Reads Australian Synchrotron .mda files for MEX2 Data
+        Read Australian Synchrotron MEX2 NEXAFS '.mda' files.
 
-        Created for data as of 2024-Apr.
+        Created for data as of 2025-March. This is after the Fluorescence MCA detectors were updated
+        from Dante to instead use Xpress3. The energy binning has also been changed to be in eV instead of keV.
+        Note, when reducing this data, the fluorescence detector data is also corrected according to
+        the input and output count rates (i.e. the deadtime of the detector).
 
         Parameters
         ----------
         file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.mda', 'r'))
+            TextIOWrapper of the datafile (i.e. open('file.mda', 'r')).
         header_only : bool, optional
             If True, then only the header of the file is read and
-            NDArray is returned as None, by default False
+            NDArray is returned as None, by default False.
         energy_bin_domain : tuple[float, float] | None, optional
-            The energy domain to bin the data, by default None
+            The energy domain (in eV) to bin the data, by default None.
         use_recent_binning : bool, optional
             If True, then the most recent binning settings are used
+            for data reduction, by default False.
             Ignored if `energy_bin_range` is specified.
-            for data reduction, by default False
 
         Returns
         -------
@@ -620,20 +422,25 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                 mda_2d = mda_arrays[1]
                 mda_2d_scan = mda_scans[1]
                 # Check 'multi-channel-analyser-spectra of fluorescence-detector' names are as expected
-                florescence_labels = [
-                    "MEX2ES01DPP01:ch1:W:ArrayData",
-                    "MEX2ES01DPP01:ch2:W:ArrayData",
-                    "MEX2ES01DPP01:ch3:W:ArrayData",
-                    "MEX2ES01DPP01:ch4:W:ArrayData",
-                ]
-                assert mda_2d_scan.labels() == florescence_labels
+                fluorescence_labels = Xpress3Fluorescence.FLUOR_NAMES
+                # Check which detector is used.
+                for i in range(len(fluorescence_labels)):
+                    if mda_2d_scan.labels() == fluorescence_labels[i]:
+                        fluorescence_labels = fluorescence_labels[i]
+                        break
+
+                assert mda_2d_scan.labels() == fluorescence_labels
 
                 # Take properties from 1D and 2D arrays:
                 energies = mda_1d[:, 0] * 1000  # Convert keV to eV for MEX beamline
                 dataset = mda_2d[
-                    :, INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1], :
+                    :,
+                    Xpress3Fluorescence.INTERESTING_BINS_IDX[
+                        0
+                    ] : Xpress3Fluorescence.INTERESTING_BINS_IDX[1],
+                    :,
                 ]
-                bin_e = INTERESTING_BINS_ENERGIES  # pre-calibrated.
+                bin_e = Xpress3Fluorescence.INTERESTING_BINS_ENERGIES  # pre-calibrated.
 
                 ## Perform binning on 2D array:
                 # Is an existing binning range available?
@@ -732,11 +539,216 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
             # Check rows (energies) match length
             assert reduced_summed_data.shape[0] == mda_1d.shape[0]
             assert reduced_single_detector_data.shape[0] == mda_1d.shape[0]
+
+            # Correct the fluorescence detector data according to the input and output count rates.
+            # if
+            # reduced_single_detector_data *= ()
+
             # Add reduced data to 1D data as extra columns
             mda_1d = np.c_[mda_1d, reduced_single_detector_data, reduced_summed_data]
             # Add labels and units for reduced data
             # (Detector data labels/units already added via positioners and detectors above.)
-            labels += ["Florescence Sum (Reduced)"]
+            labels += ["Fluorescence Sum (Reduced)"]
+            units += ["a.u."]
+        # Use scan time if available, otherwise let system time be used.
+        if "MEX1ES01GLU01:MEX_TIME" in params:
+            params["created"] = params["MEX1ES01GLU01:MEX_TIME"]
+
+        return mda_1d, labels, units, params
+
+    @classmethod
+    def parse_mda_2024_11(
+        cls,
+        file: TextIOWrapper,
+        header_only: bool = False,
+        energy_bin_domain: tuple[float, float] | None = None,
+        use_recent_binning: bool = True,
+    ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
+        """
+        Read Australian Synchrotron MEX2 NEXAFS .mda files.
+
+        Created for data as of 2024-Nov.
+
+        Parameters
+        ----------
+        file : TextIOWrapper
+            TextIOWrapper of the datafile (i.e. open('file.mda', 'r')).
+        header_only : bool, optional
+            If True, then only the header of the file is read and
+            NDArray is returned as None, by default False.
+        energy_bin_domain : tuple[float, float] | None, optional
+            The energy domain (in eV) to bin the data, by default None.
+        use_recent_binning : bool, optional
+            If True, then the most recent binning settings are used
+            for data reduction, by default True.
+            Ignored if `energy_bin_range` is specified.
+
+        Returns
+        -------
+        tuple[NDArray, list[str], list[str] dict[str, Any]]
+            Returns a set of data as a numpy array,
+            labels as a list of strings,
+            units as a list of strings,
+            and parameters as a dictionary.
+
+        Raises
+        ------
+        ValueError
+            If the file is not a valid .mda file.
+        """
+        # Initialise parameter list
+        params = {}
+        labels = []
+        units = []
+
+        # Check valid format.
+        if not file.name.endswith(".mda"):
+            raise ValueError(f"File {file.name} is not a valid .mda file.")
+
+        # Need to reopen the file in byte mode.
+        file.close()
+        mda = MDAFileReader(file.name)
+        mda_header = mda.read_header_as_dict()
+        ## Previously threw error for higher dimensional data, now just a warning.
+        mda_params = mda.read_parameters()
+        mda_arrays, mda_scans = mda.read_scans(header_only=header_only)
+
+        # Add values to params dict
+        params.update(mda_header)
+        params.update(mda_params)
+
+        # Initialise to None for header only reading.
+        mda_1d = None
+        # Add column types and descriptions to params.
+        if not header_only:
+            # 1D array essential
+            mda_1d = mda_arrays[0]
+            # 2D array optional
+            if len(mda_arrays) > 1:
+                mda_2d = mda_arrays[1]
+                mda_2d_scan = mda_scans[1]
+                # Check 'multi-channel-analyser-spectra of fluorescence-detector' names are as expected
+                fluorescence_labels = DanteFluorescence.FLUOR_NAMES
+                assert mda_2d_scan.labels() == fluorescence_labels
+
+                # Take properties from 1D and 2D arrays:
+                energies = mda_1d[:, 0] * 1000  # Convert keV to eV for MEX beamline
+                dataset = mda_2d[
+                    :,
+                    DanteFluorescence.INTERESTING_BINS_IDX[
+                        0
+                    ] : DanteFluorescence.INTERESTING_BINS_IDX[1],
+                    :,
+                ]
+                bin_e = DanteFluorescence.INTERESTING_BINS_ENERGIES  # pre-calibrated.
+
+                ## Perform binning on 2D array:
+                # Is an existing binning range available?
+                if energy_bin_domain is not None:
+                    # Update the class variable with the new binning settings.
+                    cls.reduction_bin_domain = energy_bin_domain
+                    red = reducer(energies, dataset, bin_e)
+                elif use_recent_binning and cls.reduction_bin_domain is not None:
+                    # Uses the most recent binning settings.
+                    red = reducer(energies, dataset, bin_e)
+                else:
+                    # Create a QT application to run the dialog.
+                    if QtWidgets.QApplication.instance() is None:
+                        app = QtWidgets.QApplication([])
+                    # Run the Bin Selector dialog
+                    window = EnergyBinReducerDialog(
+                        energies=energies, dataset=dataset, bin_energies=bin_e
+                    )
+                    window.show()
+                    if window.exec():
+                        # If successful, store the binning settings and data reducer
+                        cls.reduction_bin_domain = window.domain
+                        red = window.reducer
+                    else:
+                        raise ValueError("No binning settings selected.")
+
+                # Use the binning settings to reduce the data.
+                _, reduced_summed_data = red.reduce_by_sum(
+                    bin_domain=cls.reduction_bin_domain, axis=None  # all axes
+                )
+                _, reduced_single_detector_data = red.reduce_by_sum(
+                    bin_domain=cls.reduction_bin_domain,
+                    axis="bin_energies",  # just the bin energies
+                )
+
+            # 3D array unhandled.
+            if len(mda_arrays) > 2:
+                warnings.warn(
+                    "MDA file(s) contain more than two dimension, handling of higher dimensions is not yet implemented."
+                )
+        # Collect units and labels:
+        scan_1d = mda_scans[0]
+        positioners = scan_1d.positioners
+        detectors = scan_1d.detectors
+        if len(mda_scans) > 1:
+            scan_2d = mda_scans[1]
+            positioners += scan_2d.positioners
+            detectors += scan_2d.detectors
+
+        column_types = {
+            "Positioner": (
+                "name",
+                "descr",
+                "step mode",
+                "unit",
+                "rdbk name",
+                "rdbk descr",
+                "rdbk unit",
+            ),
+            "Detector": (
+                "name",
+                "descr",
+                "unit",
+            ),
+        }
+        column_descriptions = {
+            i: [
+                p.name,
+                p.desc,
+                p.step_mode,
+                p.unit,
+                p.readback_name,
+                p.readback_desc,
+                p.readback_unit,
+            ]
+            for i, p in enumerate(positioners)
+        }
+        column_descriptions.update(
+            {
+                i + len(positioners): [d.name, d.desc, d.unit]
+                for i, d in enumerate(detectors)
+            }
+        )
+        params["column_types"] = column_types
+        params["column_descriptions"] = column_descriptions
+
+        # Collect units and labels:
+        for i, p in enumerate(positioners):
+            labels.append(p.name)
+            units.append(p.unit)
+        for i, d in enumerate(detectors):
+            labels.append(d.name)
+            units.append(d.unit)
+        # If 2D data is present, add reduced data to 1D data.
+        if not header_only and len(mda_arrays) > 1:
+            # Check rows (energies) match length
+            assert reduced_summed_data.shape[0] == mda_1d.shape[0]
+            assert reduced_single_detector_data.shape[0] == mda_1d.shape[0]
+
+            # Correct the fluorescence detector data according to the input and output count rates.
+            # if
+            # reduced_single_detector_data *= ()
+
+            # Add reduced data to 1D data as extra columns
+            mda_1d = np.c_[mda_1d, reduced_single_detector_data, reduced_summed_data]
+            # Add labels and units for reduced data
+            # (Detector data labels/units already added via positioners and detectors above.)
+            labels += ["Fluorescence Sum (Reduced)"]
             units += ["a.u."]
         # Use scan time if available, otherwise let system time be used.
         if "MEX1ES01GLU01:MEX_TIME" in params:
@@ -759,7 +771,7 @@ def MEX2_to_QANT_AUMainAsc(
     },
 ) -> list[str]:
     """
-    Converts a parser mapping to to QANT format.
+    Convert a parser mapping to the QANT format readable.
 
     Parameters
     ----------
@@ -1049,14 +1061,14 @@ if __name__ == "__main__":
     fig: plt.Figure = subplts[0]
     ax: plt.Axes = subplts[1]
     idx = -1
-    ax.plot(test2.data[:, 0], test2.data[:, idx], label="Test2" + test2.labels[idx])
+    ax.plot(test2.data[:, 0], test2.data[:, idx], label="Test2 " + test2.labels[idx])
     [
         ax.plot(
             test.data[:, 0], test.data[:, idx], label=f"Tests[{i}]" + test.labels[idx]
         )
         for i, test in enumerate(tests)
     ]
-    ax.plot(test3.data[:, 0], test3.data[:, idx], label="Test3" + test3.labels[idx])
+    ax.plot(test3.data[:, 0], test3.data[:, idx], label="Test3 " + test3.labels[idx])
     ax.legend()
     # plt.ioff()
 
