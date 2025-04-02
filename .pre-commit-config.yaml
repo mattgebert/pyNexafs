@@ -9,11 +9,13 @@ repos:
     rev: v5.0.0
     hooks:
     -   id: check-added-large-files
+        exclude: '^tests/test_data/.*\.mda$'
     -   id: check-toml
     -   id: check-yaml
     -   id: end-of-file-fixer
     -   id: mixed-line-ending
     -   id: trailing-whitespace
+        exclude: '^tests/test_data/.*\.xdi$'
 
 # Black - for standard code formatting
 -   repo: https://github.com/psf/black
