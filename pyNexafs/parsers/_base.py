@@ -550,9 +550,7 @@ class parser_meta(abc.ABCMeta):
             if "SUMMARY_PARAM_RAW_NAMES" not in namespace:
                 namespace["SUMMARY_PARAM_RAW_NAMES"] = []
             if "RELABELS" not in namespace:
-                namespace["RELABELS"] = parser_meta.relabels_dict()
-            else:
-                namespace["RELABELS"] = parser_meta.relabels_dict(namespace["RELABELS"])
+                namespace["RELABELS"] = {}
 
             # Raise error if necessary variables are not defined.
             for prop in ["ALLOWED_EXTENSIONS", "COLUMN_ASSIGNMENTS"]:
@@ -576,14 +574,40 @@ class parser_meta(abc.ABCMeta):
 
             # Check no overlapping duplicate values & create a copy of the RELABELS dictionary in reverse.
             reverse_dict = {}
+            generic_msg = (
+                r"\nPlease provide unique key,values for each key-value pair. Synonymous key names can be provided as a list."
+                + r"\nI.e. {'old_name': 'new_name', ('old_name_2', 'old_name_3'): 'new_name_2'}"
+            )
             for key, value in namespace["_RELABELS"].items():
+                # The value item has already been registered
                 if value in reverse_dict:
                     raise ValueError(
-                        f"Duplicate value '{value}' in `{name}.RELABELS` dictionary with keys `{reverse_dict[value]}` and {key}."
-                        + "\nPlease provide unique values for each key-value pair. Synonymous key names can be provided as a list."
-                        + "\nI.e. {'old_name': 'new_name', ('old_name_2', 'old_name_3'): 'new_name_2'}"
+                        rf"Duplicate - value '{value}' in class `{name}.RELABELS` dictionary with keys '{reverse_dict[value]}' and '{key}'."
+                        + generic_msg
                     )
+                # The key matches a value from another pair.
+                elif isinstance(key, str) and (
+                    key in reverse_dict
+                ):  # Another value matches the considered key
+                    raise ValueError(
+                        rf"Overlap - key:value pair '{key}':'{value}' in class `{name}.RELABELS` "
+                        + rf"dictionary overlaps with key:value pair '{reverse_dict[key]}':'{key}'."
+                        + generic_msg
+                    )
+                # A key element matches the value from another pair.
+                elif isinstance(
+                    key, tuple
+                ):  # Another value matches a tuple-key sub-element.
+                    for k in key:
+                        if k in reverse_dict:
+                            raise ValueError(
+                                rf"Overlap - key:value pair '{key}':'{value}' with subkey '{k}' as an overlapping entry in class'{name}.RELABELS' "
+                                + rf"dictionary with key:value pair '{reverse_dict[k]}':'{k}'."
+                                + generic_msg
+                            )
+                # Add the key:value pair to the reverse dictionary.
                 reverse_dict[value] = key
+
             # Check no overlap in keys / tupled keys.
             key_set = set()
             for key in namespace["_RELABELS"].keys():
@@ -594,14 +618,17 @@ class parser_meta(abc.ABCMeta):
                 for k in key2:
                     if k in key_set:
                         raise ValueError(
-                            f"Key '{key}' is a duplicate entry in `{name}.RELABELS` dictionary."
-                            if key2 == key
-                            else f"Key '{k}' from tuple `{key}` is a duplicate entry in `{name}.RELABELS` dictionary."
+                            f"Duplicate - key '{key}' is a duplicate key entry in `{name}.RELABELS` dictionary."
+                            if key2 != key
+                            else f"Duplicate - key '{k}' from tuple '{key}' is a duplicate key entry in `{name}.RELABELS` dictionary."
                         )
                     key_set.add(k)
             del key_set
 
             namespace["_RELABELS_REVERSE"] = reverse_dict
+
+            # Convert _RELABELS to a relabels_dict
+            namespace["_RELABELS"] = parser_meta.relabels_dict(namespace["_RELABELS"])
 
         return super().__new__(mcls, name, bases, namespace, **kwargs)
 
