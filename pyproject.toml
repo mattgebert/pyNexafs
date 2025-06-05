@@ -34,30 +34,65 @@
 
 [project.urls]
     # Website, documentation and other continuous integration URLS.
-    code = "https://github.com/mattgebert/pyNexafs"
+    code = "https://github.com/xraysoftmat/pyNexafs"
     documentation = "https://pyNexafs.readthedocs.io/en/latest/"
 
-[project.optional-dependencies]
-    gui = [
-        "matplotlib",
-        "pandas",
-        "pyqt6",
-        "pyyaml",
-    ]
-    dev = [
-        "commitizen",
-        "numpydoc",
-        "pre-commit",
-        "pytest",
-        "python-semantic-release",
-        "sphinx",
-        "sphinx-rtd-theme",
-    ]
-    docs = [
-        "sphinx",
-        "sphinx-rtd-theme",
-        "numpydoc",
-    ]
+[dependency-groups]
+# Dependency groups for optional dependencies.
+all = [
+    {include-group = "gui"},
+    {include-group = "docs"},
+    {include-group = "dev"},
+]
+
+dev = [
+    {include-group = "gui"}, # Include GUI dependencies in dev
+    {include-group = "docs"}, # Include documentation dependencies in dev
+    "pre-commit",
+    "pytest",
+    "python-semantic-release",
+    "commitizen",
+    "commitlint",
+    "periodictable > v2.0.2", # Due to changes in neutron element as zeroth element.
+    "black",
+]
+
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "numpydoc",
+]
+
+gui = [
+    "matplotlib",
+    "pandas",
+    "pyqt6",
+    "pyyaml",
+]
+
+
+# [project.optional-dependencies]
+#     gui = [
+#         "matplotlib",
+#         "pandas",
+#         "pyqt6",
+#         "pyyaml",
+#     ]
+#     dev = [
+#         "pre-commit",
+#         "commitizen",
+#         "commitlint",
+#         "python-semantic-release",
+#         "numpydoc",
+#         "pytest",
+#         "sphinx",
+#         "sphinx-rtd-theme",
+#     ]
+#     docs = [
+#         "sphinx",
+#         "sphinx-rtd-theme",
+#         "numpydoc",
+#     ]
 
 # [tool.setuptools.packages.find] # All the following settings are optional:
 #     where = ["."]  # Root directory
