@@ -37,7 +37,10 @@ class TestMEX2:
         def test_parser_mda_2024_11(self, filepath, header_only, energy_bin_domain):
             # Test the class constructor success
             parser = MEX2_NEXAFS(
-                filepath, header_only=header_only, energy_bin_domain=energy_bin_domain
+                filepath,
+                header_only=header_only,
+                energy_bin_domain=energy_bin_domain,
+                relabel=False,
             )
             # Test the parser method
             with open(filepath, "r") as f:
@@ -74,7 +77,10 @@ class TestMEX2:
         def test_parser_mda_2025_02(self, filepath, header_only, energy_bin_domain):
             # Test the class constructor success
             parser = MEX2_NEXAFS(
-                filepath, header_only=header_only, energy_bin_domain=energy_bin_domain
+                filepath,
+                header_only=header_only,
+                energy_bin_domain=energy_bin_domain,
+                relabel=False,
             )
             # Test the parser method
             with open(filepath, "r") as f:
