@@ -111,11 +111,11 @@ class parser_meta(abc.ABCMeta):
 
     class relabels_dict(dict):
         """
-        A dictionary extension that deals with tuples of synonymous str keys.
+        A dictionary subclass that deals with tuples of synonymous str keys.
 
         Allows for keys to be a synonymous tuple of strings, and for the dictionary to be searched
         for any of the synonymous keys. A `__get__` or `__contains__` requests will succeed for
-        a key found in a tuple. The request will not succeed for a value.
+        a key found in a tuple. The request will also succeed for a value, returning itself.
 
         For setting items, if a string key is found in a tuple, then the tuple is updated with the
         new value. If a tuple is used as a key, and an element is found in another tuple, then a
@@ -159,6 +159,8 @@ class parser_meta(abc.ABCMeta):
                     if key_sub in self:
                         return super().__getitem__(key_sub)
             elif isinstance(key, str):
+                if key in self.values():  # Return the relabel value itself.
+                    return key
                 for k in self.keys():
                     if k == key:
                         return super().__getitem__(k)
@@ -196,6 +198,8 @@ class parser_meta(abc.ABCMeta):
                         if k == key_sub:
                             return True
             elif isinstance(key, str):
+                if key in self.values():
+                    return True
                 for k in self.keys():
                     if k == key:
                         return True
@@ -500,7 +504,8 @@ class parser_meta(abc.ABCMeta):
     synonymous names (i.e. equipment replacement with a new channel name)."""
     _RELABELS_REVERSE: dict[str, str | tuple[str, ...]] = {}
     """Internal dictionary of label equivalence in reverse."""
-    _relabel = False
+    _relabel = True
+    """Internal class boolean for relabels, by default True."""
 
     def __new__(
         mcls: type["parser_meta"],
@@ -918,13 +923,15 @@ class parser_meta(abc.ABCMeta):
             )
 
     @property
-    def summary_param_names(cls) -> list[str | tuple[str, ...]]:
+    def summary_param_names(cls) -> list[str]:
         """
         A list of important parameter names of the data file.
 
-        Sources from cls.SUMMARY_PARAM_RAW_NAMES.
+        Sources from `cls.SUMMARY_PARAM_RAW_NAMES`.
+        Returns singular values if summary parameter is a tuple.
+
         If `cls.relabels` and names are defined in cls.RELABELS,
-        then the relabelled names are returned.
+        then relabelled names are returned (and prioritised in tuples).
 
         Returns
         -------
@@ -942,22 +949,35 @@ class parser_meta(abc.ABCMeta):
         ['Photon Energy', 'Time', 'Intensity']
         """
         if cls.relabel:
-            names: list[str | tuple[str, ...]] = []
+            names: list[str] = []
             for name in cls.SUMMARY_PARAM_RAW_NAMES:
                 # If the summary name is a tuple, check each sub-name for a relabel and use the first one.
                 if isinstance(name, tuple):
+                    found = False
                     for sub_name in name:
+                        sub_name: str
                         if sub_name in cls.RELABELS:
                             names.append(cls.RELABELS[sub_name])
+                            found = True
                             break
-                else:
+                    if not found:
+                        names.append(name[0])
+                elif isinstance(name, str):  # string
                     if name in cls.RELABELS:
                         names.append(cls.RELABELS[name])
                     else:
                         names.append(name)
+                # Ignore non-string/tuple[string] names.
             return names
         else:
-            return cls.SUMMARY_PARAM_RAW_NAMES
+            # Generate a list of names from the summary_param_list.
+            names: list[str] = []
+            for name in cls.SUMMARY_PARAM_RAW_NAMES:
+                if isinstance(name, tuple):
+                    names.append(name[0])
+                elif isinstance(name, str):
+                    names.append(name)
+            return names
 
     @property
     def RELABELS(cls) -> relabels_dict:
@@ -1228,9 +1248,24 @@ class parser_base(abc.ABC, metaclass=parser_meta):
                         key in self._parent.RELABELS
                     ):  # `relabels_dict.__contains__` handles tuples and strings.
                         # If tuple, __get__ isolates a single key from the tuple.
-                        result = super().__getitem__(self._parent.RELABELS[key])
-                    elif key in self._parent.RELABELS_REVERSE:
-                        result = super().__getitem__(self._parent.RELABELS_REVERSE[key])
+                        relabel_key = self._parent.RELABELS[key]
+                        relabel_reverse_key = self._parent.RELABELS_REVERSE[relabel_key]
+
+                        # Attempt to access the param using all known matches (RELABEL value first!)
+                        if isinstance(relabel_reverse_key, tuple):
+                            k_possible = (relabel_key, key, *relabel_reverse_key)
+                        else:
+                            k_possible = (relabel_key, relabel_reverse_key)
+                        for k in k_possible:
+                            try:
+                                result = super().__getitem__(k)
+                                break
+                            except KeyError:
+                                pass
+                        if result is None:
+                            raise KeyError(
+                                f"Key {key} not found in the `{self._parent.__class__.__name__}.params` after searching: '[{k_possible}'."
+                            )
                     else:
                         raise KeyError(
                             f"Key {key} not found in the `{self._parent.__class__.__name__}params` or `{self._parent.__class__.__name__}.RELABELS` dictionary."
@@ -1363,17 +1398,19 @@ class parser_base(abc.ABC, metaclass=parser_meta):
                         # Do not need to check tuple match to key, as key only str.
                         # Check if tuple element matches key.
                         is_contained = False
-                        for k_sub in k:
+                        # Also check the relabel value 'v' for a match,
+                        # despite checked for contains above.
+                        for k_sub in (v, *k):
                             if k_sub == key:
                                 is_contained = True
                                 break
                         # Check all keys if tuple equivalence condition met.
                         if is_contained:
-                            for k_sub in k:
+                            for k_sub in (v, *k):
                                 if super().__contains__(k_sub):
                                     return True
                     elif isinstance(k, str):
-
+                        # Already checked
                         pass
                     else:
                         raise ValueError(
@@ -1433,20 +1470,19 @@ class parser_base(abc.ABC, metaclass=parser_meta):
         """Parameters loaded through the `parser.load()` function."""
         self.__loading_kwargs: dict[str, Any] = kwargs
 
+        # Copy class value at initialisation if None
+        self._relabel: bool = relabel
+        """Whether to use relables or not. If None, then the class value is used by default."""
+        # Create a variable to track loading
+        self._loaded = False
+        """Tracks wether the data has been loaded (True), or only the header (False)"""
+
         if filepath is None:
             return
         elif type(filepath) is str:
             self.load(header_only=header_only, **kwargs)  # Load data
         else:
             raise TypeError(f"Filepath is {type(filepath)}, not str.")
-
-        # Copy class value at initialisation if None
-        self._relabel: bool = relabel
-        """Whether to use relables or not. If None, then the class value is used by default."""
-
-        # Create a variable to track loading
-        self._loaded = False
-        """Tracks wether the data has been loaded (True), or only the header (False)"""
 
     @property
     def is_loaded(self) -> bool:
@@ -1820,7 +1856,7 @@ class parser_base(abc.ABC, metaclass=parser_meta):
             params["created"] = datetime.datetime.fromtimestamp(
                 os.path.getctime(load_filepath)
             )
-        else:
+        elif not isinstance(params["created"], datetime.datetime):
             try:
                 params["created"] = self.convert_to_datetime(params["created"])
             except ValueError as e:
@@ -1831,7 +1867,7 @@ class parser_base(abc.ABC, metaclass=parser_meta):
             params["modified"] = datetime.datetime.fromtimestamp(
                 os.path.getmtime(load_filepath)
             )
-        else:
+        elif not isinstance(params["modified"], datetime.datetime):
             try:
                 params["modified"] = self.convert_to_datetime(params["modified"])
             except ValueError as e:
@@ -1840,6 +1876,10 @@ class parser_base(abc.ABC, metaclass=parser_meta):
                 )
         self._filepath = load_filepath
 
+        # Add a size entry for the file
+        if "filesize" not in params or params["filesize"] is None:
+            params["filesize"] = self.filesize
+
         # Assign data, labels, units, and params to object.
         self.data, self._labels, self.units = data, labels, units
         self.params.update(params)
@@ -1847,6 +1887,11 @@ class parser_base(abc.ABC, metaclass=parser_meta):
         # Update filepath after data load if successful!
         if not header_only:
             self._loaded = True
+
+        # Add a size entry for pyNexafs
+        if "memory_size" not in params or params["memory_size"] is None:
+            params["memory_size"] = self.memorysize
+
         return
 
     @staticmethod
@@ -2001,13 +2046,15 @@ class parser_base(abc.ABC, metaclass=parser_meta):
         Returns
         -------
         int
-            Size of the object in memory.
+            Size of the object in memory in bytes.
         """
         return (
             sys.getsizeof(self)
             + sys.getsizeof(self.data)
-            + sys.getsizeof(self._labels)
+            + sys.getsizeof(self.labels)
             + sys.getsizeof(self.params)
+            + sum([sys.getsizeof(v) for v in self.params.values()])
+            + sys.getsizeof(self.units)
         )
 
     def to_DataFrame(self) -> "DataFrame":
@@ -2127,7 +2174,7 @@ class parser_base(abc.ABC, metaclass=parser_meta):
                 raise ValueError(
                     f"Summary parameter key {key} is not a string or list of strings."
                 )
-
+            key: str | tuple[str]
             # Take first name if multiple names are provided.
             summary_key = keys[0]
             # Use the key string(s) to search for the parameter in the params dictionary:
@@ -2137,10 +2184,11 @@ class parser_base(abc.ABC, metaclass=parser_meta):
                     summary_params[summary_key] = self.params[key]
                     found = True
                     break  # Only use first value found.
+
             # If not found see if the key can be found in reverse:
-            if not found and key in self._RELABELS_REVERSE:
+            if not found and key in self.RELABELS_REVERSE:
                 # Check if the key is a string and exists in the params dictionary.
-                rev_key: str | list[str] = self._RELABELS_REVERSE[key]
+                rev_key: str | list[str] = self.RELABELS_REVERSE[key]
                 if isinstance(rev_key, str) and rev_key in self.params:
                     summary_params[summary_key] = self.params[rev_key]
                 elif isinstance(rev_key, list):
@@ -2155,7 +2203,8 @@ class parser_base(abc.ABC, metaclass=parser_meta):
         """
         A list of important parameter names of the data file.
 
-        Sources from cls.SUMMARY_PARAM_RAW_NAMES.
+        Sources names from cls.SUMMARY_PARAM_RAW_NAMES list.
+        Returns summary names that are found in params.
         If names are defined in cls.RELABELS, then the relabelled names are returned.
 
         Returns
@@ -2164,15 +2213,19 @@ class parser_base(abc.ABC, metaclass=parser_meta):
             List of important parameter names.
         """
         # TODO: Implement Tests
-        names = []
-        for keystr in self.SUMMARY_PARAM_RAW_NAMES:
+        names: list[str] = []
+        for keystr in self.__class__.SUMMARY_PARAM_RAW_NAMES:
             keys = keystr if isinstance(keystr, tuple) else [keystr]
             key1 = keys[0]  # Take first name if multiple names are provided.
             for key in keys:
+                # Collect summary names that exist in the parser params.
                 if (
                     key in self.params
-                    or key in self.RELABELS
-                    or key in self.RELABELS.values()
+                    or (key in self.RELABELS and self.RELABELS[key] in self.params)
+                    or (
+                        key in self.RELABELS_REVERSE
+                        and self.RELABELS_REVERSE[key] in self.params
+                    )
                 ):
                     names.append(key1)
                     break

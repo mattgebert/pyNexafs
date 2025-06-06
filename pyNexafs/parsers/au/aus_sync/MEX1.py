@@ -2,20 +2,32 @@
 Parser classes for the Medium Energy X-ray 2 (MEX1) beamline at the Australian Synchrotron.
 """
 
-from PyQt6 import QtWidgets
+# Internal
 from pyNexafs.parsers import parser_base, parser_meta
 from pyNexafs.utils.mda import MDAFileReader
-from pyNexafs.gui.widgets.reducer import EnergyBinReducerDialog
+from pyNexafs.utils.reduction import reducer
+from pyNexafs.parsers.au.aus_sync.MEX1_relabels import RELABELS
+
+# Standard
 from io import TextIOWrapper
 from typing import Any
-from numpy.typing import NDArray
-import numpy as np
 import ast
 import warnings
 import datetime as dt
 import os
-from pyNexafs.utils.reduction import reducer
-from pyNexafs.parsers.au.aus_sync.MEX1_relabels import RELABELS
+
+# External
+from numpy.typing import NDArray
+import numpy as np
+
+has_PYQT: bool
+try:
+    from PyQt6 import QtWidgets
+
+    has_PYQT = True
+    from pyNexafs.gui.widgets.reducer import EnergyBinReducerDialog
+except ImportError:
+    has_PYQT = False
 
 # TODO: What are the values for MEX1? What are the bins?
 # Additional data provided by the MEX1 beamline for the data reduction
@@ -362,21 +374,27 @@ class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
                     # Uses the most recent binning settings.
                     red = reducer(energies, dataset, bin_e)
                 else:
-                    # Create a QT application to run the dialog.
-                    if QtWidgets.QApplication.instance() is None:
-                        app = QtWidgets.QApplication([])
-                    # Run the Bin Selector dialog
-                    window = EnergyBinReducerDialog(
-                        energies=energies, dataset=dataset, bin_energies=bin_e
-                    )
-                    # window.reducerUI.bin_axes.set_xlabel("")
-                    window.show()
-                    if window.exec():
-                        # If successful, store the binning settings and data reducer
-                        cls.reduction_bin_domain = window.domain
-                        red = window.reducer
+                    if has_PYQT:
+                        # Create a QT application to run the dialog.
+                        if QtWidgets.QApplication.instance() is None:
+                            app = QtWidgets.QApplication([])
+                        # Run the Bin Selector dialog
+                        window = EnergyBinReducerDialog(
+                            energies=energies, dataset=dataset, bin_energies=bin_e
+                        )
+                        # window.reducerUI.bin_axes.set_xlabel("")
+                        window.show()
+                        if window.exec():
+                            # If successful, store the binning settings and data reducer
+                            cls.reduction_bin_domain = window.domain
+                            red = window.reducer
+                        else:
+                            raise ValueError("No binning settings selected.")
                     else:
-                        raise ValueError("No binning settings selected.")
+                        raise ValueError(
+                            "No binning settings provided, and no PyQt available to select binning settings."
+                        )
+                        # TODO: Add a command line interface.
 
                 # Use the binning settings to reduce the data.
                 _, reduced_summed_data = red.reduce_by_sum(

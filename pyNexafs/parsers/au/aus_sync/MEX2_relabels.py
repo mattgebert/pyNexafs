@@ -9,7 +9,7 @@ RELABELS = {
     "MEX2DCM01:ENERGY": "Energy Setpoint",
     "MEX2ES01ZEB01:CALC_ENERGY_EV": "Energy",
     "MEX2ES01ZEB01:GATE_TIME_SET": "Gate Time Setpoint",
-    "MEX2SSCAN01:saveData_comment1": "Comment 1",
+    ("MEX2SSCAN01:saveData_comment1", "Comment 1", "Sample"): "Sample Name",
     "MEX2SSCAN01:saveData_comment2": "Comment 2",
     "MEX2ES01ZEB01:BRAGG_WITH_OFFSET": "Bragg",
     "SR11BCM01:CURRENT_MONITOR": "Current Monitor",  # What is this? I0?

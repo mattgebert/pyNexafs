@@ -2,24 +2,59 @@
 Parser classes for the Medium Energy X-ray 2 (MEX2) beamline at the Australian Synchrotron.
 """
 
-import PyQt6
-from PyQt6 import QtWidgets
+# Internal
 from pyNexafs.parsers import parser_base, parser_meta
-from pyNexafs.nexafs.scan import scanBase
 from pyNexafs.utils.mda import MDAFileReader
-from pyNexafs.gui.widgets.reducer import EnergyBinReducerDialog
-from io import TextIOWrapper
-from typing import Any, Self, Hashable
-from numpy.typing import NDArray
-import numpy as np
-import ast
-import warnings
-import datetime as dt
-import os
-import json, io
 from pyNexafs.utils.reduction import reducer
 from pyNexafs.parsers.au.aus_sync.MEX2_relabels import RELABELS
-import traceback
+
+# Standard
+from io import TextIOWrapper
+from typing import Any
+import ast
+import warnings
+import datetime
+import os
+
+# External
+has_PYQT: bool
+try:
+    from PyQt6 import QtWidgets
+
+    has_PYQT = True
+    from pyNexafs.gui.widgets.reducer import EnergyBinReducerDialog
+except ImportError:
+    has_PYQT = False
+import overrides
+from numpy.typing import NDArray
+import numpy as np
+
+
+def MEX2_datetime_conversion(MEX2_TIME: float) -> datetime.datetime:
+    """
+    Convert the MEX2 datetime format to a UTC datetime object.
+
+    Note that for Australia, this will be +11 during daylight savings time,
+    and +10 otherwise. This function does not account for this, so the
+    returned datetime object will be in UTC time.
+
+    Parameters
+    ----------
+    MEX2_TIME : float
+        The MEX2 time in seconds since the epoch (2023-01-01).
+
+    Returns
+    -------
+    datetime.datetime
+        The converted datetime object in UTC.
+    """
+    # dtime19900101 = datetime.datetime(1990, 1, 1, 0, 0, 0, 0)  # MEX2 epoch
+    dtime20230101 = datetime.datetime(2023, 1, 1, 0, 0, 0, 0)  # MEX2 epoch
+    # Convert MEX2 time to seconds since 1990-01-01
+    mex2_time = datetime.timedelta(seconds=MEX2_TIME)
+    # Convert to datetime object
+    ret_time = dtime20230101 + mex2_time
+    return ret_time
 
 
 class DanteFluorescence:
@@ -60,9 +95,9 @@ class Xpress3Fluorescence:
         "MEX2ES01DPP02:MCA3:ArrayData",
         "MEX2ES01DPP02:MCA4:ArrayData",
     ]
-    BIN_ENERGY_DELTA: float = 11.935
+    BIN_ENERGY_DELTA: float = 10
     """The energy difference (eV) between each bin in the MEX2 data."""
-    BIN_96_ENERGY: float = 96 * BIN_ENERGY_DELTA - 1146.7
+    BIN_96_ENERGY: float = 96 * BIN_ENERGY_DELTA - 0
     """The energy (eV) of the 96th bin in the MEX2 data."""
     TOTAL_BINS: int = 4096
     """The total number of bins in the MEX2 data."""
@@ -72,7 +107,7 @@ class Xpress3Fluorescence:
         num=TOTAL_BINS,
     )
     """The energy (eV) of each bin in the MEX2 data."""
-    INTERESTING_BINS_IDX: tuple[int, int] = (80, 900)
+    INTERESTING_BINS_IDX: tuple[int, int] = (0, 800)
     """The indices of the interesting bins (non-zero) in the MEX2 data."""
     INTERESTING_BINS_ENERGIES: NDArray = TOTAL_BIN_ENERGIES[
         INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1]
@@ -217,7 +252,7 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         cls,
         file: TextIOWrapper,
         header_only: bool = False,
-    ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
+    ) -> tuple[NDArray | None, list[str], list[str], dict[str, Any]]:
         """
         Read Australian Synchrotron '.xdi' files.
 
@@ -452,20 +487,26 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                     # Uses the most recent binning settings.
                     red = reducer(energies, dataset, bin_e)
                 else:
-                    # Create a QT application to run the dialog.
-                    if QtWidgets.QApplication.instance() is None:
-                        app = QtWidgets.QApplication([])
-                    # Run the Bin Selector dialog
-                    window = EnergyBinReducerDialog(
-                        energies=energies, dataset=dataset, bin_energies=bin_e
-                    )
-                    window.show()
-                    if window.exec():
-                        # If successful, store the binning settings and data reducer
-                        cls.reduction_bin_domain = window.domain
-                        red = window.reducer
+                    if has_PYQT:
+                        # Create a QT application to run the dialog.
+                        if QtWidgets.QApplication.instance() is None:
+                            app = QtWidgets.QApplication([])
+                        # Run the Bin Selector dialog
+                        window = EnergyBinReducerDialog(
+                            energies=energies, dataset=dataset, bin_energies=bin_e
+                        )
+                        window.show()
+                        if window.exec():
+                            # If successful, store the binning settings and data reducer
+                            cls.reduction_bin_domain = window.domain
+                            red = window.reducer
+                        else:
+                            raise ValueError("No binning settings selected.")
                     else:
-                        raise ValueError("No binning settings selected.")
+                        raise ValueError(
+                            "No binning settings selected, and no PyQt available to run the dialog."
+                        )
+                        # TODO: Add a command line interface for binning settings.
 
                 # Use the binning settings to reduce the data.
                 _, reduced_summed_data = red.reduce_by_sum(
@@ -552,7 +593,11 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
             units += ["a.u."]
         # Use scan time if available, otherwise let system time be used.
         if "MEX1ES01GLU01:MEX_TIME" in params:
-            params["created"] = params["MEX1ES01GLU01:MEX_TIME"]
+            assert (
+                params["MEX1ES01GLU01:MEX_TIME"][0] == "Seconds since 1990.01.01"
+            )  # HAHA this is actually 2023.01.01 :')
+            newtime = MEX2_datetime_conversion(params["MEX1ES01GLU01:MEX_TIME"][2])
+            params["created"] = newtime
 
         return mda_1d, labels, units, params
 
@@ -628,8 +673,11 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                 mda_2d = mda_arrays[1]
                 mda_2d_scan = mda_scans[1]
                 # Check 'multi-channel-analyser-spectra of fluorescence-detector' names are as expected
+                print(mda_2d_scan.labels())
                 fluorescence_labels = DanteFluorescence.FLUOR_NAMES
-                assert mda_2d_scan.labels() == fluorescence_labels
+                assert (
+                    mda_2d_scan.labels() == fluorescence_labels
+                )  # list matching works here, no need for `all(list)`.
 
                 # Take properties from 1D and 2D arrays:
                 energies = mda_1d[:, 0] * 1000  # Convert keV to eV for MEX beamline
@@ -752,9 +800,35 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
             units += ["a.u."]
         # Use scan time if available, otherwise let system time be used.
         if "MEX1ES01GLU01:MEX_TIME" in params:
-            params["created"] = params["MEX1ES01GLU01:MEX_TIME"]
+            assert (
+                params["MEX1ES01GLU01:MEX_TIME"][0] == "Seconds since 1990.01.01"
+            )  # HAHA this is actually 2023.01.01 :')
+            newtime = MEX2_datetime_conversion(params["MEX1ES01GLU01:MEX_TIME"][2])
+            params["created"] = newtime
 
         return mda_1d, labels, units, params
+
+    # @overrides.overrides # type: ignore[override]
+    @parser_base.summary_param_names_with_units.getter
+    def summary_params_with_units(self) -> list[str]:
+        """
+        A dictionary of summary parameters with units.
+
+        Returns
+        -------
+        list[str]
+            A list of summary parameters, with interpereted units attached.
+        """
+        return [
+            (
+                f"{self.params[param][2]} ({self.params[param][1]})"
+                if isinstance(self.params[param], tuple)
+                and len(self.params[param]) == 3
+                else self.params[param][0]
+            )
+            for param in self.SUMMARY_PARAM_RAW_NAMES
+            if param in self.params
+        ]
 
 
 def MEX2_to_QANT_AUMainAsc(
@@ -793,6 +867,9 @@ def MEX2_to_QANT_AUMainAsc(
     list[str]
         A list of lines for the QANT AUMainAsc format, with newline terminations included.
     """
+    import datetime as dt
+    from typing import Hashable
+
     possible_read_values = [
         "SR14ID01MCS02FAM:X.RBV",
         "SR14ID01MCS02FAM:Y.RBV",
@@ -803,9 +880,12 @@ def MEX2_to_QANT_AUMainAsc(
         "SR14ID01NEXSCAN:saveData_comment2",
     ]
     # Check validity of the extrainfo_mapping
+    parser.relabel = (
+        True  # Ensure relabel is set to True, as this is needed for the conversion.
+    )
     for key, value in extrainfo_mapping.items():
         if value is not None:
-            if value not in parser.params:
+            if not value in parser.params:
                 raise ValueError(f"Parameter {value} not found in parser params.")
             elif key not in possible_read_values:
                 raise ValueError(f"Parameter {key} not found in possible read values.")
