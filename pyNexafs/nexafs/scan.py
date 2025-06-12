@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from ..parsers import parser_base
 
 
-class scan_abstract(metaclass=abc.ABCMeta):
+class scanAbstract(metaclass=abc.ABCMeta):
     """
     Abstract class for defining properties of a scan object.
 
@@ -51,17 +51,24 @@ class scan_abstract(metaclass=abc.ABCMeta):
         return
 
     @abc.abstractmethod
-    def copy(self, *args, **kwargs) -> scan_abstract:
+    def copy(self, *args, **kwargs) -> Self:
         """
-        Creates a copy of the scan object.
-        Reloads parser object data, but links to the same parser object as `self`.
+        Create a copy of the scan object.
+
+        Implemented method should call this method to copy the data attributes, and implement
+        copying of any subclass specific attributes.
+
+        Parameters
+        ----------
+        *args, **kwargs
+            Additional arguments and keyword arguments to pass to the constructor of the subclass.
 
         Returns
         -------
-        scan_abstract
+        Self
             A copy of the scan object with unique data.
         """
-        newobj = type(self)(*args, **kwargs)
+        newobj = self.__class__(*args, **kwargs)
 
         # Copy Data
         newobj._x = self._x.copy() if self._x is not None else None
@@ -91,14 +98,34 @@ class scan_abstract(metaclass=abc.ABCMeta):
     @property
     def ctime(self) -> datetime.datetime:
         """
-        Returns the creation time of the file as a datetime object.
+        The creation time of the file as a datetime object.
+
+        Returns
+        -------
+        datetime.datetime
+            The creation time of the file.
+
+        Raises
+        -------
+        NotImplementedError
+            If the ctime property is not implemented in the subclass.
         """
         raise NotImplementedError("ctime property not implemented.")
 
     @property
     def mtime(self) -> datetime.datetime:
         """
-        Returns the modification time of the file as a datetime object.
+        The modification time of the file as a datetime object.
+
+        Returns
+        -------
+        datetime.datetime
+            The modification time of the file.
+
+        Raises
+        -------
+        NotImplementedError
+            If the mtime property is not implemented in the subclass.
         """
         raise NotImplementedError("mtime property not implemented.")
 
@@ -121,7 +148,7 @@ class scan_abstract(metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        val: npt.NDArray | list[int|float]
+        val : npt.NDArray | list[int|float]
             A new 1D array to define beam energies. Removes x_errs if new dimensions don't match.
 
         Returns
@@ -151,7 +178,7 @@ class scan_abstract(metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        val: npt.NDArray | list[int|float]
+        val : npt.NDArray | list[int|float]
             A numpy array of data or a list of datapoints.
 
         Returns
@@ -332,15 +359,13 @@ class scan_abstract(metaclass=abc.ABCMeta):
                 np.ceil(np.log10(self.y.shape[1] + 1))
             )  # Gets number of characters for a given number.
             self._y_labels = [
-                str(i + 1).zfill(chars_col_len) for i in range(self.y.shape[1])
+                "Data Col. " + str(i + 1).zfill(chars_col_len)
+                for i in range(self.y.shape[1])
             ]
-            raise ValueError("TESTING")
             return self._y_labels
 
     @y_labels.setter
     def y_labels(self, labels: list[str] | None) -> None:
-        if labels is None:
-            raise ValueError("Cannot set y_labels to None.")
         if isinstance(labels, list) and np.all(
             [isinstance(label, str) for label in labels]
         ):
@@ -406,13 +431,18 @@ class scan_abstract(metaclass=abc.ABCMeta):
 
     def snapshot(self, columns: int = None) -> matplotlib.figure.Figure:
         """
-        Generates a grid of plots, showing all scan data.
+        Generate a grid of plots, showing all scan data.
 
         Parameters
         ----------
         columns : int, optional
             Number of columns used to grid data, by default None
             will use the square root of the number of Y channels.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            A figure object containing the grid of plots.
         """
         if columns is None:
             columns = np.ceil(np.sqrt(len(self._y)))
@@ -430,40 +460,72 @@ class scan_abstract(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def reload_labels_from_parser(self) -> None:
         """
-        Re-loads the labels and units from the parser object.
+        Re-load the labels and units from the parser object.
 
+        This method is abstract and must be implemented in subclasses.
         Useful when the user wants to switch from the raw parameter names to useful names.
         Alternatively scan labels can be manually set.
         """
         pass
 
 
-class scan_simple(scan_abstract):
+class scanSimple(scanAbstract):
     """
     Basic interface class for raw data that is not bundled in a parser object.
+
+    This class is used for simple scans where data is provided directly as x and y arrays.
+
+    Parameters
+    ----------
+    x : npt.NDArray
+        1D array of x data (e.g., beam energy).
+    y : npt.NDArray
+        2D array of y data (e.g., multiple Y channels). First index is data points, second index is channels.
+    *args, **kwargs
+        Additional arguments and keyword arguments to pass to the parent class.
     """
 
     def __init__(self, x: npt.NDArray, y: npt.NDArray, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        x = np.array(x)  # make unique
+        y = np.array(y)
+        # Validate x and y data
+        if not isinstance(x, np.ndarray) or len(x.shape) != 1:
+            raise ValueError("x must be a 1D numpy array.")
+        if not isinstance(y, np.ndarray) or len(y.shape) > 2:
+            raise ValueError("y must be a 1D or 2D numpy array.")
+        if len(y.shape) == 1:
+            y = y[:, np.newaxis]
         self._x = x
         self._y = y
         return
 
     def reload_labels_from_parser(self) -> None:
+        """
+        Implement the abstract method from scanAbstract.
+
+        This method is not applicable for scanSimple as it does not use a parser object.
+        It is included to satisfy the abstract base class interface.
+        """
         return None
 
     @overrides.overrides
-    def copy(self) -> scan_simple:
+    def copy(self) -> scanSimple:
         """
-        Creates a copy of the scan object.
+        Create a copy of the scan object.
 
         Data is unique for a `scan_simple` object, so no need to reload parser data unlike scan_abstract.
+
+        Returns
+        -------
+        scanSimple
+            A new instance of scanSimple with copied data.
         """
-        new_obj = scan_simple(x=self.x.copy(), y=self.y.copy())
+        new_obj = scanSimple(x=self.x.copy(), y=self.y.copy())
         return new_obj
 
 
-class scan_base(scan_abstract):
+class scanBase(scanAbstract):
     """
     Base class for synchrotron measurements that scans across photon beam energies (eV).
 
@@ -492,7 +554,7 @@ class scan_base(scan_abstract):
         parser: Type[parser_base] | parser_base | None,
         load_all_columns: bool = False,
     ) -> None:
-        # Initialise data arrays
+        # Initialise data arrays, including x, y, etc.
         super().__init__()
 
         # Store parser reference.
@@ -507,27 +569,53 @@ class scan_base(scan_abstract):
             self._all_columns_loaded = load_all_columns
 
     @overrides.overrides
-    def copy(self) -> type[scan_base]:
-        newobj = super().copy(
-            parser=self.parser, load_all_columns=self._all_columns_loaded
-        )
+    def copy(self, *args, **kwargs) -> Self:
+        """
+        Create a copy of the scan object.
+
+        Parameters
+        ----------
+        *args, **kwargs
+            Additional arguments and keyword arguments to pass to the constructor of the subclass.
+
+        Returns
+        -------
+        Self
+            A new instance of scanBase with copied data.
+        """
+        # Create a new instance that copies the data
+        newobj = super().copy(parser=None)
+        # Copy the base scan attributes:
+        newobj._parser = self._parser  # Keep the same parser reference.
+        newobj._all_columns_loaded = self._all_columns_loaded
+        # Return the copy
         return newobj
 
     @property
     def ctime(self) -> datetime.datetime:
         """
-        Returns the creation time of the file as a datetime object.
+        Return the creation time of the file as a datetime object.
+
+        Returns
+        -------
+        datetime.datetime
+            The creation time of the file.
         """
         return self.parser.ctime
 
     @property
     def mtime(self) -> datetime.datetime:
         """
-        Returns the modification time of the file as a datetime object.
+        The modification time of the file as a datetime object.
+
+        Returns
+        -------
+        datetime.datetime
+            The modification time of the file.
         """
         return self.parser.mtime
 
-    @scan_abstract.filename.getter
+    @scanAbstract.filename.getter
     def filename(self) -> str:
         """
         Property for the filename of the scan object.
@@ -558,9 +646,22 @@ class scan_base(scan_abstract):
         """
         return self._parser
 
-    def reload(self, load_all_columns: bool = None) -> None:
+    def reload(self, load_all_columns: bool | None = None) -> None:
         """
-        Reloads all data from the parser object.
+        Reload all data from the parser object.
+
+        If `load_all_columns` is provided, it will override the current attribute setting `_all_columns_loaded`
+        otherwise uses the `_all_columns_loaded` attribute to determine to load all columns or only those
+        defined in `COLUMN_ASSIGNMENTS`.
+        Also reloads the x, y, y_errs, x_errs, labels and units from the parser object.
+
+        Parameters
+        ----------
+        load_all_columns : bool, optional
+            If True/False, updates the `_all_columns_loaded` attribute.
+            If True, load all columns from the parser object.
+            If False, only loads the columns defined in `parser.COLUMN_ASSIGNMENTS`.
+            If None, uses the current value of `_all_columns_loaded`.
         """
         if load_all_columns is not None:
             self._all_columns_loaded = load_all_columns
@@ -571,7 +672,7 @@ class scan_base(scan_abstract):
 
     def reload_labels_from_parser(self) -> None:
         """
-        Re-loads the labels and units from the parser object.
+        Re-load the labels and units from the parser object.
 
         Useful when the user wants to switch from the raw parameter names to useful names.
         Alternatively scan labels can be manually set.
@@ -599,7 +700,7 @@ class scan_base(scan_abstract):
 
         ### Load data from parser
         # X data - locate column
-        x_index = self.parser.search_label_index(assignments["x"])
+        x_index = self.parser.label_index(assignments["x"])
         # Y data - locate columns
         y_labels = assignments["y"]
         if isinstance(y_labels, list):
@@ -607,35 +708,33 @@ class scan_base(scan_abstract):
             for label in y_labels:
                 try:
                     # label could be multiple labels, or a tuple of labels.
-                    index = self.parser.search_label_index(label)
+                    index = self.parser.label_index(label)
                     y_indices.append(index)
                 except (AttributeError, ValueError) as e:
                     warnings.warn(
                         f"Label {label} not found in parser object {self.parser}."
                     )
         else:  # Singular index.
-            y_indices = [self.parser.search_label_index(assignments["y"])]
+            y_indices = [self.parser.label_index(assignments["y"])]
         # Y errors - locate columns
         y_errs_labels = assignments["y_errs"]
         if isinstance(y_errs_labels, list):
             y_errs_indices = [
                 (
-                    self.parser.search_label_index(label)
+                    self.parser.label_index(label)
                     if label in y_errs_labels and y_errs_labels[label] is not None
                     else None
                 )
                 for label in y_errs_labels
             ]
         elif isinstance(y_errs_labels, str):
-            y_errs_indices = [self.parser.search_label_index(y_errs_labels)]
+            y_errs_indices = [self.parser.label_index(y_errs_labels)]
         else:  # y_errs_labels is None:
             y_errs_indices = None
         # X errors - locate column
         x_errs_label = assignments["x_errs"]
         x_errs_index = (
-            self.parser.search_label_index(x_errs_label)
-            if x_errs_label is not None
-            else None
+            self.parser.label_index(x_errs_label) if x_errs_label is not None else None
         )
         ### add conditional for load_all_columns.
         if load_all_columns:

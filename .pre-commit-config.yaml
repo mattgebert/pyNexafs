@@ -39,16 +39,16 @@ repos:
       - id: commitizen-branch
         stages: [pre-push]
 
-# Use "pre-commit install --hook-type commit-msg" to install, pre-commit install doesn't work.
--   repo: https://github.com/opensource-nepal/commitlint
-    rev: v1.3.0
-    hooks:
-      - id: commitlint
-        stages: [commit-msg]
-        # args: [--config-path, .github/commitlint.yml]
-        additional_dependencies:
-          - commitlint
-          - commitizen
+# # Use "pre-commit install --hook-type commit-msg" to install, pre-commit install doesn't work.
+# -   repo: https://github.com/opensource-nepal/commitlint
+#     rev: v1.3.0
+#     hooks:
+#       - id: commitlint
+#         stages: [commit-msg]
+#         # args: [--config-path, .github/commitlint.yml]
+#         additional_dependencies:
+#           - commitlint
+#           - commitizen
 
 # repos:
 # - repo: https://github.com/astral-sh/ruff-pre-commit
