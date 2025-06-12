@@ -29,7 +29,7 @@
         "numpy",
         "overrides", # for type hinting
         "scipy",
-        "xdrlib3" # function bindings for reading binary data from mda files
+        "xdrlib3", # function bindings for reading binary data from mda files
     ]
 
 [project.urls]
@@ -38,7 +38,7 @@
     documentation = "https://pyNexafs.readthedocs.io/en/latest/"
 
 [dependency-groups]
-# Dependency groups for optional dependencies.
+# Dependency groups for optional dependencies. Requires pip >= 25.1
 all = [
     {include-group = "gui"},
     {include-group = "docs"},
@@ -53,7 +53,7 @@ dev = [
     "python-semantic-release",
     "commitizen",
     "commitlint",
-    "periodictable > v2.0.2", # Due to changes in neutron element as zeroth element.
+    "periodictable >= 2.0.2", # Due to changes in neutron element as zeroth element.
     "black",
 ]
 

@@ -1,4 +1,4 @@
-name: kkcalc tests
+name: pyNexafs tests
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}
@@ -54,7 +54,7 @@ jobs:
 
       - name: Test coverage
         run: |
-          coverage run --source=kkcalc -m pytest tests/
+          coverage run --source=pyNexafs -m pytest tests/
           coveralls
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
