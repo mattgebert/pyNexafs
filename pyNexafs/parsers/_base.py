@@ -1757,11 +1757,13 @@ class parser_base(abc.ABC, metaclass=parser_meta):
             )
 
             # If no parse functions successfully import the file type,
+            file.close()
             raise ImportError(
                 f"No parser method in {cls.__name__} succeeded on {file.name}."
             )
 
         # If no parse functions match the file type, raise an error.
+        file.close()
         raise ImportError(f"No parser method in {cls.__name__} found for {file.name}.")
 
     def load(
