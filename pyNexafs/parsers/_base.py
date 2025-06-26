@@ -27,12 +27,12 @@ from sys import maxsize
 import numpy as np, numpy.typing as npt
 import matplotlib.pyplot as plt
 import abc
-import sys, io, os
+import sys, os
 import types
 import warnings
 from io import TextIOWrapper
 import typing
-from typing import Any, TypeVar, Type, Self, Callable, Iterable, Any, TypedDict
+from typing import Any, Type, Self, Callable, Iterable, Any, TypedDict
 from _collections_abc import dict_items, dict_keys
 from collections.abc import KeysView, ValuesView, ItemsView
 
