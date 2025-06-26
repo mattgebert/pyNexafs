@@ -7,10 +7,11 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtCore import Qt, pyqtBoundSignal
 from pyNexafs.nexafs import (
     scan_abstract,
-    scan_normalised_edges,
-    scan_normalised,
-    scan_background_subtraction,
+    # scan_normalised_edges,
+    # scan_norm,
+    # scan_background_subtraction,
 )
+
 from pyNexafs.resources import ICONS
 from pyNexafs.gui.widgets.graphing.matplotlib.graphs import (
     FigureCanvas,
@@ -18,60 +19,25 @@ from pyNexafs.gui.widgets.graphing.matplotlib.graphs import (
     NavTBQT,
 )
 
-
-class backgroundMethod(Enum):
-    NONE = 0
-    MOST_RECENT_KEYWORD = 1
-    CLOSEST_TIME_KEYWORD = 2
-    FIXED_SCAN = 3
-
-
 class normaliserSettings:
     def __init__(
         self,
-        background_method: backgroundMethod = backgroundMethod.NONE,
-        pre_edge_norm_method: scan_normalised_edges.PREEDGE_NORM_TYPE = scan_normalised_edges.PREEDGE_NORM_TYPE.NONE,
-        post_edge_norm_method: scan_normalised_edges.POSTEDGE_NORM_TYPE = scan_normalised_edges.POSTEDGE_NORM_TYPE.NONE,
+        background_method: method = method.NONE,
         background_scan: scan_abstract = None,
         background_filter_str: str = None,
-        pre_edge_domain: tuple[float, float] = (None, None),
-        post_edge_domain: tuple[float, float] = (None, None),
-        pre_edge_level: float | None = None,
-        post_edge_level: float | None = None,
+
     ):
         self._background_method = background_method
-        self._pre_edge_norm_method = pre_edge_norm_method
-        self._post_edge_norm_method = post_edge_norm_method
         self._background_scan = background_scan
         self._background_filter_str = background_filter_str
-        self._pre_edge_domain = pre_edge_domain
-        self._post_edge_domain = post_edge_domain
-        self._pre_edge_level = pre_edge_level
-        self._post_edge_level = post_edge_level
 
     @property
-    def background_method(self) -> backgroundMethod:
+    def background_method(self) -> method:
         return self._background_method
 
     @background_method.setter
-    def background_method(self, method: backgroundMethod):
+    def background_method(self, method: method):
         self._background_method = method
-
-    @property
-    def pre_edge_norm_method(self) -> scan_normalised_edges.PREEDGE_NORM_TYPE:
-        return self._pre_edge_norm_method
-
-    @pre_edge_norm_method.setter
-    def pre_edge_norm_method(self, method: scan_normalised_edges.PREEDGE_NORM_TYPE):
-        self._pre_edge_norm_method = method
-
-    @property
-    def post_edge_norm_method(self) -> scan_normalised_edges.POSTEDGE_NORM_TYPE:
-        return self._post_edge_norm_method
-
-    @post_edge_norm_method.setter
-    def post_edge_norm_method(self, method: scan_normalised_edges.POSTEDGE_NORM_TYPE):
-        self._post_edge_norm_method = method
 
     @property
     def background_scan(self) -> scan_abstract:
@@ -89,33 +55,6 @@ class normaliserSettings:
     def background_filter(self, filter_str: str):
         self._background_filter_str = filter_str
 
-    @property
-    def pre_edge_domain(self) -> tuple[float, float]:
-        return self._pre_edge_domain
-
-    @pre_edge_domain.setter
-    def pre_edge_domain(self, domain: tuple[float, float]):
-        self._pre_edge_domain = domain
-
-    @property
-    def post_edge_domain(self) -> tuple[float, float]:
-        return self._post_edge_domain
-
-    @post_edge_domain.setter
-    def post_edge_domain(self, domain: tuple[float, float]):
-        self._post_edge_domain = domain
-
-    @property
-    def pre_edge_level(self) -> float | None:
-        return self._pre_edge_level
-
-    @pre_edge_level.setter
-    def pre_edge_level(self, level: float | None):
-        self._pre_edge_level = level
-
-    @property
-    def post_edge_level(self) -> float | None:
-        return self._post_edge_level
 
 
 class channelNormaliser(QtWidgets.QWidget):
@@ -135,7 +74,7 @@ class channelNormaliser(QtWidgets.QWidget):
 
     def __init__(
         self,
-        channel_method: backgroundMethod = backgroundMethod.NONE,
+        channel_method: method = method.NONE,
         channel_list: list[str] = [],
         scan_list: list[Type[scan_abstract]] = [],
         parent=None,
@@ -150,7 +89,7 @@ class channelNormaliser(QtWidgets.QWidget):
         self._channel_combobox.addItems(
             [
                 name.capitalize().replace("_", " ")
-                for name in backgroundMethod._member_names_
+                for name in method._member_names_
             ]
         )
         self._channel_combobox.setCurrentIndex(channel_method.value)
@@ -172,11 +111,11 @@ class channelNormaliser(QtWidgets.QWidget):
         self.channel_list = channel_list
 
     @property
-    def channel_method(self) -> backgroundMethod:
+    def channel_method(self) -> method:
         return self._channel_method
 
     @channel_method.setter
-    def channel_method(self, method: backgroundMethod):
+    def channel_method(self, method: method):
         self._channel_method = method
         if self._channel_combobox.currentIndex() != method.value:
             self._channel_combobox.setCurrentIndex(method.value)
@@ -240,7 +179,7 @@ class scanNormaliser(QtWidgets.QWidget):
         self._background_method_combobox.addItems(
             [
                 name.capitalize().replace("_", " ")
-                for name in backgroundMethod._member_names_
+                for name in method._member_names_
             ]
         )
         self._background_filter = QtWidgets.QLineEdit()
@@ -364,7 +303,7 @@ class scanNormaliser(QtWidgets.QWidget):
 
         ### Intialise UI settings
         # Set default background method, also showing/hiding elements.
-        self.background_method = backgroundMethod.NONE
+        self.background_method = method.NONE
         self.pre_edge_normalisation_method = (
             scan_normalised_edges.PREEDGE_NORM_TYPE.NONE
         )
@@ -380,17 +319,17 @@ class scanNormaliser(QtWidgets.QWidget):
             self.settings = normalisation_settings
 
     @property
-    def background_method(self) -> backgroundMethod:
+    def background_method(self) -> method:
         return self._background_method
 
     @background_method.setter
-    def background_method(self, method: backgroundMethod):
+    def background_method(self, method: method):
         self._background_method = method
         # Update index if unmatched
         if self._background_method_combobox.currentIndex() != method.value:
             self._background_method_combobox.setCurrentIndex(method.value)
         # Enable / Disable filter
-        if method == backgroundMethod.NONE or method == backgroundMethod.FIXED_SCAN:
+        if method == method.NONE or method == method.FIXED_SCAN:
             self._background_filter.setEnabled(False)
             self._background_filter.hide()
         else:
@@ -398,7 +337,7 @@ class scanNormaliser(QtWidgets.QWidget):
             self._background_filter.show()
 
         # Enable / Disable scan selection
-        if method == backgroundMethod.FIXED_SCAN:
+        if method == method.FIXED_SCAN:
             self._background_scan_combobox.setEnabled(True)
             self._background_scan_combobox.show()
             self._background_scan_label.setEnabled(True)
@@ -416,10 +355,10 @@ class scanNormaliser(QtWidgets.QWidget):
     @background_scan.setter
     def background_scan(self, scan: Type[scan_abstract]):
         self._background_scan = scan
-        if self._background_method != backgroundMethod.FIXED_SCAN:
+        if self._background_method != method.FIXED_SCAN:
             self._background_filter.setEnabled(False)
             self._background_method_combobox.setCurrentIndex(
-                backgroundMethod.FIXED_SCAN.value
+                method.FIXED_SCAN.value
             )
 
     @property
@@ -432,7 +371,7 @@ class scanNormaliser(QtWidgets.QWidget):
 
     def _on_background_method_change(self):
         # Get new method:
-        self.background_method = backgroundMethod(
+        self.background_method = method(
             self._background_method_combobox.currentIndex()
         )
 
@@ -645,14 +584,14 @@ class scanNormaliser(QtWidgets.QWidget):
             and len(self._graph_scans) > 0
             and len(self._dataseries_selected) > 0
         ):
-            if self._background_method == backgroundMethod.FIXED_SCAN:
+            if self._background_method == method.FIXED_SCAN:
                 pass
         return
 
     @property
     def settings(self) -> normaliserSettings | None:
         # Check which settings are set to None
-        nullBM = self.background_method == backgroundMethod.NONE
+        nullBM = self.background_method == method.NONE
         nullPRE = (
             self.pre_edge_normalisation_method
             == scan_normalised_edges.PREEDGE_NORM_TYPE.NONE
@@ -725,7 +664,7 @@ class scanNormaliserDialog(QtWidgets.QDialog):
         self._layout.addWidget(self._buttonBox)
 
     def validate_settings(self) -> tuple[bool, str]:
-        if self._normaliser.background_method == backgroundMethod.FIXED_SCAN:
+        if self._normaliser.background_method == method.FIXED_SCAN:
             if self._normaliser.background_scan is None:
                 return (False, "Background scan not selected.")
         # TODO implement futher validation checks.

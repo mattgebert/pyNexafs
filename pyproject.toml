@@ -104,8 +104,8 @@ gui = [
     ]
 
     exclude = [
-        'tests*',
-        'gui*',
+        '^tests*$',
+        '.*/gui/.*',
     ]
 
     override_SS05 = [

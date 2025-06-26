@@ -1,9 +1,9 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
 from pyNexafs.parsers._base import parser_base
-from pyNexafs.nexafs.scan import scan_base
+from pyNexafs.nexafs.scan import scanBase
 from typing import Type
 import sys
-from pyNexafs.gui.widgets.io.dir_selection import directory_selector
+from pyNexafs.gui.widgets.io.dir_selection import directorySelector
 import pyNexafs.parsers.au as AU_PARSERS
 from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas, NEXAFS_NavQT
 import warnings
@@ -14,14 +14,15 @@ import os
 import matplotlib.pyplot as plt
 
 
-class save_directory_selector(directory_selector):
+class save_directory_selector(directorySelector):
 
     edit_description = "Path to save QANT-compatible data to."
     dialog_caption = "Select Save Directory"
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.insertWidget(0, QtWidgets.QLabel("Save Directory:"))
+        layout: QtWidgets.QHBoxLayout = self.layout()
+        layout.insertWidget(0, QtWidgets.QLabel("Save Directory:"))
 
 
 class NaN_OPTION(Enum):
@@ -94,7 +95,7 @@ class horLine(QtWidgets.QFrame):
 
 
 class nexafsParserConverter(QtWidgets.QWidget):
-    def __init__(self, parsers: list[Type[parser_base | scan_base]] = [], parent=None):
+    def __init__(self, parsers: list[Type[parser_base | scanBase]] = [], parent=None):
         super().__init__(parent)
         self._parsers = {parser.filename: parser for parser in parsers}
         self._conversions = []
@@ -242,7 +243,7 @@ class nexafsParserConverter(QtWidgets.QWidget):
 
         # Add to layout
         self._layout.addWidget(title_label)
-        self._layout.addLayout(dir_sel)
+        self._layout.addWidget(dir_sel)
         self._layout.addWidget(horLine())
         self._layout.addWidget(file_widget)
         self._layout.addWidget(horLine())
@@ -329,9 +330,7 @@ class nexafsParserConverter(QtWidgets.QWidget):
             # Graph both converted and original data
             fig = self.fig
             ax = self.fig.add_subplot(111)
-            x_idx = current_parser.search_label_index(
-                current_parser.COLUMN_ASSIGNMENTS["x"]
-            )
+            x_idx = current_parser.label_index(current_parser.COLUMN_ASSIGNMENTS["x"])
 
             # Plot the converted data depending on the NaN method.
             nan_method = NaN_OPTION(self.nan_method.currentIndex())
@@ -424,7 +423,7 @@ class nexafsParserConverter(QtWidgets.QWidget):
             pass
 
     def on_save_to_file(self):
-        base_dir = self.dir_sel.folder_path
+        base_dir = self.dir_sel._folder_path
         init_override = False
         if len(self._conversions) > 0:
             self.progress.setRange(0, len(self._conversions))
@@ -531,11 +530,11 @@ class nexafsParserConverter(QtWidgets.QWidget):
 
     @staticmethod
     def calculation_single(
-        parser: parser_base | scan_base,
+        parser: parser_base | scanBase,
         method: NaN_OPTION,
         treat_zero_as_nan: bool = False,
         zero_block_min_size=3,
-    ) -> parser_base | scan_base:
+    ) -> parser_base | scanBase:
         # Copy parser
         copy_parser = parser.copy()
         # Treat zeros as NaN values
@@ -558,7 +557,7 @@ class nexafsParserConverter(QtWidgets.QWidget):
         copy_parser.data = copy_parser.data[start_idx:end_idx]
 
         # Act on NaN values
-        x_idx = parser.search_label_index(parser.COLUMN_ASSIGNMENTS["x"])
+        x_idx = parser.label_index(parser.COLUMN_ASSIGNMENTS["x"])
         match method:
             case NaN_OPTION.REMOVE_ROWS:
                 # Remove data rows that contain nans:
