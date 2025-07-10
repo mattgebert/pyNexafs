@@ -1,4 +1,4 @@
-""""Tests the scan classes and their methods"""
+""" "Tests the scan classes and their methods"""
 
 import pytest
 
