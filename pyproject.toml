@@ -11,7 +11,7 @@
 [project]
     # Project information
     name = "pyNexafs"
-    version = "0.0.0"
+    version = "1.0.0"
     description = "A package for processing and analysing NEXAFS data."
     readme = "README.md"
     license = {file = "LICENSE"}
@@ -130,11 +130,11 @@ version_toml = ["pyproject.toml:project.version"]
 build_command = "python -m build --sdist --wheel ."
 commit_parser = "conventional"
 
-[tool.semantic_release.branches.alpha]
+[tool.semantic_release.branches.beta]
 # Matches branches with the prefixes 'feat/', 'fix/', or 'perf/'.
 match = "^(feat|fix|perf)/.+"
 prerelease = true
-prerelease_token = "alpha"
+prerelease_token = "beta"
 
 [tool.semantic_release.changelog.default_templates]
 changelog_file = "docs/CHANGELOG.rst"
