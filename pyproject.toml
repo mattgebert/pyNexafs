@@ -131,6 +131,30 @@ match = "^(feat|fix|perf)/.+"
 prerelease = true
 prerelease_token = "alpha"
 
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "docs/CHANGELOG.rst"
+output_format = "rst" # or "md" for Markdown format
+
+[tool.semantic_release.changelog]
+# Recommended patterns for conventional commits parser that is scope aware
+exclude_commit_patterns = [
+    '''chore(?:\([^)]*?\))?: .+''',
+    '''ci(?:\([^)]*?\))?: .+''',
+    '''refactor(?:\([^)]*?\))?: .+''',
+    '''style(?:\([^)]*?\))?: .+''',
+    '''test(?:\([^)]*?\))?: .+''',
+    '''build\((?!deps\): .+)''',
+    '''Initial [Cc]ommit.*''',
+]
+
+[tool.semantic_release.commit_parser_options]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+# other_allowed_tags = ["build", "chore", "ci", "docs", "style", "refactor", "test"]
+# allowed_tags = ["feat", "fix", "perf", "build", "chore", "ci", "docs", "style", "refactor", "test"]
+# default_bump_level = 0
+parse_squash_commits = true
+ignore_merge_commits = true
 
 # build_command_env = []
 # assets = []
@@ -178,14 +202,6 @@ prerelease_token = "alpha"
 # env = "GIT_COMMIT_AUTHOR"
 # default = "semantic-release <semantic-release>"
 
-[tool.semantic_release.commit_parser_options]
-minor_tags = ["feat"]
-patch_tags = ["fix", "perf"]
-# other_allowed_tags = ["build", "chore", "ci", "docs", "style", "refactor", "test"]
-# allowed_tags = ["feat", "fix", "perf", "build", "chore", "ci", "docs", "style", "refactor", "test"]
-# default_bump_level = 0
-parse_squash_commits = true
-ignore_merge_commits = true
 
 # [tool.semantic_release.remote]
 # name = "origin"
