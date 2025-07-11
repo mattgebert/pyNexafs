@@ -1,5 +1,5 @@
 name: Linting (NumpyDoc & Black)
-run-name: ${{ github.actor }} - Linting (PyLint, NumpyDoc, Flake8, Black)
+run-name: ${{ github.actor }} - Linting (NumpyDoc & Black)
 
 on:
   push:
