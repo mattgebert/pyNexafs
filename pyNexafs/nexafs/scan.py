@@ -106,7 +106,7 @@ class scanAbstract(metaclass=abc.ABCMeta):
             The creation time of the file.
 
         Raises
-        -------
+        ------
         NotImplementedError
             If the ctime property is not implemented in the subclass.
         """
@@ -123,7 +123,7 @@ class scanAbstract(metaclass=abc.ABCMeta):
             The modification time of the file.
 
         Raises
-        -------
+        ------
         NotImplementedError
             If the mtime property is not implemented in the subclass.
         """
