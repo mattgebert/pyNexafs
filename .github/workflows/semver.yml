@@ -18,6 +18,8 @@ permissions:
 jobs:
   semver-release:
     name: Run Python 🐍 Semantic Version to stamp distribution 📦
+    # Only run this job on the master account.
+    if: ${{ github.actor == 'xraysoftmat'}}
     runs-on: ubuntu-latest
     defaults: # https://github.com/actions/upload-artifact/issues/232#issuecomment-1065422577
       run:
@@ -140,6 +142,8 @@ jobs:
         working-directory: ./pyNexafs
     needs: semver-release # match the job name above
     if: |
+      # Only run this job on the master account.
+      ${{ github.actor == 'xraysoftmat'}}
       ${{ needs.semver-release.outputs.released == 'true' }}
       ${{ startsWith(github.ref, 'refs/tags/') }} # only publish to PyPI on tag pushes
 
