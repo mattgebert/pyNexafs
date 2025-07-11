@@ -81,6 +81,12 @@ jobs:
 
           printf '%s\n' "Verified upstream branch has not changed, continuing with release..."
 
+      # - name: Delete Previous | Distribution Artifacts
+      #   uses: actions/delete-artifact@v4 ???
+      #   with:
+      #     name: distribution-artifacts
+      #     path: dist
+
       - name: Action | Semantic Version Release
         id: release
         # Adjust tag with desired version if applicable.
@@ -116,6 +122,7 @@ jobs:
         with:
           name: distribution-artifacts
           path: dist
+          overwrite: true
           if-no-files-found: error
 
   pypi-deploy:
