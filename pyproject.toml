@@ -25,7 +25,7 @@
     ]
 
     # Project compatibility:
-    requires-python = ">=3.10"
+    requires-python = ">=3.11"
     dependencies = [
         "numpy",
         "overrides", # for type hinting
