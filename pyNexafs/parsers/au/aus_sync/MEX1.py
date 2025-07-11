@@ -637,19 +637,21 @@ def MEX1_to_QANT_AUMainAsc(
     elif "created" in parser.params and isinstance(
         parser.params["created"], dt.datetime
     ):
+        created_timestamp: dt.datetime = parser.params["created"]
         ostrs.append(
-            f"# Scan time = {parser.params['created'].strftime(r"%b %d, %Y %H:%M:%S.%f")}\n"
+            f"# Scan time = {created_timestamp.strftime(r'%b %d, %Y %H:%M:%S.%f')}\n"
         )
     elif "modified" in parser.params and isinstance(
         parser.params["modified"], dt.datetime
     ):
+        mod_timestamp: dt.datetime = parser.params["modified"]
         ostrs.append(
-            f"# Scan time = {parser.params['modified'].strftime(r"%b %d, %Y %H:%M:%S.%f")}\n"
+            f"# Scan time = {mod_timestamp.strftime(r'%b %d, %Y %H:%M:%S.%f')}\n"
         )
     else:
         # Use current time
         ostrs.append(
-            f"# Scan time = {dt.datetime.now().strftime(r"%b %d, %Y %H:%M:%S.%f")}\n"
+            f"# Scan time = {dt.datetime.now().strftime(r'%b %d, %Y %H:%M:%S.%f')}\n"
         )
     ostrs.append("\n")
 
