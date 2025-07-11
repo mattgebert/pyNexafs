@@ -46,7 +46,7 @@ jobs:
 
       - name: Install
         run: |
-          uv install . --group dev --group docs
+          uv pip install . --group dev --group docs
           pip list
 
       - name: Run test suite
