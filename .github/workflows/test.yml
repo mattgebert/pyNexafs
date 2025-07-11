@@ -46,8 +46,9 @@ jobs:
 
       - name: Install
         run: |
-          uv pip install . --group dev --group docs
+          uv pip install . --group dev --group docs --system
           pip list
+        # system is used to install the package globally in the test environment.
 
       - name: Run test suite
         run: |
