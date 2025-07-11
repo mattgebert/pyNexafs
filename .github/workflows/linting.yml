@@ -36,4 +36,4 @@ jobs:
 
     - name: Analysing the code with numpydoc
       run: | # Exclude test and gui files.
-        numpydoc lint --config . $(git ls-files -- '*.py' ':!:tests/' ':!:gui/')
+        numpydoc lint --config . $(git ls-files -- '*.py' ':!:*/tests/*' ':!:*/gui/*')
