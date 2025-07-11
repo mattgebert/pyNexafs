@@ -19,6 +19,9 @@ jobs:
   semver-release:
     name: Run Python 🐍 Semantic Version to stamp distribution 📦
     runs-on: ubuntu-latest
+    defaults: # https://github.com/actions/upload-artifact/issues/232#issuecomment-1065422577
+      run:
+        working-directory: ./pyNexafs
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.ref_name }}-release
       cancel-in-progress: false
@@ -107,7 +110,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: distribution-artifacts
-          path: dist
+          path: pyNexafs/dist
           if-no-files-found: error
 
       - name: Publish | Upload to GitHub Release Assets
@@ -121,7 +124,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: distribution-artifacts
-          path: dist
+          path: pyNexafs/dist
           overwrite: true
           if-no-files-found: error
 
@@ -132,6 +135,9 @@ jobs:
     #    and it won't require reversing the release.
     name: Publish Python 🐍 distribution 📦 release to PyPI
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./pyNexafs
     needs: semver-release # match the job name above
     if: |
       ${{ needs.semver-release.outputs.released == 'true' }}
@@ -151,7 +157,7 @@ jobs:
         id: artifact-download
         with:
           name: distribution-artifacts # Match the name used in the upload step
-          path: dist # Match the path used in the upload step
+          path: pyNexafs/dist # Match the path used in the upload step
 
       - name: Publish package distribution 📦 to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -175,7 +181,7 @@ jobs:
         id: artifact-download
         with:
           name: distribution-artifacts # Match the name used in the upload step
-          path: dist # Match the path used in the upload step
+          path: pyNexafs/dist # Match the path used in the upload step
 
       - name: Publish distribution 📦 to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
