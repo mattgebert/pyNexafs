@@ -1,4 +1,4 @@
-name: Linting (PyLint, NumpyDoc, Flake8, Black)
+name: Linting (NumpyDoc & Black)
 run-name: ${{ github.actor }} - Linting (PyLint, NumpyDoc, Flake8, Black)
 
 on:
@@ -36,4 +36,4 @@ jobs:
 
     - name: Analysing the code with numpydoc
       run: | # Exclude test and gui files.
-        numpydoc lint --config . $(git ls-files -- '*.py' ':!:*/tests/*' ':!:*/gui/*')
+        numpydoc lint --config . $(git ls-files -- '*.py' ':!:*tests/*' ':!:*gui/*')
