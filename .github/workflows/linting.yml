@@ -1,6 +1,10 @@
 name: Linting (NumpyDoc & Black)
 run-name: ${{ github.actor }} - Linting (NumpyDoc & Black)
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}-linting
+  cancel-in-progress: true
+
 on:
   push:
   pull_request:

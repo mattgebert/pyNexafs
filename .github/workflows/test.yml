@@ -1,7 +1,8 @@
-name: pyNexafs tests
+name: pyNexafs Tests (PyTest, Coveralls)
+run-name: ${{ github.actor }} - Tests (PyTest, Coveralls)
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}
+  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}-tests
   cancel-in-progress: true
 
 on:

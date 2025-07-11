@@ -20,7 +20,7 @@ jobs:
     name: Run Python 🐍 Semantic Version to stamp distribution 📦
     runs-on: ubuntu-latest
     concurrency:
-      group: ${{ github.workflow }}-release-${{ github.ref_name }}
+      group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.ref_name }}-release
       cancel-in-progress: false
     permissions:
       contents: write
