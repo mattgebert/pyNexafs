@@ -65,6 +65,8 @@ gui = [
     "pyyaml",
 ]
 
+[tool.setuptools.packages.find]
+exclude = ["docs*", "tests*"]
 
 # [tool.setuptools.packages.find] # All the following settings are optional:
 #     where = ["."]  # Root directory
