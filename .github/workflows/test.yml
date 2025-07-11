@@ -7,9 +7,9 @@ concurrency:
 
 on:
   push:
-    branches: [all]
   pull_request:
-    branches: [all]
+    branches:
+      - main, dev
 
 jobs:
   test:
