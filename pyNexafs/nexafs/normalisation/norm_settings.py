@@ -70,8 +70,7 @@ class configMeta(ABCMeta):
                 args = args[: args.index("args")]
             if len(args) != len(defs):
                 raise NotImplementedError(
-                    f"Class {name} must have default arguments for __init__ variables {
-                    init_fn.__code__.co_varnames[:-(len(init_fn.__code__.co_varnames - 1 - len(init_fn.__defaults__)))]}"
+                    f"Class {name} must have default arguments for __init__ variables {init_fn.__code__.co_varnames[:-(len(init_fn.__code__.co_varnames - 1 - len(init_fn.__defaults__)))]}"
                 )
         return super().__new__(cls, name, bases, dct)
 
