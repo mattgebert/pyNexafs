@@ -2,22 +2,32 @@
 Parser classes for the Medium Energy X-ray 2 (MEX1) beamline at the Australian Synchrotron.
 """
 
-import PyQt6
-from PyQt6 import QtWidgets
+# Internal
 from pyNexafs.parsers import parser_base, parser_meta
-from pyNexafs.nexafs.scan import scan_base
 from pyNexafs.utils.mda import MDAFileReader
-from pyNexafs.gui.widgets.reducer import EnergyBinReducerDialog
+from pyNexafs.utils.reduction import reducer
+from pyNexafs.parsers.au.aus_sync.MEX1_relabels import RELABELS
+
+# Standard
 from io import TextIOWrapper
-from typing import Any, Self
-from numpy.typing import NDArray
-import numpy as np
+from typing import Any
 import ast
 import warnings
 import datetime as dt
 import os
-from pyNexafs.utils.reduction import reducer
-import traceback
+
+# External
+from numpy.typing import NDArray
+import numpy as np
+
+has_PYQT: bool
+try:
+    from PyQt6 import QtWidgets
+
+    has_PYQT = True
+    from pyNexafs.gui.widgets.reducer import EnergyBinReducerDialog
+except ImportError:
+    has_PYQT = False
 
 # TODO: What are the values for MEX1? What are the bins?
 # Additional data provided by the MEX1 beamline for the data reduction
@@ -56,8 +66,27 @@ class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
     """
     Australian Synchrotron Soft X-ray (SXR) NEXAFS parser.
 
+    WARNING: This parser is experimental, and may not be fully functional.
+
     Parses data formats including '.asc' and '.mda' formats from the SXR
     Near Edge X-ray Absorption Fine Structure (NEXAFS) tool.
+
+    Parameters
+    ----------
+    filepath : str | None
+        The file path to the data file.
+    header_only : bool, optional
+        If True, only the header of the file is read, by default False.
+    relabel : bool | None, optional
+        If True, then the parser will relabel the data columns, by default None.
+    energy_bin_range : tuple[float, float] | None = None
+        The energy range to bin the data, by default None.
+    use_recent_binning : bool, optional
+        If True, then the '.mda' parsers will use the most recent class
+        reduction binning settings. By default True, as UIs will use this,
+        and assume the parser will use the same binning settings.
+        TODO Perhaps make this a property of the base class, that way UIs can
+        reset such settings if needed upon directory change etc.
 
     Attributes
     ----------
@@ -65,21 +94,6 @@ class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
     SUMMARY_PARAM_RAW_NAMES
     COLUMN_ASSIGNMENTS
     RELABELS
-
-    Parameters
-    ----------
-    filepath : str | None
-        The file path to the data file.
-    header_only : bool, optional
-        If True, only the header of the file is read, by default False
-    relabel : bool | None, optional
-        If True, then the parser will relabel the data columns, by default None
-    use_recent_binning : bool, optional
-        If True, then the '.mda' parsers will use the most recent class
-        reduction binning settings. By default True, as UIs will use this,
-        and assume the parser will use the same binning settings.
-        TODO: Perhaps make this a property of the base class, that way UIs can
-        reset such settings if needed upon directory change etc.
 
     Notes
     -----
@@ -111,145 +125,22 @@ class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
         "x_errs": None,
     }
 
-    RELABELS = {
-        # -------------------MDA File-------------------
-        # 'MEX1SSCAN01:saveData_comment1':,
-        # 'MEX1SSCAN01:saveData_comment2':,
-        # 'MEX1SSCAN01:saveData_realTime1D':,
-        # 'MEX1SSCAN01:saveData_fileSystem':,
-        # 'MEX1SSCAN01:saveData_subDir':,
-        # 'MEX1SSCAN01:saveData_fileName':,
-        # 'MEX1SSCAN01:scan1.P1SM':,
-        # 'MEX1SSCAN01:scan1.P2SM':,
-        # 'MEX1SSCAN01:scan1.P3SM':,
-        # 'MEX1SSCAN01:scan1.P4SM':,
-        # 'MEX1SSCAN01:scanTypeSpec':,
-        # 'MEX1SSCAN01:scan1.BSPV':,
-        # 'MEX1SSCAN01:scan1.BSCD':,
-        # 'MEX1SSCAN01:scan1.BSWAIT':,
-        # 'MEX1SSCAN01:scan1.ASPV':,
-        # 'MEX1SSCAN01:scan1.ASCD':,
-        # 'MEX1SSCAN01:scan1.ASWAIT':,
-        # 'MEX1SSCAN01:scan1.PDLY':,
-        # 'MEX1SSCAN01:scan1.DDLY':,
-        # 'TS01:SECONDS_MONITOR':,
-        # 'MEX1ES01GLU01:MEX_TIME':,
-        # 'MEX1SLT01:VSIZE.RBV':,
-        # 'MEX1SLT01:VCENTRE.RBV':,
-        # 'MEX1SLT01:HSIZE.RBV':,
-        # 'MEX1SLT01:HCENTRE.RBV':,
-        # 'MEX1SLT01:VSIZE.OFF':,
-        # 'MEX1SLT01:VCENTRE.OFF':,
-        # 'MEX1SLT01:HSIZE.OFF':,
-        # 'MEX1SLT01:HCENTRE.OFF':,
-        # 'MEX1SLT01MOT01.RBV':,
-        # 'MEX1SLT01MOT03.RBV':,
-        # 'MEX1SLT01MOT02.RBV':,
-        # 'MEX1SLT01MOT04.RBV':,
-        # 'MEX1SCRN01LGHT01:BRIGHTNESS_MONITOR':,
-        # 'MEX1SCRN01ACTP01:INSERT_WITHDRAW_STATUS':,
-        # 'MEX1MIR01:POSITIONER:select.RVAL':,
-        # 'MEX1MIR01:TRANS.RBV':,
-        # 'MEX1MIR01:YAW.RBV':,
-        # 'MEX1MIR01MOT06.RBV':,
-        # 'MEX1MIR01:HEIGHT.RBV':,
-        # 'MEX1MIR01:ROLL.RBV':,
-        # 'MEX1MIR01:PITCH.RBV':,
-        # 'MEX1MIR01MOT01.RBV':,
-        # 'MEX1MIR01MOT02.RBV':,
-        # 'MEX1MIR01MOT03.RBV':,
-        # 'MEX1MIR01MOT04.RBV':,
-        # 'MEX1MIR01MOT05.RBV':,
-        # 'MEX1DCM01:ENERGY_RBV':,
-        # 'MEX1DCM01:ENERGY_EV_RBV':,
-        # 'MEX1DCM01:OFFSET_RBV':,
-        # 'MEX1DCM01:XTAL_INBEAM.RVAL':,
-        # 'MEX1DCM01:FINE_PITCH_MRAD_RBV':,
-        # 'MEX1DCM01:FINE_ROLL_MRAD_RBV':,
-        # 'MEX1DCM01MOT01.RBV':,
-        # 'MEX1DCM01MOT02.RBV':,
-        # 'MEX1DCM01MOT05.RBV':,
-        # 'MEX1DCM01MOT03.RBV':,
-        # 'MEX1DCM01MOT04.RBV':,
-        # 'MEX1DCM01MOT01.OFF':,
-        # 'MEX1DCM01MOT02.OFF':,
-        # 'MEX1DCM01:y2_track':,
-        # 'MEX1DCM01:y2_mvmin':,
-        # 'MEX1DCM01:th_mvmin':,
-        # 'MEX1DCM01:Dspace':,
-        # 'MEX1DCM01:Mono1110DSpace':,
-        # 'MEX1DCM01:Mono1110ThetaOffset':,
-        # 'MEX1DCM01:Mono1110HeightOffset':,
-        # 'MEX1DCM01:Mono1110Pitch':,
-        # 'MEX1DCM01:Mono1110Roll':,
-        # 'MEX1DCM01:Mono1110Centre':,
-        # 'MEX1DCM01:Mono11130DSpace':,
-        # 'MEX1DCM01:Mono11130ThetaOffset':,
-        # 'MEX1DCM01:Mono11130HeightOffset':,
-        # 'MEX1DCM01:Mono11130Pitch':,
-        # 'MEX1DCM01:Mono11130Roll':,
-        # 'MEX1DCM01:Mono11130Centre':,
-        "MEX1ES01DET01:MCA1:ArrayData": "MCA Ch1",
-        "MEX1ES01DET01:MCA2:ArrayData": "MCA Ch2",
-        "MEX1ES01DET01:MCA3:ArrayData": "MCA Ch3",
-        "MEX1ES01DET01:MCA4:ArrayData": "MCA Ch4",
-        # -------------------XDI File-------------------
-        # 'Facility.name':,
-        # 'Beamline.name':,
-        # 'Mono.d_spacing':,
-        # 'Element.symbol':,
-        # 'Element.edge':,
-        # 'Processing.version':,
-        # 'Reference.Element':,
-        # 'ROI.start_bin':,
-        # 'ROI.end_bin':,
-        # 'File.Name':,
-        "MEX1ES01ZEB01:CALC_ENERGY_EV": "energy",
-        "MEX1ES01ZEB01:BRAGG_WITH_OFFSET": "bragg",
-        "SR11BCM01:CURRENT_MONITOR": "ring_current",
-        "MEX1ES01ZEB01:GATE_TIME_SET": "count_time",
-        "MEX1ES01DAQ01:ch1:S:MeanValue_RBV": "i0",
-        "MEX1ES01DAQ01:ch2:S:MeanValue_RBV": "i1",
-        "MEX1ES01DAQ01:ch3:S:MeanValue_RBV": "i2",
-        "MEX1ES01DET01:C1SCA:0:Value_RBV": "S1_clock_ticks",
-        "MEX1ES01DET01:C2SCA:0:Value_RBV": "S2_clock_ticks",
-        "MEX1ES01DET01:C3SCA:0:Value_RBV": "S3_clock_ticks",
-        "MEX1ES01DET01:C4SCA:0:Value_RBV": "S4_clock_ticks",
-        "MEX1ES01DET01:C1SCA:5:Value_RBV": "S1_window1",
-        "MEX1ES01DET01:C2SCA:5:Value_RBV": "S2_window1",
-        "MEX1ES01DET01:C3SCA:5:Value_RBV": "S3_window1",
-        "MEX1ES01DET01:C4SCA:5:Value_RBV": "S4_window1",
-        "MEX1ES01DET01:C1SCA:8:Value_RBV": "S1_DTFactor",
-        "MEX1ES01DET01:C2SCA:8:Value_RBV": "S2_DTFactor",
-        "MEX1ES01DET01:C3SCA:8:Value_RBV": "S3_DTFactor",
-        "MEX1ES01DET01:C4SCA:8:Value_RBV": "S4_DTFactor",
-        "S1_real_time - S1_clock_ticks / 80MHz (clock rate xspress3 mini)": "S1_real_time (clock_ticks / 80MHz)",
-        "S2_real_time - S2_clock_ticks / 80MHz (clock rate xspress3 mini)": "S2_real_time",
-        "S3_real_time - S3_clock_ticks / 80MHz (clock rate xspress3 mini)": "S3_real_time",
-        "S4_real_time - S4_clock_ticks / 80MHz (clock rate xspress3 mini)": "S4_real_time",
-        "S1_ifluor - S1_window1 * S1_DTFactor / S1_real_time": "S1_ifluor (window * dead_time / real_time)",
-        "S2_ifluor - S2_window1 * S2_DTFactor / S2_real_time": "S2_ifluor",
-        "S3_ifluor - S3_window1 * S3_DTFactor / S3_real_time": "S3_ifluor",
-        "S4_ifluor - S4_window1 * S4_DTFactor / S4_real_time": "S4_ifluor",
-        "avg_ifluor - (ifluor_S1 + ifluor_S2 + ifluor_S3 + ifluor_S4)/4 -- deadtime correction and time normalisation per sensor": "ifluor_avg_corr",
-        "S1_mufluor - S1_ifluor / i0": "S1_mufluor (normalised by i0)",
-        "S2_mufluor - S2_ifluor / i0": "S2_mufluor",
-        "S3_mufluor - S3_ifluor / i0": "S3_mufluor",
-        "S4_mufluor - S4_ifluor / i0": "S4_mufluor",
-        "avg_mufluor - ifluor_avg_corr / i0 -- deadtime correction and time normalisation per sensor, normalised by i0": "mufluor_avg_corr",
-    }
+    RELABELS = RELABELS
 
     def __init__(
         self,
         filepath: str | None,
         header_only: bool = False,
         relabel: bool | None = None,
+        energy_bin_range: tuple[float, float] | None = None,
         use_recent_binning: bool = True,
     ) -> None:
         # Manually add kwargs
         kwargs = {}
         if use_recent_binning is not None:
             kwargs.update(use_recent_binning=use_recent_binning)
+        if energy_bin_range is not None:
+            kwargs.update(energy_bin_range=energy_bin_range)
         super().__init__(filepath, header_only, relabel, **kwargs)
 
     @classmethod
@@ -258,14 +149,15 @@ class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
         file: TextIOWrapper,
         header_only: bool = False,
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
-        """Reads Australian Synchrotron MEX1 .xdi files, as of 2024-Aug.
+        """
+        Read Australian Synchrotron MEX1 .xdi files, as of 2024-Aug.
 
         Parameters
         ----------
         file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.xdi', 'r'))
+            TextIOWrapper of the datafile (i.e. open('file.xdi', 'r')).
         header_only : bool, optional
-            If True, then only the header of the file is read and NDArray is returned as None, by default False
+            If True, then only the header of the file is read and NDArray is returned as None, by default False.
 
         Returns
         -------
@@ -390,27 +282,27 @@ class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
         cls,
         file: TextIOWrapper,
         header_only: bool = False,
-        use_recent_binning: bool = False,
         energy_bin_range: tuple[float, float] | None = None,
+        use_recent_binning: bool = False,
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
         """
-        Reads Australian Synchrotron .mda files for MEX1 Data
+        Read an Australian Synchrotron MEX1 .mda files.
 
         Created for data as of 2024-Aug.
 
         Parameters
         ----------
         file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.mda', 'r'))
+            TextIOWrapper of the datafile (i.e. open('file.mda', 'r')).
         header_only : bool, optional
             If True, then only the header of the file is read and
-            NDArray is returned as None, by default False
+            NDArray is returned as None, by default False.
         energy_bin_range : tuple[float, float] | None, optional
-            The energy range to bin the data, by default None
+            The energy range to bin the data, by default None.
         use_recent_binning : bool, optional
             If True, then the most recent binning settings are used
+            for data reduction, by default False.
             Ignored if `energy_bin_range` is specified.
-            for data reduction, by default False
 
         Returns
         -------
@@ -482,21 +374,27 @@ class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
                     # Uses the most recent binning settings.
                     red = reducer(energies, dataset, bin_e)
                 else:
-                    # Create a QT application to run the dialog.
-                    if QtWidgets.QApplication.instance() is None:
-                        app = QtWidgets.QApplication([])
-                    # Run the Bin Selector dialog
-                    window = EnergyBinReducerDialog(
-                        energies=energies, dataset=dataset, bin_energies=bin_e
-                    )
-                    # window.reducerUI.bin_axes.set_xlabel("")
-                    window.show()
-                    if window.exec():
-                        # If successful, store the binning settings and data reducer
-                        cls.reduction_bin_domain = window.domain
-                        red = window.reducer
+                    if has_PYQT:
+                        # Create a QT application to run the dialog.
+                        if QtWidgets.QApplication.instance() is None:
+                            app = QtWidgets.QApplication([])
+                        # Run the Bin Selector dialog
+                        window = EnergyBinReducerDialog(
+                            energies=energies, dataset=dataset, bin_energies=bin_e
+                        )
+                        # window.reducerUI.bin_axes.set_xlabel("")
+                        window.show()
+                        if window.exec():
+                            # If successful, store the binning settings and data reducer
+                            cls.reduction_bin_domain = window.domain
+                            red = window.reducer
+                        else:
+                            raise ValueError("No binning settings selected.")
                     else:
-                        raise ValueError("No binning settings selected.")
+                        raise ValueError(
+                            "No binning settings provided, and no PyQt available to select binning settings."
+                        )
+                        # TODO: Add a command line interface.
 
                 # Use the binning settings to reduce the data.
                 _, reduced_summed_data = red.reduce_by_sum(
@@ -595,7 +493,7 @@ def MEX1_to_QANT_AUMainAsc(
     },
 ) -> list[str]:
     """
-    Converts a parser mapping to to QANT format.
+    Convert a MEX1 parser mapping to to QANT format.
 
     Parameters
     ----------
@@ -739,19 +637,21 @@ def MEX1_to_QANT_AUMainAsc(
     elif "created" in parser.params and isinstance(
         parser.params["created"], dt.datetime
     ):
+        created_timestamp: dt.datetime = parser.params["created"]
         ostrs.append(
-            f"# Scan time = {parser.params['created'].strftime(r"%b %d, %Y %H:%M:%S.%f")}\n"
+            f"# Scan time = {created_timestamp.strftime(r'%b %d, %Y %H:%M:%S.%f')}\n"
         )
     elif "modified" in parser.params and isinstance(
         parser.params["modified"], dt.datetime
     ):
+        mod_timestamp: dt.datetime = parser.params["modified"]
         ostrs.append(
-            f"# Scan time = {parser.params['modified'].strftime(r"%b %d, %Y %H:%M:%S.%f")}\n"
+            f"# Scan time = {mod_timestamp.strftime(r'%b %d, %Y %H:%M:%S.%f')}\n"
         )
     else:
         # Use current time
         ostrs.append(
-            f"# Scan time = {dt.datetime.now().strftime(r"%b %d, %Y %H:%M:%S.%f")}\n"
+            f"# Scan time = {dt.datetime.now().strftime(r'%b %d, %Y %H:%M:%S.%f')}\n"
         )
     ostrs.append("\n")
 
@@ -859,7 +759,7 @@ if __name__ == "__main__":
     fig: plt.Figure = subplts[0]
     ax: plt.Axes = subplts[1]
     ave_mca_idx = -1
-    energy_idx = test2.search_label_index("ring_current")
+    energy_idx = test2.label_index("ring_current")
     ax.plot(
         test2.data[:, energy_idx],
         test2.data[:, ave_mca_idx],
@@ -873,7 +773,7 @@ if __name__ == "__main__":
         os.path.join(package_path, "tests/test_data/au/MEX1/MEX1_40747_processed.xdi")
     )
     test4 = MEX1_NEXAFS(xdi_path, header_only=False)
-    energy_idx2 = test4.search_label_index("ring_current")
+    energy_idx2 = test4.label_index("ring_current")
     ax.plot(
         test4.data[:, energy_idx2],
         test4.data[:, ave_mca_idx],

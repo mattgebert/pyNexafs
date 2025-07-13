@@ -544,7 +544,9 @@ if __name__ == "__main__":
         energies=energies, dataset=binned_data, bin_energies=bin_energies
     )
     win.show()
-    if win.exec():
+    val = win.exec()
+    print(val)
+    if val:
         print("OK")
         print("Selected Domain:", win.domain)
         print("Selected Domain Indices for detectors:", win.domain_indices)

@@ -24,7 +24,7 @@ class reducer:
     energies : array_like
         A 1D array of energy values for the scanning beam energy.
     dataset : array_like
-        The NEXAFS dataset with dimensions (beam_energy, detection_energy_bin, detector_index).
+        The 2D/3D NEXAFS dataset with dimensions (beam_energy, detection_energy_bin, detector_index).
         The detector_index dimension is optional, used for multiple multi-channel analysers.
     bin_energies : array_like | None, optional
         A 1D array of energy values for each detection energy bin. If not provided, the bin numbers are used.
@@ -51,11 +51,13 @@ class reducer:
         Parameters
         ----------
         energies : npt.NDArray
-
+            A 1D array of energy values for the scanning beam energy.
         dataset : npt.NDArray
-            _description_
+            The 3D NEXAFS dataset with dimensions (beam_energy, detection_energy_bin, detector_index).
+            The detector_index dimension is optional, used for multiple multi-channel analysers.
         bin_energies : npt.NDArray | None, optional
-            _description_, by default None
+            A 1D array of energy values for each detection energy bin. If not provided, the bin numbers are used.
+            If 2D, the second dimension must match the number of detectors.
         """
         # Convert to numpy arrays
         energies = np.asarray(energies)
@@ -196,7 +198,7 @@ class reducer:
         self, bin_domain: tuple[int, int] | tuple[float, float], detector_idx: int = 0
     ) -> tuple[int, int]:
         """
-        Converts an energy|bin domain to bin indexes for a given detector.
+        Convert an energy|bin domain to bin indexes for a given detector.
 
         By default, the first detector is assumed.
         If `bin_energies` are set, the index of the closest energy value to the domain is used.
@@ -206,7 +208,7 @@ class reducer:
         ----------
         bin_domain : tuple[int, int]
             The energy domain to convert to bin indexes.
-        detector : int, optional
+        detector_idx : int, optional
             Index of the detector to use, by default 0.
 
         Returns
@@ -248,21 +250,20 @@ class reducer:
         ),
     ) -> list[tuple[int, int]]:
         """
-        Converts an energy|bin domain to bin indexes for all detectors.
+        Convert an energy|bin domain to bin indexes for all detectors.
 
         Uses `domain_to_detector_bin_indexes` to convert the domain for each detector.
 
         Parameters
         ----------
-        bin_domain : (list[tuple[int, int] | tuple[float, float]]
-        | tuple[int, int] | tuple[float, float])
+        bin_domain : list[tuple[int, int] | tuple[float, float]] | tuple[int, int] | tuple[float, float]
             The energy|bin domain to convert to bin indexes.
 
             If None, indexes of the full dataset is returned.
 
         Returns
         -------
-        Index_ranges : list[tuple[int, int]]
+        list[tuple[int, int]]
             The lower and upper selected bin indexes for each detector.
         """
         if bin_domain is None:
@@ -399,7 +400,7 @@ class reducer:
         ) = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """
-        Reduces the bin dimension of the dataset to a singular value.
+        Reduce the bin dimension of the dataset to a singular value.
 
         Parameters
         ----------
@@ -485,14 +486,14 @@ class reducer:
         axis: Literal["bin_energies", "detectors"] | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """
-        Reduces the dataset into a single value for each beam energy.
+        Reduce the dataset into a single value for each beam energy.
 
         The single value is created by summing over all dimensions (bin_energies, detectors),
         unless dimensions are specified by `axis`, in which case the sum is only over the specified axes.
 
         Parameters
         ----------
-        domain : list[tuple[float, float] | tuple[int, int]] | tuple[float, float] | tuple[int, int] | None, optional
+        bin_domain : list[tuple[float, float] | tuple[int, int]] | tuple[float, float] | tuple[int, int] | None, optional
             The energy/index domain to reduce the dataset to. If None, the dataset is not reduced.
             If a single tuple is provided, the domain is applied to all detectors.
             If a list of tuples is provided, the domain is applied to each detector.
@@ -523,7 +524,7 @@ class reducer:
 
     def reduce_to_bin_features(self) -> tuple[npt.NDArray, npt.NDArray]:
         """
-        Reduces the dataset to find the signal dependence of energy bins with signal.
+        Reduce the dataset to find the signal dependence of energy bins with signal.
 
         The return signal has
         1. Summed over all beam energies.
@@ -543,11 +544,12 @@ class reducer:
         # Sum over all energies to find the energy bins with signal.
         ds_sum: np.ndarray = self.dataset.sum(axis=0)
         # Translate every bin to be positive definite.
-        if np.any(ds_sum < 0):
+        if np.any(ds_sum <= 0):
             # Keep relative signal amplitude between detectors
             ds_sum += -ds_sum.min()
-        # Add a base 1e-2 so we can log plot
-        ds_sum += 1e-2
+            # Add a base 1e-2 so we can log plot
+            ds_sum += 1e-2
+
         return self.bin_energies, ds_sum
 
     @staticmethod
@@ -557,17 +559,17 @@ class reducer:
         bin_energies: npt.NDArray | None = None,
     ) -> bool:
         """
-        Validates the input dataset, energies and bin_energies.
+        Validate the input dataset, energies and bin_energies.
 
         Raises a ValueError if the inputs are invalid, otherwise returns True.
 
         Parameters
         ----------
+        energies : npt.NDArray
+            A 1D array of energy values for the scanning beam energy.
         dataset : npt.NDArray
             The NEXAFS dataset with dimensions (beam_energy, detection_energy_bin, detector_index).
             The detector_index dimension is optional, used for multiple multi-channel analysers.
-        energies : npt.NDArray
-            A 1D array of energy values for the scanning beam energy.
         bin_energies : npt.NDArray, optional
             A 1D array of energy values for each detection energy bin. If not provided, the bin numbers are used.
             If 2D, the second dimension must match the number of detectors.

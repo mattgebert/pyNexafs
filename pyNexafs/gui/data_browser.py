@@ -23,14 +23,16 @@ import matplotlib.figure
 from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas
 from pyNexafs.gui.widgets.fileloader import nexafsFileLoader
 from pyNexafs.gui.widgets.viewer import nexafsViewer
-from pyNexafs.nexafs.scan import scan_base
+from pyNexafs.nexafs.scan import scanBase
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavTB
 
 import numpy as np
 
 
 class browserWidget(QWidget):
-    def __init__(self, parent=None):
+    """A widget for browsing and loading NEXAFS files."""
+
+    def __init__(self, parent=None, init_dir: str | None = None):
         super().__init__(parent=parent)
         # Initialise elements
         self._draggable = QSplitter(Qt.Orientation.Horizontal)
@@ -52,7 +54,6 @@ class browserWidget(QWidget):
             self._main_layout.setContentsMargins(0, 0, 0, 0)
 
         ### Init UI
-
         # # TODO: Find another way to define a black line on handles with some margin two widgets.
         # grad = QLinearGradient(0, 0, 1, 0)
         # grad.setCoordinateMode(grad.CoordinateMode.ObjectMode)
@@ -72,11 +73,16 @@ class browserWidget(QWidget):
         # Load scans
         self.loader.selectionLoaded.connect(self._on_load_selection)
         # Remove scans with parser / directory change.
-        self.loader.directory_selector.newPath.connect(self._on_dir_parser_change)
+        self.loader.directory_selector.new_path.connect(self._on_dir_parser_change)
         self.loader.nexafs_parser_selector.currentIndexChanged.connect(
             self._on_dir_parser_change
         )
         self.loader.relabelling.connect(self.viewer.on_relabel)
+
+        ### Init directory
+        if init_dir is not None:
+            self.loader.directory_selector.folder_path_edit.setText(init_dir)
+            self.loader.directory_selector.folder_path_edit.editingFinished.emit()
 
     def _on_dir_parser_change(self):
         # Delete the current scan objects
@@ -90,10 +96,10 @@ class browserWidget(QWidget):
         self.viewer.selected_filenames = self.loader.selected_filenames
 
 
-def gui():
+def gui(directory: str | None = None):
 
     app = QApplication(sys.argv)
-    window = browserWidget()
+    window = browserWidget(init_dir=directory)
     window.show()
     window.setWindowTitle("pyNexafs File Browser")
     app.exec()

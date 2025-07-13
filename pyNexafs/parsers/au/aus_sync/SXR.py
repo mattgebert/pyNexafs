@@ -1,19 +1,14 @@
 """
 Parser classes for the Soft X-ray (SXR) beamline at the Australian Synchrotron.
-
 """
 
 from pyNexafs.parsers import parser_base
-from pyNexafs.nexafs.scan import scan_base
 from pyNexafs.utils.mda import MDAFileReader
 from io import TextIOWrapper
 from typing import Any
 from numpy.typing import NDArray
 import numpy as np
-import ast
 import overrides
-import warnings
-import datetime as dt
 
 
 class SXR_NEXAFS(parser_base):
@@ -75,7 +70,7 @@ class SXR_NEXAFS(parser_base):
 
     RELABELS = {
         "SR14ID01PGM:REMOTE_SP": "Photon Energy",
-        "SR14ID01PGM:LOCAL_SP": "Energy Setpoint",
+        "SR14ID01PGM:LOCAL_SP": "Local Energy Setpoint",
         "SR14ID01PGM_ENERGY_SP": "Energy Setpoint",
         "SR14ID01PGM_CALC_ENERGY_MONITOR.P": "Encoder Photon Energy",
         "SR14ID01IOC68:scaler1.TP": "Exp Time",
@@ -87,13 +82,13 @@ class SXR_NEXAFS(parser_base):
         "SR14ID01IOC68:scaler1.S9": "BL PHD VF",
         "SR14ID01IOC68:scaler1.S10": "Channeltron",
         "SR14ID01IOC68:scaler1.S11": "TFY PHD VF",
-        "SR14ID01IOC68:scaler1.S18": "I0 VF",
-        "SR14ID01IOC68:scaler1.S19": "Ref Foil VF",
-        "SR14ID01IOC68:scaler1.S20": "Drain Current VF",
+        "SR14ID01IOC68:scaler1.S18": "I0 VF #2",
+        "SR14ID01IOC68:scaler1.S19": "Ref Foil VF #2",
+        "SR14ID01IOC68:scaler1.S20": "Drain Current VF #2",
         "SR14ID01IOC68:scaler1.S21": "Channeltron Front (PEY)",
         "SR14ID01IOC68:scaler1.S22": "MCP (TFY)",
         "SR14ID01IOC68:scaler1.S23": "Hemispherical Analyser (AEY)",
-        "SR14ID01IOC68:scaler1.S17": "Direct PHD VF",
+        "SR14ID01IOC68:scaler1.S17": "Direct PHD VF #2",
         "SR14ID01AMP01:CURR_MONITOR": "Drain Current - Keithley1",
         "SR14ID01AMP02:CURR_MONITOR": "BL PHD - Keithley2",
         "SR14ID01AMP03:CURR_MONITOR": "I0 - Keithley3",
@@ -121,14 +116,15 @@ class SXR_NEXAFS(parser_base):
     def parse_asc_202403(
         cls, file: TextIOWrapper, header_only: bool = False
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
-        """Reads Australian Synchrotron .asc files.
+        """
+        Read Australian Synchrotron SXR NEXAFS `.asc` files.
 
         Parameters
         ----------
         file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.asc', 'r'))
+            TextIOWrapper of the datafile (i.e. open('file.asc', 'r')).
         header_only : bool, optional
-            If True, then only the header of the file is read and NDArray is returned as None, by default False
+            If True, then only the header of the file is read and NDArray is returned as None, by default False.
 
         Returns
         -------
@@ -297,14 +293,15 @@ class SXR_NEXAFS(parser_base):
     def parse_mda(
         cls, file: TextIOWrapper, header_only: bool = False
     ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
-        """Reads Australian Synchrotron .mda files.
-
-        CURRENTLY NOT IMPLEMENTED.
+        """
+        Read Australian Synchrotron SXR NEXAFS .mda files.
 
         Parameters
         ----------
         file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.mda', 'r'))
+            TextIOWrapper of the datafile (i.e. open('file.mda', 'r')).
+        header_only : bool, optional
+            If True, only the header of the file is read and NDArray is returned as None, by default False.
 
         Returns
         -------
@@ -398,7 +395,7 @@ class SXR_NEXAFS(parser_base):
     @overrides.overrides
     def summary_param_values(self) -> list[Any]:
         """
-        Returns a list of important parameter values of the data file.
+        Return a list of important parameter values of the data file.
 
         Uses the list element corresponding to 'value' for each file.
         Overrides base method to use the 'value' element of the SXR parameter list.
@@ -415,7 +412,7 @@ class SXR_NEXAFS(parser_base):
     @overrides.overrides
     def summary_param_names_with_units(self) -> list[str]:
         """
-        Returns a list of important parameter names with units.
+        Return a list of important parameter names with units.
 
         Requires a loaded dataset to return the units of the parameters.
         Not a pre-defined class method.

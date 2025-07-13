@@ -11,10 +11,11 @@ from PyQt6.QtWidgets import QApplication, QLabel
 import sys
 import matplotlib, matplotlib.axes, matplotlib.figure
 
-from pyNexafs.nexafs.scan import scan_abstract, scan_base
+from pyNexafs.nexafs.scan import scanAbstract, scanBase
 from pyNexafs.parsers import parser_base
-from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas
-from pyNexafs.gui.widgets.normaliser import NavTBQT_Norm, normaliserSettings
+from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas, NavTBQT
+
+# from pyNexafs.gui.widgets.normaliser import NavTBQT_Norm, normaliserSettings
 
 import numpy as np
 from typing import Type
@@ -30,9 +31,9 @@ class nexafsViewer(QWidget):
 
     """
 
-    def __init__(self, norm_settings: normaliserSettings = None, parent=None):
+    def __init__(self, parent=None):  # norm_settings: normaliserSettings = None
         super().__init__(parent)
-        self._norm_settings = norm_settings
+        # self._norm_settings = norm_settings
 
         # Initialise elements
         self._layout = QVBoxLayout()
@@ -114,7 +115,7 @@ class nexafsViewer(QWidget):
         }
 
     @property
-    def scans(self) -> dict[str, type[scan_abstract]]:
+    def scans(self) -> dict[str, type[scanAbstract]]:
         """
         Scan objects loaded into the viewer.
 
@@ -126,7 +127,7 @@ class nexafsViewer(QWidget):
         return self._scan_objects.copy()
 
     @scans.setter
-    def scans(self, scans: dict[str, scan_abstract]):
+    def scans(self, scans: dict[str, scanAbstract]):
         """
         Setter for the scan objects.
 
@@ -320,8 +321,8 @@ class nexafsViewer(QWidget):
         Callback for when the labels are relabelled.
         """
         for scan in self.scans.values():
-            if isinstance(scan, scan_abstract):
-                assert isinstance(scan, scan_abstract)
+            if isinstance(scan, scanAbstract):
+                assert isinstance(scan, scanAbstract)
                 scan.reload_labels_from_parser()
 
         self._update_dataseries_list()
@@ -330,10 +331,10 @@ class nexafsViewer(QWidget):
 class normalisingGraph(QWidget):
     def __init__(
         self,
-        graph_scans: list[Type[scan_abstract | parser_base]] = None,
+        graph_scans: list[Type[scanAbstract | parser_base]] = None,
         dataseries_selection: list[str] = [],
-        background_fixed_scans: list[Type[scan_abstract]] = [],
-        norm_settings: normaliserSettings = None,
+        background_fixed_scans: list[Type[scanAbstract]] = [],
+        # norm_settings: normaliserSettings = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -344,7 +345,8 @@ class normalisingGraph(QWidget):
             self._layout.setContentsMargins(0, 0, 0, 0)
         self._figure = matplotlib.figure.Figure()
         self._canvas = FigureCanvas(self._figure)  # use empty canvas.
-        self._toolbar = NavTBQT_Norm(self._canvas)
+        self._toolbar = NavTBQT(self._canvas)
+        # self._toolbar = NavTBQT_Norm(self._canvas)
         self._layout.addWidget(self._toolbar)
         self._layout.addWidget(self._canvas)
 
@@ -352,14 +354,14 @@ class normalisingGraph(QWidget):
         self.graph_scans = graph_scans
         self.dataseries_selection = dataseries_selection
         self.background_fixed_scans = background_fixed_scans
-        self.norm_settings = norm_settings
+        # self.norm_settings = norm_settings
 
     @property
-    def graph_scans(self) -> list[Type[scan_abstract | parser_base]]:
+    def graph_scans(self) -> list[Type[scanAbstract | parser_base]]:
         return self._toolbar.graph_scans.copy()
 
     @graph_scans.setter
-    def graph_scans(self, scans: list[Type[scan_abstract | parser_base]]):
+    def graph_scans(self, scans: list[Type[scanAbstract | parser_base]]):
         self.toolbar.graph_scans = scans.copy() if scans is not None else None
 
     @property
@@ -373,22 +375,22 @@ class normalisingGraph(QWidget):
         )
 
     @property
-    def background_fixed_scans(self) -> list[Type[scan_abstract | parser_base]]:
+    def background_fixed_scans(self) -> list[Type[scanAbstract | parser_base]]:
         return self._toolbar.background_fixed_scans.copy()
 
     @background_fixed_scans.setter
-    def background_fixed_scans(self, scans: list[Type[scan_abstract | parser_base]]):
+    def background_fixed_scans(self, scans: list[Type[scanAbstract | parser_base]]):
         self.toolbar.background_fixed_scans = (
             scans.copy() if scans is not None else None
         )
 
-    @property
-    def norm_settings(self) -> normaliserSettings:
-        return self._toolbar.norm_settings
+    # @property
+    # def norm_settings(self) -> normaliserSettings:
+    #     return self._toolbar.norm_settings
 
-    @norm_settings.setter
-    def norm_settings(self, settings: normaliserSettings):
-        self.toolbar.norm_settings = settings if settings is not None else None
+    # @norm_settings.setter
+    # def norm_settings(self, settings: normaliserSettings):
+    #     self.toolbar.norm_settings = settings if settings is not None else None
 
     @property
     def figure(self) -> matplotlib.figure.Figure:
@@ -414,13 +416,14 @@ class normalisingGraph(QWidget):
         ax = self.figure.add_subplot(111)
         assert isinstance(ax, matplotlib.axes.Axes)
         # Iterate over dataseries first:
-        if dataseries_list is not None:
+        if dataseries_list is not None and len(scans) > 0:
+            scan = scans[0]
             for ds in dataseries_list:
                 # Then iterate over each scan | parser object.
                 for scan in scans:
                     try:
 
-                        if isinstance(scan, scan_abstract):
+                        if isinstance(scan, scanAbstract):
                             ind = scan.y_labels.index(ds)
                             x = scan.x
                             y = scan.y[:, ind]

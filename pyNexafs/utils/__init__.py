@@ -13,3 +13,6 @@ from pyNexafs.utils import decorators
 
 # Reduction:
 from pyNexafs.utils import reduction
+
+# Filesizing
+from pyNexafs.utils import sizes

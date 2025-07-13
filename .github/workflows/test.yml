@@ -1,0 +1,62 @@
+name: pyNexafs Tests (PyTest, Coveralls)
+run-name: ${{ github.actor }} - Tests (PyTest, Coveralls)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}-tests
+  cancel-in-progress: true
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main, dev
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      matrix:
+        os: [Ubuntu]
+        python-version: ["3.13", "3.12", "3.11"]
+        # sphinx-version:
+        #   ["sphinx==6.0", "sphinx==6.2", "sphinx==7.0", "sphinx>=7.3"]
+        include:
+            - os: Windows
+              python-version: "3.13"
+            - os: MacOS
+              python-version: "3.13"
+            # sphinx-version: "sphinx" # version shouldn't really matter here
+    defaults:
+      run:
+        shell: bash -eo pipefail {0} # Fail on any error (-e), fail on any failed command in a pipeline.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup environment
+        run: |
+          python -m pip install --upgrade pip wheel setuptools uv
+          python -m pip install coveralls
+          python -m pip list
+        #   python -m pip install ${{ matrix.sphinx-version }}
+
+      - name: Install
+        run: |
+          uv pip install . --group dev --group docs --system
+          pip list
+        # system is used to install the package globally in the test environment.
+
+      - name: Run test suite
+        run: |
+          pytest -v --pyargs .
+
+      - name: Test coverage
+        run: |
+          coverage run --source=pyNexafs -m pytest tests/
+          coveralls
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
