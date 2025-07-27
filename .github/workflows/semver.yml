@@ -7,10 +7,10 @@ on:
   release:
     types: [created]
 
-  push:
-    branches:
-      - main
-      - master
+  # push:
+  #   branches:
+  #     - main
+  #     - master
 
 permissions:
   contents: read
