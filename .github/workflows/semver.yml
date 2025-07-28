@@ -4,13 +4,17 @@
 
 name: Python 🐍 Semantic Versioning
 on:
-  release:
-    types: [created]
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Run as a prerelease?'
+        required: true
+        default: 'true'
 
-  # push:
-  #   branches:
-  #     - main
-  #     - master
+  push:
+    branches:
+      - main
+      - master
 
 permissions:
   contents: read
@@ -102,7 +106,7 @@ jobs:
           git_committer_name: "github-actions"
           git_committer_email: "actions@users.noreply.github.com"
           build: true
-          prerelease: false
+          prerelease: "{{ github.event.inputs.prerelease }}"
           verbosity: 2
 
       - name: Publish | Upload to GitHub Release Assets
