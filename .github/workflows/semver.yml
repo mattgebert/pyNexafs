@@ -121,7 +121,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: distribution-artifacts
-          path: pyNexafs/build
+          path: ./dist
           overwrite: true
           if-no-files-found: error
 
@@ -163,10 +163,12 @@ jobs:
         id: artifact-download
         with:
           name: distribution-artifacts # Match the name used in the upload step
-          path: pyNexafs/build # Match the path used in the upload step
+          path: pyNexafs/dist # Match the path used in the upload step
 
       - name: Publish package distribution 📦 to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: pyNexafs/dist
 
   testpypi-deploy:
     name: Publish Python 🐍 distribution 📦 to TestPyPI
@@ -187,9 +189,10 @@ jobs:
         id: artifact-download
         with:
           name: distribution-artifacts # Match the name used in the upload step
-          path: pyNexafs/build # Match the path used in the upload step
+          path: pyNexafs/dist # Match the path used in the upload step
 
       - name: Publish distribution 📦 to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          packages-dir: pyNexafs/dist
