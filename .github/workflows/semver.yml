@@ -103,12 +103,14 @@ jobs:
           git_committer_email: "actions@users.noreply.github.com"
           build: true
           prerelease: ${{ github.event.inputs.prerelease }}
+          changelog: true
           verbosity: 2
           no_operation_mode: ${{ github.repository_owner != 'xraysoftmat'}}
 
       - name: Publish | Upload to GitHub Release Assets
         uses: python-semantic-release/publish-action@v10.2.0
         if: |
+          success() &&
           github.repository_owner == 'xraysoftmat' &&
           steps.release.outputs.released &&
           (github.action.branch == 'master' || github.action.branch == 'main')
@@ -119,6 +121,7 @@ jobs:
       - name: Upload | Distribution Artifacts
         uses: actions/upload-artifact@v4
         if: |
+          success() &&
           github.repository_owner == 'xraysoftmat' &&
           steps.release.outputs.released &&
           (github.action.branch == 'master' || github.action.branch == 'main')
@@ -131,6 +134,7 @@ jobs:
       - name: Publish | Upload to GitHub Release Assets
         uses: python-semantic-release/publish-action@v10.2.0
         if: |
+          success() &&
           github.repository_owner == 'xraysoftmat' &&
           steps.release.outputs.released &&
           (github.action.branch == 'master' || github.action.branch == 'main')
