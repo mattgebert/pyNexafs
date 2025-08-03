@@ -31,6 +31,17 @@ jobs:
       contents: write
 
     steps:
+      - name: Use workflow inputs for pre-release
+        if: ${{ github.event == 'workflow_dispatch' }}
+        run: |
+          echo "prerelease=${{ github.event.inputs.prerelease }}" >> $GITHUB_ENV
+      - name: Set default value for pre-release
+        if: ${{ github.event != 'workflow_dispatch' }}
+        run: |
+          echo "prerelease=true" >> $GITHUB_ENV
+      - name: Display pre-release input
+        run: |
+          echo "Python SemVer pre-release?: $prerelease"
       # Note: We checkout the repository at the branch that triggered the workflow
       # with the entire history to ensure to match PSR's release branch detection
       # and history evaluation.
@@ -93,7 +104,7 @@ jobs:
       #     path: dist
       - name: Display Config
         run: |
-          echo "Python SemVer pre-release?: ${{github.event.inputs.prerelease}}"
+          echo "Python SemVer pre-release?: $prerelease"
       - name: Action | Semantic Version Release
         id: release
         # Adjust tag with desired version if applicable.
@@ -104,7 +115,7 @@ jobs:
           git_committer_name: "github-actions"
           git_committer_email: "actions@users.noreply.github.com"
           build: true
-          prerelease: ${{ github.event.inputs.prerelease }}
+          prerelease: $prerelease
           changelog: true
           verbosity: 2
           no_operation_mode: ${{ github.repository_owner != 'xraysoftmat'}}
