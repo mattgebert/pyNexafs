@@ -21,9 +21,9 @@ jobs:
     name: Run Python 🐍 Semantic Version to stamp distribution 📦
     # Only run this job on the master account.
     runs-on: ubuntu-latest
-    defaults: # https://github.com/actions/upload-artifact/issues/232#issuecomment-1065422577
-      run:
-        working-directory: ./pyNexafs
+    # defaults: # https://github.com/actions/upload-artifact/issues/232#issuecomment-1065422577
+    #   run:
+    #     working-directory: ./pyNexafs
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.ref_name }}-release
       cancel-in-progress: false
@@ -105,9 +105,6 @@ jobs:
       #   with:
       #     name: distribution-artifacts
       #     path: dist
-      - name: Display Config
-        run: |
-          echo "Python SemVer pre-release?: $prerelease"
       - name: Action | Semantic Version Release
         id: release
         # Adjust tag with desired version if applicable.
@@ -118,7 +115,7 @@ jobs:
           git_committer_name: "github-actions"
           git_committer_email: "actions@users.noreply.github.com"
           build: true
-          prerelease: $prerelease
+          prerelease: ${{ env.prerelease == 'true' }}
           changelog: true
           verbosity: 2
           no_operation_mode: ${{ github.repository_owner != 'xraysoftmat'}}
