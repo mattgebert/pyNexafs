@@ -21,9 +21,9 @@ jobs:
     name: Run Python 🐍 Semantic Version to stamp distribution 📦
     # Only run this job on the master account.
     runs-on: ubuntu-latest
-    defaults: # https://github.com/actions/upload-artifact/issues/232#issuecomment-1065422577
-      run:
-        working-directory: ./pyNexafs
+    # defaults: # https://github.com/actions/upload-artifact/issues/232#issuecomment-1065422577
+    #   run:
+    #     working-directory: ./pyNexafs
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.ref_name }}-release
       cancel-in-progress: false
@@ -31,6 +31,20 @@ jobs:
       contents: write
 
     steps:
+      - name: Use workflow inputs for pre-release
+        shell: bash
+        if: ${{ github.event == 'workflow_dispatch' }}
+        run: |
+          echo "prerelease=${{ github.event.inputs.prerelease }}" >> $GITHUB_ENV
+      - name: Set default value for pre-release
+        shell: bash
+        if: ${{ github.event != 'workflow_dispatch' }}
+        run: |
+          echo "prerelease=true" >> $GITHUB_ENV
+      - name: Display pre-release input
+        shell: bash
+        run: |
+          echo "Python SemVer pre-release?: $prerelease"
       # Note: We checkout the repository at the branch that triggered the workflow
       # with the entire history to ensure to match PSR's release branch detection
       # and history evaluation.
@@ -91,7 +105,6 @@ jobs:
       #   with:
       #     name: distribution-artifacts
       #     path: dist
-
       - name: Action | Semantic Version Release
         id: release
         # Adjust tag with desired version if applicable.
@@ -102,7 +115,7 @@ jobs:
           git_committer_name: "github-actions"
           git_committer_email: "actions@users.noreply.github.com"
           build: true
-          prerelease: ${{ github.event.inputs.prerelease }}
+          prerelease: ${{ env.prerelease == 'true' }}
           changelog: true
           verbosity: 2
           no_operation_mode: ${{ github.repository_owner != 'xraysoftmat'}}
