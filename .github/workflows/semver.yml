@@ -122,7 +122,7 @@ jobs:
 
       - name: Log | Display the conditionals for release.
         run: |
-          echo "Success: ${{ success() }}"
+          echo "Success: ${{ steps.release.outcome == 'success' }}"
           echo "Ownership: ${{ github.repository_owner == 'xraysoftmat'() }}"
           echo "Released: ${{ steps.release.outputs.released }}
           echo "Branch: ${{ (github.action.branch == 'master' || github.action.branch == 'main') }}
