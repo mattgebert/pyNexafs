@@ -120,6 +120,14 @@ jobs:
           verbosity: 2
           no_operation_mode: ${{ github.repository_owner != 'xraysoftmat'}}
 
+      - name: Log | Display the conditionals for release.
+        run: |
+          echo "Success: ${{ success() }}"
+          echo "Ownership: ${{ github.repository_owner == 'xraysoftmat'() }}"
+          echo "Released: ${{ steps.release.outputs.released }}
+          echo "Branch: ${{ (github.action.branch == 'master' || github.action.branch == 'main') }}
+          echo "Tags: ${{ startsWith(github.ref, 'refs/tags/') }}"
+
       - name: Publish | Upload to GitHub Release Assets
         uses: python-semantic-release/publish-action@v10.2.0
         if: |
