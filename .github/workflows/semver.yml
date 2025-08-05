@@ -166,7 +166,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: semver-release # match the job name above
     if: |
-      success() && needs.semver-release.outputs.release
+      success() && needs.semver-release.outputs.released
     defaults:
       run:
         working-directory: ./pyNexafs
@@ -198,7 +198,7 @@ jobs:
     # Only run this job on the master account,  only publish to TestPyPI on tag pushes
     needs: semver-release # match the job name above
     if: |
-      success() && needs.semver-release.outputs.release
+      success() && needs.semver-release.outputs.released
     environment:
       name: testpypi
       url: https://test.pypi.org/p/pyNexafs
