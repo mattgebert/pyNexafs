@@ -11,6 +11,15 @@ on:
         required: true
         type: boolean
         default: true
+      prerelease_token:
+        description: 'Token for prerelease'
+        required: false
+        type: choice
+        options:
+          - alpha
+          - beta
+          - rc
+        default: 'beta'
   push:
 
 permissions:
@@ -38,11 +47,13 @@ jobs:
         if: ${{ github.event == 'workflow_dispatch' }}
         run: |
           echo "prerelease=${{ github.event.inputs.prerelease }}" >> $GITHUB_ENV
+          echo "prerelease_token=${{ github.event.inputs.prerelease_token }}" >> $GITHUB_ENV
       - name: Set default value for pre-release
         shell: bash
         if: ${{ github.event != 'workflow_dispatch' }}
         run: |
           echo "prerelease=true" >> $GITHUB_ENV
+          echo "prerelease_token=beta" >> $GITHUB_ENV
       - name: Display pre-release input
         shell: bash
         run: |
@@ -118,7 +129,7 @@ jobs:
           git_committer_email: "actions@users.noreply.github.com"
           build: true
           prerelease: ${{ env.prerelease == 'true' }}
-          prerelease_token:
+          prerelease_token: ${{ env.prerelease_token }}
           changelog: true
           verbosity: 2
           no_operation_mode: ${{ github.repository_owner != 'xraysoftmat'}}
@@ -177,7 +188,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: semver-release # match the job name above
     if: |
-      success() && needs.semver-release.outputs.released
+      success() && needs.semver-release.outputs.released == 'true'
     defaults:
       run:
         working-directory: ./pyNexafs
@@ -203,31 +214,33 @@ jobs:
         with:
           packages-dir: pyNexafs/dist
 
-  testpypi-deploy:
-    name: Publish Python 🐍 distribution 📦 to TestPyPI
-    runs-on: ubuntu-latest
-    # Only run this job on the master account,  only publish to TestPyPI on tag pushes
-    needs: semver-release # match the job name above
-    if: |
-      success() && needs.semver-release.outputs.released
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/pyNexafs
 
-    permissions:
-      contents: read
-      id-token: write  # IMPORTANT: mandatory for trusted publishing
+  ### Not currently using TestPyPI, but can be enabled if needed.
+  # testpypi-deploy:
+  #   name: Publish Python 🐍 distribution 📦 to TestPyPI
+  #   runs-on: ubuntu-latest
+  #   # Only run this job on the master account,  only publish to TestPyPI on tag pushes
+  #   needs: semver-release # match the job name above
+  #   if: |
+  #     success() && needs.semver-release.outputs.released == 'true'
+  #   environment:
+  #     name: testpypi
+  #     url: https://test.pypi.org/p/pyNexafs
 
-    steps:
-      - name: Setup | Download Build Artifacts
-        uses: actions/download-artifact@v4
-        id: artifact-download
-        with:
-          name: distribution-artifacts # Match the name used in the upload step
-          path: pyNexafs/dist # Match the path used in the upload step
+  #   permissions:
+  #     contents: read
+  #     id-token: write  # IMPORTANT: mandatory for trusted publishing
 
-      - name: Publish distribution 📦 to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          packages-dir: pyNexafs/dist
+  #   steps:
+  #     - name: Setup | Download Build Artifacts
+  #       uses: actions/download-artifact@v4
+  #       id: artifact-download
+  #       with:
+  #         name: distribution-artifacts # Match the name used in the upload step
+  #         path: pyNexafs/dist # Match the path used in the upload step
+
+  #     - name: Publish distribution 📦 to TestPyPI
+  #       uses: pypa/gh-action-pypi-publish@release/v1
+  #       with:
+  #         repository-url: https://test.pypi.org/legacy/
+  #         packages-dir: pyNexafs/dist
