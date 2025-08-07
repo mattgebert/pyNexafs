@@ -3,6 +3,12 @@
 # [2] https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
 
 name: Python 🐍 Semantic Versioning
+run-name: ${{ github.actor }} - Python 🐍 Semantic Versioning
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.ref_name }}-release
+  cancel-in-progress: false
+
 on:
   workflow_dispatch:
     inputs:
@@ -33,9 +39,6 @@ jobs:
     # defaults: # https://github.com/actions/upload-artifact/issues/232#issuecomment-1065422577
     #   run:
     #     working-directory: ./pyNexafs
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.ref_name }}-release
-      cancel-in-progress: false
     permissions:
       contents: write
     outputs:
