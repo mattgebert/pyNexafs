@@ -52,10 +52,13 @@ dev = [
     "commitlint",
     "periodictable >= 2.0.2", # Due to changes in neutron element as zeroth element.
     "black",
+    "numpydoc",
+    "ruff-pre-commit",
 ]
 
 docs = [
     "sphinx",
+    "sphinx_pyproject",
     "sphinx-rtd-theme",
     "numpydoc",
 ]
