@@ -53,13 +53,16 @@ dev = [
     "periodictable >= 2.0.2", # Due to changes in neutron element as zeroth element.
     "black",
     "numpydoc",
-    "ruff-pre-commit",
+    "ruff",
 ]
 
 docs = [
     "sphinx",
-    "sphinx_pyproject",
-    "sphinx-rtd-theme",
+    "sphinx_pyproject", # to include conf.py information in pyproject.toml
+    "intersphinx-registry", # to reference other projects in sphinx
+    # "sphinx-rtd-theme",
+    "pydata-sphinx-theme",
+    "myst-parser", # For parsing md files in sphinx
     "numpydoc",
 ]
 
@@ -170,3 +173,55 @@ patch_tags = ["fix", "perf"]
 # default_bump_level = 0
 parse_squash_commits = true
 ignore_merge_commits = true
+
+#######################################################
+#############  Sphinx Doc configurations  #############
+#######################################################
+
+[tool.sphinx-pyproject]
+html_theme = "pydata_sphinx_theme"
+
+[tool.sphinx-pyproject.html_theme_options]
+    # ...
+    navbar_start = ["navbar-logo"]
+    navbar_center = ["navbar-nav"]
+    navbar_end = ["theme-switcher", "navbar-icon-links"]
+    navbar_persistent = ["search-button"]
+    navbar_align = "content"
+    show_nav_level = 2
+    navigation_depth = 4
+    # ...
+    secondary_sidebar_items = ["page-toc", "edit-this-page", "sourcelink"]
+    # ...
+    article_footer_items = []
+    #...
+    footer_start = ["copyright", "sphinx-version"]
+    footer_end = ["theme-version"]
+    #...
+    show_prev_next = true
+
+# Array item:
+[[tool.sphinx-pyproject.html_theme_options.icon_links]]
+    name = "GitHub"
+    url = "https://github.com/numpy/numpydoc"
+    icon = "fab fa-github-square"
+    type = "fontawesome"
+
+[tool.sphinx-pyproject.html_sidebars]
+  "**" = []
+
+[tool.sphinx-pyproject.html_context]
+    default_mode = "light"
+    default_dark_mode = false
+    default_language = "en"
+    default_version = "latest"
+    display_github = true
+    github_user = "xraysoftmat"
+    github_repo = "pyNexafs"
+    github_version = "main"
+    doc_path = "docs"
+
+# Esbonio Sphinx extension for VS Code integration - https://docs.esbon.io
+[tool.esbonio.sphinx]
+    buildCommand = ["sphinx-build", "-M", "dirhtml", "./docs", "./docs/_build"]
+    pythonCommand = ["${venv:pyNexafs}"]
