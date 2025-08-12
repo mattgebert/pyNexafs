@@ -1,7 +1,9 @@
+=====================================
 pyNexafs
-########
+=====================================
 
-A repository for reading, reducing and analyzing NEXAFS [#a]_ / XANES [#b]_ data.
+``pyNexafs`` is a comprehensive toolkit for NEXAFS\ [#a]_ (or XANES\ [#b]_) data, and is built to the feature-rich standards of `xraysoftmat <https://github.com/xraysoftmat>`_, so you can trust ongoing stability and developement.
+
 
 |tool-semver| |tool-black| |tool-ruff| |tool-numpydoc|
 
@@ -35,16 +37,13 @@ A repository for reading, reducing and analyzing NEXAFS [#a]_ / XANES [#b]_ data
     :alt: Code doc: numpydoc
     :target: https://github.com/numpy/numpydoc
 
-
-.. _todo_list:
-
-Todo List
-=========
+.. rubric:: Todo List
 
 This repository is in a Beta development state. The following list maps the required features to be implemented before a full released.
 
-Items
------
+- ☑ Implement base classes for parsing and NEXAFS
+- ☑ Implement core normalisation wrappers
+- ☑ Implement support for Australian Synchrotron NEXAFS beamlines
 - ☐ Comprehensive mapping structure for NEXAFS data types (including accessors for a single scan, i.e. `scan.drain`, `scan.flour` or `scan.PFY`...)
 - ☐ Comprehensive readthedocs documentation.
 - ☐ Comprehensive (>90%) unit testing for core API and modules.
@@ -52,12 +51,9 @@ Items
 - ☐ Unit testing for PyQt6 GUI
 - ☐ Generic NEXAFS file loader (two column)
 
-.. ☑ ☐ 
+.. ☑ ☐
 
 This repository does not support EXAFS [#c]_, which has a very similar measurement philosophy yet very distinct physics.
-
-.. include:: ./todolist.md
-    :parser: myst_parser.sphinx_
 
 .. rubric:: Footnotes
 

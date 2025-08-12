@@ -1,15 +1,11 @@
 :html_theme.sidebar_secondary.remove: true
 
-=====================================
-pyNexafs
-=====================================
+.. include:: ../README.rst
 
-Introduction
-############
+Motivation
+##########
 
-``pyNexafs`` is a comprehensive toolkit for NEXAFS\ [1]_ (or XANES\ [2]_) data, and is built to the feature-rich standards of `xraysoftmat <https://github.com/xraysoftmat>`_, so you can trust ongoing stability and developement.
-
-``pyNexafs`` was designed to remove compatibility issues between different NEXAFS\ [1]_ data formats, and to provide a consistent interface for data reduction, fitting, and visualization. To learn more and get started, see
+``pyNexafs`` was designed to remove compatibility issues between different NEXAFS\ [#a]_ data formats, and to provide a consistent interface for data reduction, fitting, and visualization. To learn more and get started, see
 
 .. list-table:: pyNexafs Features
   :widths: 20 80
@@ -48,9 +44,3 @@ Links
     CHANGELOG
     examples
     api
-
-.. rubric:: Abbreviations
-    :name: Abbreviations
-
-.. [1] NEXAFS: Near-edge X-ray absorption fine structure
-.. [2] XANES:  X-ray absorption near edge structure
