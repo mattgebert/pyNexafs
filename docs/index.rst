@@ -2,11 +2,6 @@
 
 .. include:: ../../README.rst
 
-Motivation
-##########
-
-``pyNexafs`` was designed to remove compatibility issues between different NEXAFS\ [#a]_ data formats, and to provide a consistent interface for data reduction, fitting, and visualization. To learn more and get started, see
-
 .. list-table:: pyNexafs Features
   :widths: 20 80
   :header-rows: 1
@@ -39,9 +34,9 @@ Links
 .. toctree::
     :hidden:
 
-    install
-    examples
-    api
+    source/install
+    source/examples
+    source/api
 
 .. support
 .. CHANGELOG
