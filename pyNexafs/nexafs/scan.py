@@ -13,19 +13,22 @@ pynexafs.parsers.parser_base : Base class for synchrotron data parsers.
 from __future__ import annotations  # For type hinting within class definitions
 import numpy.typing as npt
 import numpy as np
-import matplotlib as mpl
-import matplotlib.figure
-import matplotlib.axes
-import matplotlib.pyplot as plt
+
+try:
+    import matplotlib.figure
+    import matplotlib.axes
+    import matplotlib.pyplot as plt
+
+    HAS_MPL = True
+except ImportError:
+    HAS_MPL = False
 import abc
 import warnings
 import overrides
 import datetime
-from scipy import optimize as sopt
-from enum import Enum
-from types import NoneType
-from typing import Type, TypeVar, TYPE_CHECKING, Self
-from pyNexafs.utils.decorators import y_property
+import os
+import io
+from typing import Type, TYPE_CHECKING, Self
 
 if TYPE_CHECKING:
     from ..parsers import parser_base
@@ -429,7 +432,7 @@ class scanAbstract(metaclass=abc.ABCMeta):
             raise ValueError(f"Provided 'units' {units} is not a list of strings.")
         return
 
-    def snapshot(self, columns: int = None) -> matplotlib.figure.Figure:
+    def snapshot(self, columns: int | None = None) -> "matplotlib.figure.Figure":
         """
         Generate a grid of plots, showing all scan data.
 
@@ -443,19 +446,78 @@ class scanAbstract(metaclass=abc.ABCMeta):
         -------
         matplotlib.figure.Figure
             A figure object containing the grid of plots.
+
+        Raises
+        ------
+        ImportError
+            If matplotlib is not installed.
         """
+        if not HAS_MPL:
+            raise ImportError(
+                "Matplotlib is not installed, cannot generate a snapshot graphic."
+            )
         if columns is None:
-            columns = np.ceil(np.sqrt(len(self._y)))
-        rows = np.ceil(len(self._y) / columns)
+            columns = int(np.ceil(np.sqrt(self.y.shape[1])))
+        rows = int(np.ceil(self.y.shape[1] / columns))
+        fig, ax = plt.subplots(rows, columns, sharex=True, figsize=(10, 10), dpi=300)
 
-        rcParams = {"dpi": 300, "figure.figsize": (10, 10)}
-        plt.rcParams.update(rcParams)
-        fig, ax = plt.subplots(rows, columns)
+        # Ensure axis array is 2D.
+        if not isinstance(ax, np.ndarray):
+            ax = np.array([[ax]])
+        elif ax.ndim == 1:
+            ax = np.array([ax])
 
-        for i, ydata in enumerate(self._y):
-            ax[i].plot(self._x, ydata)
-            ax[i].set_title(self._y_labels[i])
+        # Plot the data.
+        for i, ydata in enumerate(self.y.T):
+            r, c = divmod(i, columns)
+            ax[r][c].plot(self.x, ydata)
+            ax[r][c].set_ylabel(self.y_labels[i])
+        for i in range(columns):
+            ax[rows - 1][i].set_xlabel(self.x_label)
         return fig
+
+    def to_csv(self, filename: str | None = None, delim: str = ",") -> None | str:
+        r"""
+        Save the processed data as a CSV (comma-separated values) file.
+
+        Parameters
+        ----------
+        filename : str | None
+            The name of the file to save the data to.
+            If None, returns the CSV buffer as a string.
+        delim : str, optional
+            The delimiter to use in the csv file, by default ",".
+            Another common option is to use "\t" for tab delimited.
+
+        Returns
+        -------
+        None | str
+            If filename is `None`, returns the CSV buffer as a string.
+
+        Raises
+        ------
+        IOError
+            If the specified file already exists.
+        """
+        if filename is None:
+            csv_file = io.StringIO()
+        else:
+            if os.path.exists(filename):
+                raise IOError(f"The following filepath already exists:\n{filename}")
+            csv_file = open(filename, "w")
+        # Write the header
+        csv_file.write(f"{self.x_label}{delim}{delim.join(self.y_labels)}\n")
+        # Write the data
+        for i in range(len(self.x)):
+            csv_file.write(
+                f"{self.x[i]}{delim}{delim.join(str(y) for y in self.y[i])}\n"
+            )
+
+        if filename is None:
+            csv_file.seek(0)  # Reset the buffer to the beginning
+            return csv_file.read()
+        else:
+            csv_file.close()
 
     @abc.abstractmethod
     def reload_labels_from_parser(self) -> None:
@@ -710,7 +772,7 @@ class scanBase(scanAbstract):
                     # label could be multiple labels, or a tuple of labels.
                     index = self.parser.label_index(label)
                     y_indices.append(index)
-                except (AttributeError, ValueError) as e:
+                except (AttributeError, ValueError):
                     warnings.warn(
                         f"Label {label} not found in parser object {self.parser}."
                     )
