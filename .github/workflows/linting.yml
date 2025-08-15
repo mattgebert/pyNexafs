@@ -1,5 +1,5 @@
-name: Linting 📜 (NumpyDoc & Black)
-run-name: ${{ github.actor }} - Linting 📜 (NumpyDoc & Black)
+name: Linting 📜 (NumpyDoc, Ruff & Black)
+run-name: ${{ github.actor }} - Linting 📜 (NumpyDoc, Ruff & Black)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}-linting
