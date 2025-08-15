@@ -34,9 +34,9 @@ Links
 .. toctree::
     :hidden:
 
-    install
-    examples
-    api
+    source/install
+    source/examples
+    source/api
 
 .. support
 .. CHANGELOG

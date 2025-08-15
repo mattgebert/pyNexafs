@@ -99,7 +99,7 @@ extensions = [
 templates_path = ["source/_templates"]
 
 # The root toctree document
-master_doc = "source/index"  # NOTE: will be changed to `root_doc` in sphinx 4
+master_doc = "index"  # NOTE: will be changed to `root_doc` in sphinx 4
 root_doc = master_doc
 
 # Setup the API auto-documentation
