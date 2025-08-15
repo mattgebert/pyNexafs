@@ -42,7 +42,8 @@ Motivation
 
 ``pyNexafs`` was designed to solve backwards-compatibility issues between (inevitably changing or upgraded) Synchrotron beamline configurations, and allow reproducable analysis (reduction, normalisation and fitting) of NEXAFS data. This is done by separating file parsing and NEXAFS (scan) handling.
 
-.. rubric:: Todo List
+Todo List
+#########
 
 This repository is in a Beta development state. The following list maps the required features to be implemented before a full released.
 
