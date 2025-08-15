@@ -64,6 +64,8 @@ docs = [
     "pydata-sphinx-theme",
     "myst-parser", # For parsing md files in sphinx
     "numpydoc",
+    "sphinx-copybutton", # Add a copybutton to code blocks
+    # "sphinx-autoapi", # Automatically generate API documentation instead of using autodoc/autosummary extensions.
 ]
 
 gui = [

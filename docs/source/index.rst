@@ -1,6 +1,6 @@
 :html_theme.sidebar_secondary.remove: true
 
-.. include:: ../README.rst
+.. include:: ../../README.rst
 
 Motivation
 ##########
@@ -40,7 +40,9 @@ Links
     :hidden:
 
     install
-    support
-    CHANGELOG
     examples
     api
+
+.. support
+.. CHANGELOG
+.. api

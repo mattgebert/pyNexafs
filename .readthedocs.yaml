@@ -5,22 +5,25 @@
 # Required
 version: 2
 
-python:
-  install:
-    - method: pip
-      path: .
-      extra_requirements:
-        - docs
+# python:
+#   install:
+#     - method: pip
+#       path: .
+#       extra_requirements:
+#         - docs
 
 # Set the OS, Python version and other tools you might need
 build:
-  os: ubuntu-22.04, ubuntu-24.04, ubuntu-lts-latest
+  os: ubuntu-lts-latest
   tools:
     python: "3.13"
     # You can also specify other tool versions:
     # nodejs: "19"
     # rust: "1.64"
     # golang: "1.19"
+  jobs:
+    install:
+      - pip install --group 'docs'
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:

@@ -11,7 +11,6 @@ from datetime import date
 
 # Sphinx imports
 from sphinx_pyproject import SphinxConfig
-from intersphinx_registry import get_intersphinx_mapping
 
 # Local imports
 import pyNexafs
@@ -52,7 +51,9 @@ sys.path.insert(0, os.path.abspath("."))
 # project root
 sys.path.insert(0, os.path.abspath(".."))
 # package root
-sys.path.insert(0, os.path.abspath("../pyNexafs"))
+sys.path.insert(0, os.path.abspath("../pyNexafs/"))
+
+sys.path.insert(0, os.path.abspath("../../pyNexafs/"))
 
 os.environ["MPLBACKEND"] = "Agg"  # avoid tkinter import errors on rtfd.io
 
@@ -81,30 +82,41 @@ html_title = f"{project} v{version} Manual"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
-    "sphinx.ext.doctest",
-    "sphinx.ext.intersphinx",
-    "sphinx.ext.todo",
+    # "sphinx.ext.doctest",
+    # "sphinx.ext.intersphinx",
+    # "sphinx.ext.todo",
     "numpydoc",
-    "sphinx.ext.ifconfig",
-    "sphinx.ext.viewcode",
-    "sphinx.ext.imgmath",
+    # "sphinx.ext.ifconfig",
+    # "sphinx.ext.viewcode",
+    # "sphinx.ext.imgmath",
     # "sphinx.ext.napoleon",
+    "sphinx_copybutton",
+    # "autoapi.extension",
+    "matplotlib.sphinxext.plot_directive",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = []
+templates_path = ["source/_templates"]
 
 # The root toctree document
-# master_doc = "index"  # NOTE: will be changed to `root_doc` in sphinx 4
+master_doc = "source/index"  # NOTE: will be changed to `root_doc` in sphinx 4
+root_doc = master_doc
 
 # Setup the API auto-documentation
 autosummary_generate = True
 autosummary_generate_overwrite = True
+autosummary_imported_members = True
+autosummary_ignore_module_all = True
+
+# autoapi_dirs = ["../pyNexafs"]
+# autoapi_add_toctree_entry = False
+
 
 numpydoc_xref_param_type = True
 numpydoc_xref_ignore = {"optional", "type_without_description", "BadException"}
 # Run docstring validation as part of build process
 numpydoc_validation_checks = {"all", "GL01", "SA04", "RT03"}
+numpydoc_show_class_members = True
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -140,4 +152,7 @@ latex_documents = [
 # -- Intersphinx setup ----------------------------------------------------
 
 # Example configuration for intersphinx: refer to several Python libraries.
-intersphinx_mapping = get_intersphinx_mapping(packages=["python", "numpy"])
+# intersphinx_mapping = get_intersphinx_mapping(packages={
+#     # "python",
+#     "numpy",
+# })
