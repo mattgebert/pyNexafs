@@ -16,7 +16,7 @@
     name = "pyNexafs"
     version = "0.1.0-beta.1"
     description = "A package for processing and analysing NEXAFS data."
-    readme = "README.md"
+    readme = "README.rst"
     license = {file = "LICENSE"}
     keywords = ["NEXAFS", "XANES", "Near", "Edge", "X-ray", "Absorption", "Fine", "Structure", "Spectroscopy", "Optical Data", "XAS", "Synchrotron"]
     authors = [
