@@ -66,6 +66,7 @@ docs = [
     "numpydoc",
     "sphinx-copybutton", # Add a copybutton to code blocks
     # "sphinx-autoapi", # Automatically generate API documentation instead of using autodoc/autosummary extensions.
+    "matplotlib"
 ]
 
 gui = [
