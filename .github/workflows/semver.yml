@@ -123,11 +123,18 @@ jobs:
 
           printf '%s\n' "Verified upstream branch has not changed, continuing with release..."
 
+      - name: Setup | Collect `xraysoftmat` repo tags.
+        # Used to compare version tags to predict release (or not).
+        run: |
+          git remote add "upstream" https://github.com/xraysoftmat/pyNexafs.git
+          git fetch --tags upstream
+
       # - name: Delete Previous | Distribution Artifacts
       #   uses: actions/delete-artifact@v4 ???
       #   with:
       #     name: distribution-artifacts
-      #     path: dist
+      #     path: dis
+
       - name: Action | Semantic Version Release
         id: release
         # Adjust tag with desired version if applicable.
@@ -142,24 +149,36 @@ jobs:
           prerelease_token: ${{ env.prerelease_token }}
           changelog: true
           verbosity: 2
-          no_operation_mode: ${{ github.repository_owner != 'xraysoftmat' || env.dispatch == 'false' }}
+          no_operation_mode: ${{ github.repository_owner != 'xraysoftmat'}}
 
       - name: Env | Check if released and log conditionals
         id: is_released
         run: |
-          echo "Success: ${{ steps.release.outcome }} ;  ${{ steps.release.outcome == 'success' }}"
-          echo "Ownership: ${{ github.repository_owner }} ; ${{ github.repository_owner == 'xraysoftmat' }}"
-          echo "Released: ${{ steps.release.outputs.released }}"
-          echo "Branch: ${{ github.ref }}; ${{ github.ref == 'refs/heads/main' }}"
-          echo "Dispatch (i.e. manual trigger): ${{ env.dispatch }}"
-          echo "released=${{ steps.release.outcome && (github.ref == 'refs/heads/main') && steps.release.outputs.released && (github.repository_owner == 'xraysoftmat') && (steps.release.outcome == 'success') && (env.dispatch == 'true') }}" >> "$GITHUB_OUTPUT"
+          echo "Success: ${{ steps.release.outcome }}; Success Eval:  ${{ steps.release.outcome == 'success' }}"
+          echo "SemverRelease action released? : ${{ steps.release.outputs.released }}"
+          if ${{ steps.release.outcome && steps.release.outcome == 'success' }}; then
+            echo "Checking pre-existance of tag ${{ steps.release.outputs.tag }} ..."
+            if git show-ref --tags --verify --quiet "refs/tags/${{ steps.release.outputs.tag }}"; then
+              echo "Tag ${{ steps.release.outputs.tag }} exists. Stop processing release."
+              echo "released=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Tag doesn't exist. Checking author conditions for processing release..."
+              echo "Ownership: ${{ github.repository_owner }} ; ${{ github.repository_owner == 'xraysoftmat' }}"
+              echo "Branch: ${{ github.ref }}; ${{ github.ref == 'refs/heads/main' }}"
+              echo "released=${{ steps.release.outcome  && (steps.release.outcome == 'success') && steps.release.outputs.released && (github.repository_owner == 'xraysoftmat') && (github.ref == 'refs/heads/main') }}" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "Release failed or was not created."
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          fi
+
 
       - name: Display | Release Information
         # released exists, could be true/false.
         if: |
           success() && steps.is_released.outputs.released
         run: |
-          echo "Process Release: ${{ steps.is_released.outputs.released }}"
+          echo "Will process release?: ${{ steps.is_released.outputs.released }}"
           echo "Release Tag: ${{ steps.release.outputs.tag }}"
           echo "Release Version: ${{ steps.release.outputs.version }}"
           echo "Release Branch: ${{ github.ref_name }}"
