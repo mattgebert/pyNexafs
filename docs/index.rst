@@ -1,6 +1,6 @@
 :html_theme.sidebar_secondary.remove: true
 
-.. include:: ../../README.rst
+.. include:: ../README.rst
 
 .. list-table:: pyNexafs Features
   :widths: 20 80
