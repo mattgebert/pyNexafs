@@ -36,7 +36,9 @@ html_last_updated_fmt = "%b %d, %Y"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = []  # ['_static']
+html_static_path = ["source/_static"]  # ['_static']
+# Add any paths that contain templates here, relative to this directory.
+templates_path = ["source/_templates"]
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = "project-templatedoc"
@@ -46,14 +48,12 @@ htmlhelp_basename = "project-templatedoc"
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 
-# for example.py
+# Insert the current docs directory
 sys.path.insert(0, os.path.abspath("."))
-# project root
-sys.path.insert(0, os.path.abspath(".."))
-# package root
-sys.path.insert(0, os.path.abspath("../pyNexafs/"))
-
-sys.path.insert(0, os.path.abspath("../../pyNexafs/"))
+# Insert the project root
+# sys.path.insert(0, os.path.abspath(".."))
+# Insert the package root
+sys.path.insert(0, "../pyNexafs/")
 
 os.environ["MPLBACKEND"] = "Agg"  # avoid tkinter import errors on rtfd.io
 
@@ -93,10 +93,9 @@ extensions = [
     "sphinx_copybutton",
     # "autoapi.extension",
     "matplotlib.sphinxext.plot_directive",
+    "sphinx.ext.coverage",
 ]
 
-# Add any paths that contain templates here, relative to this directory.
-templates_path = ["source/_templates"]
 
 # The root toctree document
 master_doc = "index"  # NOTE: will be changed to `root_doc` in sphinx 4
@@ -105,7 +104,7 @@ root_doc = master_doc
 # Setup the API auto-documentation
 autosummary_generate = True
 autosummary_generate_overwrite = True
-autosummary_imported_members = True
+# autosummary_imported_members = True
 autosummary_ignore_module_all = True
 
 # autoapi_dirs = ["../pyNexafs"]
@@ -142,9 +141,9 @@ latex_elements = {
 latex_documents = [
     (
         "index",
-        "numpydoc.tex",
-        "numpydoc Documentation",
-        "Numpydoc maintainers",
+        "pyNexafs.tex",
+        "pyNexafs Documentation",
+        "pyNexafs maintainers",
         "manual",
     ),
 ]
