@@ -5,7 +5,7 @@ pyNexafs
 ``pyNexafs`` is a comprehensive toolkit for NEXAFS\ [#a]_ (or XANES\ [#b]_) data, and is built to the feature-rich standards of `xraysoftmat <https://github.com/xraysoftmat>`_, so you can trust ongoing stability and developement.
 
 
-|tool-semver| |tool-black| |tool-ruff| |tool-numpydoc|
+|tool-semver| |tool-black| |tool-ruff| |tool-numpydoc| |tool-readthedocs|
 
 |PyPI Version| |PyTest| |Coveralls| |Pre-commit|
 
@@ -36,6 +36,9 @@ pyNexafs
 .. |tool-numpydoc| image:: https://img.shields.io/badge/doc_style-numpydoc-blue.svg
     :alt: Code doc: numpydoc
     :target: https://github.com/numpy/numpydoc
+.. |tool-readthedocs| image:: https://img.shields.io/readthedocs/pyNexafs?version=latest&style=flat&label=ReadtheDocs
+    :alt: Documentation
+    :target: https://pynexafs.readthedocs.io/
 
 Motivation
 ##########
