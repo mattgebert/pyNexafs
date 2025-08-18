@@ -5,9 +5,16 @@ The API documentation for `pyNexafs` is generated from the docstrings in the cod
 It provides detailed information about the classes, methods, and functions available in the package.
 
 .. autosummary::
-   :toctree: ../_build/_autosummary
-   :template: custom-module-template.rst
+   :toctree: _autosummary
    :recursive:
 
-
    pyNexafs
+
+The submodules are
+
+.. autosummary::
+
+   pyNexafs.parsers
+   pyNexafs.nexafs
+   pyNexafs.gui
+   pyNexafs.utils
