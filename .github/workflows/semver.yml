@@ -1,4 +1,7 @@
 # Based on Python Semantic Release (PSR) and PYPI (Python Package Index) as of July-2025
+# This workflow automates the versioning and release process - automatically generating the -noop version output.
+# Requires a manual "workflow_dispatch" trigger from github Actions to actually deploy a release to PyPI.
+
 # [1] https://python-semantic-release.readthedocs.io/en/stable/configuration/automatic-releases/github-actions.html#examples
 # [2] https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
 
@@ -51,16 +54,20 @@ jobs:
         run: |
           echo "prerelease=${{ github.event.inputs.prerelease }}" >> $GITHUB_ENV
           echo "prerelease_token=${{ github.event.inputs.prerelease_token }}" >> $GITHUB_ENV
+          echo "dispatch=true" >> $GITHUB_ENV
       - name: Set default value for pre-release
         shell: bash
         if: ${{ github.event != 'workflow_dispatch' }}
         run: |
           echo "prerelease=true" >> $GITHUB_ENV
           echo "prerelease_token=beta" >> $GITHUB_ENV
-      - name: Display pre-release input
+          echo "dispatch=false" >> $GITHUB_ENV
+      - name: Display workflow, pre-release and token input
         shell: bash
         run: |
           echo "Python SemVer pre-release?: $prerelease"
+          echo "Python SemVer pre-release token: $prerelease_token"
+          echo "Python SemVer Workflow Dispatch: $dispatch"
       # Note: We checkout the repository at the branch that triggered the workflow
       # with the entire history to ensure to match PSR's release branch detection
       # and history evaluation.
@@ -135,7 +142,7 @@ jobs:
           prerelease_token: ${{ env.prerelease_token }}
           changelog: true
           verbosity: 2
-          no_operation_mode: ${{ github.repository_owner != 'xraysoftmat'}}
+          no_operation_mode: ${{ github.repository_owner != 'xraysoftmat' || env.dispatch == 'false' }}
 
       - name: Env | Check if released and log conditionals
         id: is_released
@@ -144,9 +151,11 @@ jobs:
           echo "Ownership: ${{ github.repository_owner }} ; ${{ github.repository_owner == 'xraysoftmat' }}"
           echo "Released: ${{ steps.release.outputs.released }}"
           echo "Branch: ${{ github.ref }}; ${{ github.ref == 'refs/heads/main' }}"
-          echo "released=${{ steps.release.outcome && github.ref == 'refs/heads/main' && steps.release.outputs.released && github.repository_owner == 'xraysoftmat' && steps.release.outcome == 'success' }}" >> "$GITHUB_OUTPUT"
+          echo "Dispatch (i.e. manual trigger): ${{ env.dispatch }}"
+          echo "released=${{ steps.release.outcome && (github.ref == 'refs/heads/main') && steps.release.outputs.released && (github.repository_owner == 'xraysoftmat') && (steps.release.outcome == 'success') && (env.dispatch == 'true') }}" >> "$GITHUB_OUTPUT"
 
       - name: Display | Release Information
+        # released exists, could be true/false.
         if: |
           success() && steps.is_released.outputs.released
         run: |
