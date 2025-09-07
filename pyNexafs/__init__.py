@@ -13,3 +13,18 @@ from importlib.metadata import version as get_version
 __version__ = get_version(__package__)
 
 from pyNexafs import parsers, nexafs, gui, utils, resources
+from pyNexafs.types import dtype
+
+
+__all__ = [
+    # Modules
+    parsers,
+    nexafs,
+    gui,
+    utils,
+    resources,
+    # Classes
+    dtype,
+    # Objects
+    __version__,
+]

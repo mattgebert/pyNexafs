@@ -2,6 +2,8 @@
 Dedicated file for MEX2 NEXAFS Relabels dictionary, due to large number of possible parameters.
 """
 
+CHANNEL_MAP = {}
+
 RELABELS = {
     ##################################
     ######################### MDA File

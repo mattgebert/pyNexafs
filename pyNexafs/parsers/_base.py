@@ -39,6 +39,7 @@ if typing.TYPE_CHECKING:
     from _typeshed import SupportsKeysAndGetItem
 from numpy.typing import NDArray
 from pyNexafs.nexafs.scan import scanBase
+from pyNexafs.types import dtype
 import traceback
 import datetime
 import overrides
@@ -123,7 +124,7 @@ class parser_meta(abc.ABCMeta):
         """
 
         @overrides.overrides
-        def __getitem__(self, key: str | tuple[str, ...]) -> str:
+        def __getitem__(self, key: str | dtype | tuple[str, ...]) -> str | dtype:
             """
             Value matching for a given key. Overridden to allow for synonymous keys searching.
 
@@ -157,7 +158,7 @@ class parser_meta(abc.ABCMeta):
                 for key_sub in key:
                     if key_sub in self:
                         return super().__getitem__(key_sub)
-            elif isinstance(key, str):
+            elif isinstance(key, (str, dtype)):
                 if key in self.values():  # Return the relabel value itself.
                     return key
                 for k in self.keys():
@@ -196,7 +197,7 @@ class parser_meta(abc.ABCMeta):
                     for key_sub in key:
                         if k == key_sub:
                             return True
-            elif isinstance(key, str):
+            elif isinstance(key, (str, dtype)):
                 if key in self.values():
                     return True
                 for k in self.keys():
@@ -208,27 +209,31 @@ class parser_meta(abc.ABCMeta):
             return False
 
         @overrides.overrides
-        def __setitem__(self, key: str | tuple[str, ...], value: str) -> types.NoneType:
+        def __setitem__(
+            self, key: str | dtype | tuple[str | dtype, ...], value: str | dtype
+        ) -> types.NoneType:
             """
             Set the value of a key in the relabels dictionary.
 
-            For a single string key, existing tuples are checked for the key.
+            For a single string/NEXAFS-dtype key, existing tuples are checked for the key.
             If the key is found in a tuple, then the tuple is updated with the new value.
             If the key is not found in a tuple, then a new tuple is created with the key and value.
 
             For a tuple key, the tuple is updated with the new value.
             If a tuple element is found in another tuple, then a ValueError is raised.
-            If a tuple element is found as a string key, then the element value is updated and a warning raised.
+            If a tuple element is found as a string/NEXAFS-dtype key, then the element value is updated and a warning raised.
 
             Parameters
             ----------
-            key : str | tuple[str, ...]
+            key : str | dtype | tuple[str | dtype, ...]
                 The key to set the value for.
-            value : str
+            value : str | dtype
                 The value to set for the key.
             """
-            if not isinstance(key, (str, tuple)):
-                raise ValueError(f"Key {key} not a string or tuple of strings.")
+            if not isinstance(key, (str, dtype, tuple)):
+                raise ValueError(
+                    f"Key {key} not a string, NEXAFS dtype, or tuple of either."
+                )
             if isinstance(key, tuple):
                 # Check if the tuple is already a key
                 if key in self:
@@ -241,7 +246,7 @@ class parser_meta(abc.ABCMeta):
                             raise ValueError(
                                 f"tuple key `{key_sub}` already in tuple `{k}`."
                             )
-                        elif isinstance(k, str) and key_sub == k:
+                        elif isinstance(k, (str, dtype)) and key_sub == k:
                             warnings.warn(
                                 f"Key `{key_sub}` found in params dictionary and updated, not using `{key}`."
                             )
@@ -249,25 +254,27 @@ class parser_meta(abc.ABCMeta):
                             return
                         else:
                             raise ValueError(
-                                f"Key {key_sub} not a string or tuple of strings."
+                                f"Key {key_sub} not a string, NEXAFS dtype, or tuple of either."
                             )
                 # If the tuple is not a key or intersects with other keys, then create a new key.
                 super().__setitem__(key, value)
-            elif isinstance(key, str):
+            elif isinstance(key, (str, dtype)):
                 # Check if the key is already in a tuple
                 for k in self.keys():
                     if isinstance(k, tuple) and key in k:
                         # Update the tuple with the new value
                         super().__setitem__(k, value)
                         return
-                    elif isinstance(k, str) and key == k:
+                    elif isinstance(k, (str, dtype)) and key == k:
                         super().__setitem__(key, value)
                         return
                 # If the key is not in a tuple, create a new tuple with the key and value.
                 super().__setitem__(key, value)
                 return
             else:
-                raise ValueError(f"Key `{key}` not a string or tuple of strings.")
+                raise ValueError(
+                    f"Key `{key}` not a string, NEXAFS dtype, or tuple of either."
+                )
             return
 
     class summary_param_list(list):
@@ -505,6 +512,8 @@ class parser_meta(abc.ABCMeta):
     """Internal dictionary of label equivalence in reverse."""
     _relabel = True
     """Internal class boolean for relabels, by default True."""
+    _CHANNEL_MAP: dict[str, dtype] = {}
+    """Internal dictionary mapping common channel names to NEXAFS dtypes."""
 
     def __new__(
         mcls: type["parser_meta"],
@@ -555,6 +564,8 @@ class parser_meta(abc.ABCMeta):
                 namespace["SUMMARY_PARAM_RAW_NAMES"] = []
             if "RELABELS" not in namespace:
                 namespace["RELABELS"] = {}
+            if "CHANNEL_MAP" not in namespace:
+                namespace["CHANNEL_MAP"] = {}
 
             # Raise error if necessary variables are not defined.
             for prop in ["ALLOWED_EXTENSIONS", "COLUMN_ASSIGNMENTS"]:
@@ -567,6 +578,7 @@ class parser_meta(abc.ABCMeta):
                 "COLUMN_ASSIGNMENTS",
                 "SUMMARY_PARAM_RAW_NAMES",
                 "RELABELS",
+                "CHANNEL_MAP",
             ]:
                 namespace[f"_{prop}"] = namespace[
                     prop
@@ -634,6 +646,17 @@ class parser_meta(abc.ABCMeta):
             # Convert _RELABELS to a relabels_dict
             namespace["_RELABELS"] = parser_meta.relabels_dict(namespace["_RELABELS"])
 
+        # Validate the channel map
+        for key, value in namespace["_CHANNEL_MAP"].items():
+            if not isinstance(key, str):
+                raise ValueError(
+                    f"Key '{key}' in CHANNEL_MAP is not a string (Channel map will use RELABELS)."
+                )
+            if not isinstance(value, dtype):
+                raise ValueError(
+                    f"Value '{value}' in CHANNEL_MAP is not a NEXAFS dtype."
+                )
+
         return super().__new__(mcls, name, bases, namespace, **kwargs)
 
     def __init__(
@@ -655,6 +678,10 @@ class parser_meta(abc.ABCMeta):
 
         Enables the faster loading of similar files that have already been successfully loaded.
         """
+        cls._load_kwargs: dict[str, dict[str, Any]] = {}
+        """For each parsing function, a dictionary of previously used keyword arguments to load the file."""
+        cls._to_scan_kwargs: dict[str, Any] = {}
+        """A dictionary of previously used keyword arguments to create the scan object."""
 
         # Convert the list to a `summary_param_list`, linked to the parser class.
         if cls.__name__ != "parser_base":
@@ -671,7 +698,7 @@ class parser_meta(abc.ABCMeta):
                     arg_names = fn.__code__.co_varnames[: fn.__code__.co_argcount]
 
                     # Check the parameters of each function match requirements.
-                    if type(fn) == types.FunctionType:  # Static methods
+                    if type(fn) is types.FunctionType:  # Static methods
                         # First parameter must always be file.
                         if arg_names[0] != "file":
                             raise NameError(
@@ -683,7 +710,7 @@ class parser_meta(abc.ABCMeta):
                         #         f"Second (optional) argument of static parser method must be 'header_only'. Is {arg_names[2]}."
                         #     )
                         cls.parse_functions.append(fn)
-                    elif type(fn) == types.MethodType:  # Class methods
+                    elif type(fn) is types.MethodType:  # Class methods
                         if len(arg_names) < 2:
                             raise NameError(
                                 f"Parser method must have a minimum 2-3 arguments: 'cls', 'file' and (optional) 'header_only'. Has {arg_names}"
@@ -1123,8 +1150,11 @@ class parser_base(abc.ABC, metaclass=parser_meta):
     SUMMARY_PARAM_RAW_NAMES = parser_meta.SUMMARY_PARAM_RAW_NAMES
     RELABELS = parser_meta.RELABELS
     RELABELS_REVERSE = parser_meta.RELABELS_REVERSE
+    CHANNEL_MAP = parser_meta._CHANNEL_MAP
+
+    # These methods are not class methods copies, but rather return names existing on the object instance.
     # summary_param_names_with_units = parser_meta.summary_param_names_with_units
-    summary_param_names = parser_meta.summary_param_names
+    # summary_param_names = parser_meta.summary_param_names
 
     class param_dict(dict):
         """
@@ -1459,19 +1489,33 @@ class parser_base(abc.ABC, metaclass=parser_meta):
         # Initialise variables
         self._filepath: str | None = filepath  # filepath of the data file
         """The file path of the data"""
-        self.data: npt.NDArray | None = None
-        """Data loaded through the `parser.load()` function."""
-        self._labels: list[str] = []
-        """Labels loaded through the `parser.load()` function."""
-        self.units: list[str] = []
-        """Units loaded through the `parser.load()` function."""
+        self.data: npt.NDArray | tuple[npt.NDArray, ...] | None = None
+        """
+        Data loaded through the `parser.load()` function. Can be a single (2D) array,
+        with indexes (NEXAFS energy, channel #), or a tuple of arrays for
+        multi-dimensional/multi-scan files where the indexes match
+        (NEXAFS energy, ..., <other setting / indepedent variables>, ..., channel #).
+        """
+        self._labels: list[str] | tuple[list[str]] = []
+        """
+        Labels loaded through the `parser.load()` function.
+        Should match the shape of the data array.
+        """
+        self.units: list[str] | tuple[list[str]] = []
+        """
+        Units loaded through the `parser.load()` function.
+        Should match the shape of the data array.
+        """
         self._params: parser_base.param_dict = self.param_dict({}, parent=self)
         """Parameters loaded through the `parser.load()` function."""
         self.__loading_kwargs: dict[str, Any] = kwargs
 
         # Copy class value at initialisation if None
         self._relabel: bool = relabel
-        """Whether to use relables or not. If None, then the class value is used by default."""
+        """
+        Whether to use relables or not.
+        If None, then the class value is used by default when `obj.relabel` is called.
+        """
         # Create a variable to track loading
         self._loaded = False
         """Tracks wether the data has been loaded (True), or only the header (False)"""
@@ -1559,7 +1603,7 @@ class parser_base(abc.ABC, metaclass=parser_meta):
         return os.path.basename(self._filepath)
 
     @property
-    def labels(self) -> list[str]:
+    def labels(self) -> list[str] | tuple[list[str]]:
         """
         The labels of the data columns.
 
@@ -1576,9 +1620,21 @@ class parser_base(abc.ABC, metaclass=parser_meta):
             # Collect labels if they exist.
             relabels = []
             for label in self._labels:
-                relabels.append(
-                    self.RELABELS[label] if label in self.RELABELS else label
-                )
+                if isinstance(label, list):
+                    relabels.append(
+                        [
+                            (
+                                self.RELABELS[sub_label]
+                                if sub_label in self.RELABELS
+                                else sub_label
+                            )
+                            for sub_label in label
+                        ]
+                    )
+                else:
+                    relabels.append(
+                        self.RELABELS[label] if label in self.RELABELS else label
+                    )
             return relabels
 
     @property
@@ -1709,7 +1765,7 @@ class parser_base(abc.ABC, metaclass=parser_meta):
                             kw: kwargs[kw] for kw in arg_names if kw in kwargs.keys()
                         }
 
-                        if type(parse_fn) == types.FunctionType:  # staticmethod
+                        if type(parse_fn) is types.FunctionType:  # staticmethod
                             obj = (
                                 parse_fn(file, header_only, **fn_kwargs)
                                 if "header_only" in arg_names
@@ -2058,7 +2114,7 @@ class parser_base(abc.ABC, metaclass=parser_meta):
             + sys.getsizeof(self.units)
         )
 
-    def to_DataFrame(self) -> "DataFrame":
+    def to_DataFrame(self) -> "pd.DataFrame":
         """
         Generate a pandas DataFrame from the data.
 
@@ -2117,38 +2173,36 @@ class parser_base(abc.ABC, metaclass=parser_meta):
             ve: ValueError
             try:
                 return self._labels.index(query)  # throws value error if not found.
-            except ValueError:
-                pass
+            except ValueError as ve:
+                # Also check relabel if search_relabel is True.
+                if search_relabels:
+                    # Search keys
+                    if query in self.RELABELS:
+                        try:
+                            return self._labels.index(
+                                self.RELABELS[query]
+                            )  # throws value error if not found
+                        except ValueError:
+                            pass
 
-            # Also check relabel if search_relabel is True.
-            if search_relabels:
-                # Search keys
-                if query in self.RELABELS:
-                    try:
-                        return self._labels.index(
-                            self.RELABELS[query]
-                        )  # throws value error if not found
-                    except ValueError:
-                        pass
-
-                # Search values instead to reverse for key
-                relabel_vals = list(self.RELABELS.values())
-                if query in relabel_vals:
-                    relabel_keys = list(self.RELABELS.keys())
-                    # Check for multiple matching values (opposed to unique keys).
-                    warn = True if relabel_vals.count(query) > 1 else False
-                    # Find value in RELABELS
-                    i = relabel_vals.index(query)
-                    if warn:
-                        warnings.warn(
-                            f"Multiple labels matched `{query}` in {type(self)}.RELABELS. Using key '{relabel_keys[i]}' as the label."
-                        )
-                    # If labels found, return index of key.
-                    key = relabel_keys[i]
-                    if key in self._labels:
-                        return self._labels.index(key)
-            else:
-                raise ve
+                    # Search values instead to reverse for key
+                    relabel_vals = list(self.RELABELS.values())
+                    if query in relabel_vals:
+                        relabel_keys = list(self.RELABELS.keys())
+                        # Check for multiple matching values (opposed to unique keys).
+                        warn = True if relabel_vals.count(query) > 1 else False
+                        # Find value in RELABELS
+                        i = relabel_vals.index(query)
+                        if warn:
+                            warnings.warn(
+                                f"Multiple labels matched `{query}` in {type(self)}.RELABELS. Using key '{relabel_keys[i]}' as the label."
+                            )
+                        # If labels found, return index of key.
+                        key = relabel_keys[i]
+                        if key in self._labels:
+                            return self._labels.index(key)
+                else:
+                    raise ve
         raise ValueError(f"Label '{search}' not found in labels {self._labels}.")
 
     @property
