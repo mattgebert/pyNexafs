@@ -124,10 +124,27 @@ line-ending = "auto"
 [tool.commitizen]
 name = "cz_conventional_commits"
 version_files = ["pyproject.toml:project.version"]
+[tool.commitizen.customize]
+message_length_limit = 72
+max_line_length = 72 # one of these to be supported? https://github.com/commitizen-tools/commitizen/issues/1571
+types = [
+    {type = "fix", bump = "patch", section = "A bug fixes. Correlates with PATCH in SemVer."},
+    {type = "feat", bump = "minor", section = "A new feature. Correlates with MINOR in SemVer."},
+    {type = "perf", bump = "patch", section = "A code change that improves performance."},
+    {type = "docs", bump = "patch", section = "Documentation only changes."},
+    {type = "style", bump = "patch", section = "Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc)."},
+    {type = "refactor", bump = "patch", section = "A code change that neither fixes a bug nor adds a feature."},
+    {type = "test", bump = "patch", section = "Adding missing tests or correcting existing tests."},
+    {type = "build", bump = "patch", section = "Changes that affect the build system or external dependencies (example scopes: gulp, broccoli, npm)."},
+    {type = "ci", bump = "patch", section = "Changes to CI configuration files and scripts (example scopes: GitLabCI)."},
+    {type = "chore", bump = "patch", section = "Additional chores that don't modify src or test files."},
+    {type = "wip", bump = "", section = "Work in progress, partial commits but not ready for review."},
+]
 # version_provider = "pep621" #equivalent to version_files description
 
-# Commitlint
-
+# # Commitlint - not supported in pyproject.toml yet.
+# [tool.commitlint]
+# extends = ["@commitlint/config-conventional"]
 
 # Python-Sem-Ver
 [tool.semantic_release.branches.main]
