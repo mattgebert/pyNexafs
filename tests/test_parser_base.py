@@ -3,11 +3,11 @@
 import pytest
 
 # Test the creation of a new parser class.
-from pyNexafs.parsers._base import parser_meta, parser_base
+from pyNexafs.parsers._base import parserMeta, parserBase
 from pyNexafs.types import dtype
 
 ##############################################################################
-################### Test the inner classes of parser_meta ####################
+################### Test the inner classes of parserMeta ####################
 ##############################################################################
 
 
@@ -32,7 +32,7 @@ class TestRelabelsDict:
             (dtype.PEY, dtype.PEY),
             (dtype.PEY.value, "Partial Electron Yield"),
             ("i", "Partial Electron Yield"),
-            ("Partial Electron Yield"),
+            ("Partial Electron Yield", "Partial Electron Yield"),
         ],
     )
     def test_get(self, key, value):
@@ -40,7 +40,7 @@ class TestRelabelsDict:
         including the use of tuples."""
 
         # Create the relabel dictionary.
-        relabel_dict = parser_meta.relabels_dict(self.DummyParserRelabel.RELABELS)
+        relabel_dict = parserMeta.relabels_dict(self.DummyParserRelabel.RELABELS)
         # Test its access
         assert relabel_dict[key] == value
 
@@ -53,14 +53,14 @@ class TestRelabelsDict:
             ("f", "4"),
             (("e", "f"), "5"),
             ("g", "6"),
-            (dtype.PEY, "8"),
-            ("Partial Electron Yield"),
+            (dtype.PEY, "Partial Electron Yield"),
+            ("Partial Electron Yield", "Partial Electron Yield"),
             ("i", "Partial Electron Yield"),
         ],
     )
     def test_set(self, key, value):
         # Create the relabel dictionary.
-        relabel_dict = parser_meta.relabels_dict(self.DummyParserRelabel.RELABELS)
+        relabel_dict = parserMeta.relabels_dict(self.DummyParserRelabel.RELABELS)
         # Test setting
         relabel_dict[key] = value
         # Check it was set
@@ -86,13 +86,13 @@ class TestRelabelsDict:
         including the use of tuples."""
 
         # Create the relabel dictionary.
-        relabel_dict = parser_meta.relabels_dict(self.DummyParserRelabel.RELABELS)
+        relabel_dict = parserMeta.relabels_dict(self.DummyParserRelabel.RELABELS)
         # Test its access
         assert (key in relabel_dict) == contained
 
     def test_tuples(self):
         """Tests the synonymous tuple functionality of the relabels dictionary."""
-        relabel_dict = parser_meta.relabels_dict(self.DummyParserRelabel.RELABELS)
+        relabel_dict = parserMeta.relabels_dict(self.DummyParserRelabel.RELABELS)
         assert relabel_dict[("e", "f")] == "g"  # type: ignore ##pylance doesnt like this.
         assert relabel_dict["e"] == "g"
         # Test propogation
@@ -133,11 +133,11 @@ class TestSummaryParamList:
         # Create the summary parameters list.
         if err:
             with pytest.raises(err) as e:
-                parser_meta.summary_param_list(elements, parent=self.ParserNoRelabels)  # type: ignore
+                parserMeta.summary_param_list(elements, parent=self.ParserNoRelabels)  # type: ignore
             if overlapping_param:
                 assert f"Summary Parameter `{overlapping_param}`" in str(e.value)
         else:
-            parser_meta.summary_param_list(elements, parent=self.ParserNoRelabels)  # type: ignore
+            parserMeta.summary_param_list(elements, parent=self.ParserNoRelabels)  # type: ignore
 
     @pytest.mark.parametrize(
         "elements, err, overlapping_param",
@@ -157,11 +157,11 @@ class TestSummaryParamList:
         # Create the summary parameters list.
         if err:
             with pytest.raises(err) as e:
-                parser_meta.summary_param_list(elements, parent=self.ParserRelabels)  # type: ignore
+                parserMeta.summary_param_list(elements, parent=self.ParserRelabels)  # type: ignore
             if overlapping_param:
                 assert f"Summary Parameter `{overlapping_param}`" in str(e.value)
         else:
-            parser_meta.summary_param_list(elements, parent=self.ParserRelabels)  # type: ignore
+            parserMeta.summary_param_list(elements, parent=self.ParserRelabels)  # type: ignore
 
     @pytest.mark.parametrize(
         "elements, query, contains",
@@ -177,7 +177,7 @@ class TestSummaryParamList:
         """Tests the summary parameters list can be set and returns the correct value."""
 
         # Create the summary parameters list.
-        summary_params = parser_meta.summary_param_list(
+        summary_params = parserMeta.summary_param_list(
             elements, parent=self.ParserNoRelabels
         )  # type: ignore
         # Test its access
@@ -200,7 +200,7 @@ class TestSummaryParamList:
     def test_contains_relabelled(self, elements, query, relabelled_contains):
         """Tests the summary parameters list can be set and returns the correct value."""
         # Create the summary parameters list.
-        summary_params = parser_meta.summary_param_list(
+        summary_params = parserMeta.summary_param_list(
             elements, parent=self.ParserRelabels
         )  # type: ignore
         # Test its access
@@ -220,7 +220,7 @@ class TestSummaryParamList:
     def test_index_tuples(self, elements, query, index_or_exception):
         """Tests the summary parameters list can be indexed, and tuples behave as individual elements also."""
         # Create the summary parameters list.
-        summary_params = parser_meta.summary_param_list(
+        summary_params = parserMeta.summary_param_list(
             elements, parent=self.ParserNoRelabels
         )  # type: ignore
         # Test its access
@@ -253,7 +253,7 @@ class TestSummaryParamList:
     def test_index_relabelled(self, elements, query, index_or_exception):
         """Tests the summary parameters list can be indexed, tuples behave as individual elements and relabels apply."""
         # Create the summary parameters list.
-        summary_params = parser_meta.summary_param_list(
+        summary_params = parserMeta.summary_param_list(
             elements, parent=self.ParserRelabels
         )  # type: ignore
         # Test its access
@@ -268,7 +268,7 @@ class TestSummaryParamList:
 
 
 ##############################################################################
-############################ Test parser_meta ################################
+############################ Test parserMeta ################################
 ##############################################################################
 
 
@@ -279,7 +279,7 @@ class TestParserMeta:
         """Tests ValueError is raised when ALLOWED_EXTENSIONS is not defined."""
         with pytest.raises(ValueError) as e:
 
-            class Test_Parser(parser_base):
+            class Test_Parser(parserBase):
                 pass
 
         assert "Class Test_Parser does not define ALLOWED_EXTENSIONS." in str(e)
@@ -288,7 +288,7 @@ class TestParserMeta:
         """Tests ValueError is raised when COLUMN_ASSIGNMENTS is not defined."""
         with pytest.raises(ValueError) as e:
 
-            class Test_Parser(parser_base):
+            class Test_Parser(parserBase):
                 ALLOWED_EXTENSIONS = [".txt"]
                 pass
 
@@ -296,7 +296,7 @@ class TestParserMeta:
 
 
 ##############################################################################
-#################### Test the inner classes of parser_base ###################
+#################### Test the inner classes of parserBase ###################
 ##############################################################################
 class TestParamDict:
     """Tests the parameter dictionary functionality, which stores a set of parameters,
@@ -334,7 +334,7 @@ class TestParamDict:
         """
 
         # Create the parameter dictionary.
-        param_dict = parser_base.param_dict(
+        param_dict = parserBase.param_dict(
             map=self.DummyLoadedParserNoRelabel.params,
             parent=self.DummyLoadedParserNoRelabel,
         )  # type: ignore
@@ -342,7 +342,7 @@ class TestParamDict:
         assert (param_dict.__contains__(key)) == contains, "Contains failed."
 
         # Create the parameter dictionary.
-        param_dict = parser_base.param_dict(
+        param_dict = parserBase.param_dict(
             map=self.DummyLoadedParserRelabel.params,
             parent=self.DummyLoadedParserRelabel,
         )  # type: ignore
@@ -371,7 +371,7 @@ class TestParamDict:
         """Tests the values returned by the parameter dictionary."""
 
         # Create the parameter dictionary.
-        param_dict = parser_base.param_dict(
+        param_dict = parserBase.param_dict(
             parent=self.DummyLoadedParserNoRelabel,
             map=self.DummyLoadedParserNoRelabel.params,
         )  # type: ignore
@@ -385,7 +385,7 @@ class TestParamDict:
             assert param_dict[key] == value_or_exception
 
         # Test the relabelled value
-        param_dict = parser_base.param_dict(
+        param_dict = parserBase.param_dict(
             parent=self.DummyLoadedParserRelabel,
             map=self.DummyLoadedParserRelabel.params,
         )  # type: ignore
@@ -397,7 +397,7 @@ class TestParamDict:
 
 
 ##############################################################################
-############################ Test parser_base ################################
+############################ Test parserBase ################################
 ##############################################################################
 
 
@@ -405,21 +405,21 @@ class TestParserBase:
     """Tests the base parser class and its methods."""
 
     class TestInitialisation:
-        """Tests the initialisation of the parser_base class."""
+        """Tests the initialisation of the parserBase class."""
 
         def test_abstract(self):
             """Tests the parser base class is abstract"""
             with pytest.raises(TypeError) as e:
-                parser_base(None)
-            assert "Cannot instantiate abstract class `parser_base`." in str(e)
+                parserBase(None)
+            assert "Cannot instantiate abstract class `parserBase`." in str(e)
 
         def test_no_parse_fn(self):
-            """Tests an invalid implementations of the parser_base class with no parse method."""
+            """Tests an invalid implementations of the parserBase class with no parse method."""
 
             # No parser methods
             with pytest.raises(AttributeError) as e:
 
-                class NoParserMethods(parser_base):
+                class NoParserMethods(parserBase):
                     ALLOWED_EXTENSIONS = [".txt"]
                     COLUMN_ASSIGNMENTS = {"x": "a", "y": "b"}
 
@@ -432,7 +432,7 @@ class TestParserBase:
                 def parse_fn(x):
                     return x
 
-                class ParserRelabelOverlapMono(parser_base):
+                class ParserRelabelOverlapMono(parserBase):
                     ALLOWED_EXTENSIONS = [".txt"]
                     COLUMN_ASSIGNMENTS = {"x": "a", "y": "b"}
                     RELABELS = {}
@@ -447,7 +447,7 @@ class TestParserBase:
             def parse_fn_duo(file, y):
                 return y
 
-            class ParserRelabelOverlapDuo(parser_base):
+            class ParserRelabelOverlapDuo(parserBase):
                 ALLOWED_EXTENSIONS = [".txt"]
                 COLUMN_ASSIGNMENTS = {"x": "a", "y": "b"}
                 RELABELS = {}
@@ -457,7 +457,7 @@ class TestParserBase:
             def parser_fn_header(file, y, header_only):
                 return header_only
 
-            class ParserRelabelOverlapHeader(parser_base):
+            class ParserRelabelOverlapHeader(parserBase):
                 ALLOWED_EXTENSIONS = [".txt"]
                 COLUMN_ASSIGNMENTS = {"x": "a", "y": "b"}
                 RELABELS = {}
@@ -506,7 +506,7 @@ class TestParserBase:
                 def parse_fn(file):
                     return file
 
-                class ParserRelabelOverlap(parser_base):
+                class ParserRelabelOverlap(parserBase):
                     ALLOWED_EXTENSIONS = [".txt"]
                     COLUMN_ASSIGNMENTS = {"x": "a", "y": "b"}
                     RELABELS = relabels
@@ -522,4 +522,4 @@ class TestParserBase:
             print(substr)
             assert assertion in substr
 
-    # Generate some basic implementation of the parser_base class.
+    # Generate some basic implementation of the parserBase class.

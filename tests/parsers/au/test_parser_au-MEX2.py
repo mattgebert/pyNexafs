@@ -17,9 +17,7 @@ class TestMEX2:
     """Tests the loading of example files"""
 
     class Test_MDA_2024_11:
-        @pytest.mark.parametrize(
-            "header_only, energy_bin_domain", [(True, None), (False, (2200, 2600))]
-        )
+        @pytest.mark.parametrize("header_only", [True, False])
         @pytest.mark.parametrize(
             "filepath",
             [
@@ -39,14 +37,11 @@ class TestMEX2:
             parser = MEX2_NEXAFS(
                 filepath,
                 header_only=header_only,
-                energy_bin_domain=energy_bin_domain,
                 relabel=False,
             )
             # Test the parser method
             with open(filepath, "r") as f:
-                parser_vals = MEX2_NEXAFS.parse_mda_2024_11(
-                    f, header_only=header_only, energy_bin_domain=energy_bin_domain
-                )
+                parser_vals = MEX2_NEXAFS.parse_mda_2024_11(f, header_only=header_only)
 
             # Check equivalence (i.e. the correct parser method was called)
             data, labels, units, params = parser_vals
@@ -55,6 +50,49 @@ class TestMEX2:
             assert np.all(parser.units == units)
             for key in params:
                 assert np.all(parser.params[key] == params[key])
+
+        # Test scan conversion for reduction of multi-dimensional flourescence data
+        @pytest.mark.parametrize(
+            "header_only, energy_bin_domain", [(True, None), (False, (2200, 2600))]
+        )
+        @pytest.mark.parametrize(
+            "filepath",
+            [
+                (
+                    os.path.join(PATH_202403, file)
+                    if "5641" not in file
+                    else pytest.param(
+                        os.path.join(PATH_202403, file), marks=pytest.mark.xfail
+                    )
+                )  # 5641 is a partial scan. It should fail.
+                for file in os.listdir(PATH_202403)
+                if file.endswith(".mda")
+            ],
+        )
+        def test_scan_mda_2024_11(self, filepath, header_only, energy_bin_domain):
+            # Test the class constructor success
+            parser = MEX2_NEXAFS(
+                filepath,
+                header_only=header_only,
+                relabel=False,
+            )
+            if header_only:
+                with pytest.raises(
+                    ValueError, match=r"(No data loaded into the parser object)(.*+)"
+                ):
+                    scan = parser.to_scan(energy_bin_domain=energy_bin_domain)
+                return
+            else:
+                scan = parser.to_scan(energy_bin_domain=energy_bin_domain)
+
+            # Depending on `to_scan`, the scan data might or might not include the 2D variables.
+            # Check instead that there has been "some" additional processing.
+            pdata = parser.data  # Multi-dimensional sets
+            assert pdata is not None and isinstance(pdata, tuple) and len(pdata) == 2
+            assert pdata[0] is not None
+            assert scan.y is not None and scan.y.shape[1] + 1 > len(
+                pdata[0][0]
+            )  # [0] is 1D data, with first index energy, second index channels.
 
     class Test_MDA_2025_02:
         @pytest.mark.parametrize(
@@ -79,19 +117,55 @@ class TestMEX2:
             parser = MEX2_NEXAFS(
                 filepath,
                 header_only=header_only,
-                energy_bin_domain=energy_bin_domain,
                 relabel=False,
             )
-            # Test the parser method
-            with open(filepath, "r") as f:
-                parser_vals = MEX2_NEXAFS.parse_mda_2025_02(
-                    f, header_only=header_only, energy_bin_domain=energy_bin_domain
-                )
+            scan = parser.to_scan(energy_bin_domain=energy_bin_domain)
 
-            # Check equivalence (i.e. the correct parser method was called)
-            data, labels, units, params = parser_vals
-            assert np.all(parser.data == data)
-            assert np.all(parser.labels == labels)
-            assert np.all(parser.units == units)
-            for key in params:
-                assert np.all(parser.params[key] == params[key])
+            # Depending on `to_scan`, the scan data might or might not include the 2D variables.
+            # Check instead that there has been "some" additional processing.
+            data = parser.data
+            assert data is not None and isinstance(data, tuple) and len(data) == 2
+            assert data[0] is not None
+            assert scan.y is not None and scan.y.shape[1] + 1 > len(data[0])
+
+
+if __name__ == "__main__":
+    # Test each of the parser functions with the test data.
+    # MEX2 2024-03
+    folder = "2025-03"
+    fname = "MEX2_13366.mda"
+    # fname = "MEX2_13366_processed.xdi"
+    # MEX2 2025-03
+    folder = "2024-03"
+    fname = "MEX2_5641.mda"
+    # fname = "MEX2_5641_processed.xdi"
+
+    #
+    import pkgutil
+    import io
+
+    bdata = pkgutil.get_data("pyNexafs", f"../tests/test_data/au/MEX2/{folder}/{fname}")
+    assert bdata is not None
+    reader = io.BytesIO(bdata)
+    reader.name = fname
+    if fname.endswith(".xdi"):
+        reader = io.TextIOWrapper(reader, encoding="utf-8")
+
+    if "2024-03" in folder:
+        if fname.endswith(".mda"):
+            result = MEX2_NEXAFS.parse_mda_2024_11(reader, header_only=False)
+        elif fname.endswith(".xdi"):
+            result = MEX2_NEXAFS.parse_xdi(reader, header_only=False)
+        else:
+            raise ValueError("File extension not recognised.")
+    elif "2025-03" in folder:
+        if fname.endswith(".mda"):
+            result = MEX2_NEXAFS.parse_mda_2025_02(reader, header_only=False)
+        elif fname.endswith(".xdi"):
+            result = MEX2_NEXAFS.parse_xdi(reader, header_only=False)
+        else:
+            raise ValueError("File extension not recognised.")
+    else:
+        raise ValueError("Folder not recognised.")
+
+    print(result)
