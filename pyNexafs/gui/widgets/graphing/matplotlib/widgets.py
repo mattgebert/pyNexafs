@@ -959,7 +959,7 @@ class NSpanSelector(SpanSelector):
         """An alternative method for SpanSelector._draw_shape.
         Draws the selection shapes on the axes."""
         for i, extent in enumerate(extents):
-            (vmin, vmax) = extent
+            vmin, vmax = extent
             # Reorder if necessary
             if vmin > vmax:
                 vmin, vmax = vmax, vmin
