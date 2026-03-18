@@ -4,36 +4,44 @@
 #######################################################
 
 [build-system]
-    requires = [
-        "setuptools-scm >= 6.4.2", # For versioning
-        "setuptools >= 61.2.0", # Minimum version for pyproject.toml support
-        "uv >= 0.7.20" # Current version as of 2025-July
-    ]
-    build-backend = "setuptools.build_meta"
+requires = [
+    # "setuptools-scm >= 6.4.2", # For versioning
+    # "setuptools >= 61.2.0", # Minimum version for pyproject.toml support
+    "hatchling",
+    "uv >= 0.7.20", # Current version as of 2025-July
+]
+# build-backend = "setuptools.build_meta"
+build-backend = "hatchling.build" # using hatchling which provides better support for excluding files than setuptools
 
 [project]
-    # Project information
-    name = "pyNexafs"
-    version = "0.1.0-beta.1"
-    description = "A package for processing and analysing NEXAFS data."
-    readme = "README.rst"
-    license = {file = "LICENSE"}
-    keywords = ["NEXAFS", "XANES", "Near", "Edge", "X-ray", "Absorption", "Fine", "Structure", "Spectroscopy", "Optical Data", "XAS", "Synchrotron"]
-    authors = [
-        {name = "Matthew Gebert", email="matthew.gebert@monash.edu"},
-        ]
-    maintainers = [
-        {name = "Matthew Gebert", email="matthew.gebert@monash.edu"},
+# Project information
+name = "pyNexafs"
+version = "0.1.0-beta.1"
+description = "A package for processing and analysing NEXAFS data."
+readme = "README.rst"
+license = {file = "LICENSE"}
+keywords = ["NEXAFS", "XANES", "Near", "Edge", "X-ray", "Absorption", "Fine", "Structure", "Spectroscopy", "Optical Data", "XAS", "Synchrotron"]
+authors = [
+    {name = "Matthew Gebert", email="mattheuu.gebert@gmail.com"},
     ]
+maintainers = [
+    {name = "Matthew Gebert", email="mattheuu.gebert@gmail.com"},
+]
 
-    # Project compatibility:
-    requires-python = ">=3.11"
-    dependencies = [
-        "numpy",
-        "overrides", # for type hinting
-        "scipy",
-        "xdrlib3", # function bindings for reading binary data from mda files
-    ]
+# Project compatibility:
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "scipy",
+    "xdrlib3", # function bindings for reading binary data from mda files
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
 
 [project.urls]
     # Website, documentation and other continuous integration URLS.
@@ -42,6 +50,10 @@
 
 [dependency-groups]
 # Dependency groups for optional dependencies. Requires pip >= 25.1
+all = [
+    {include-group = "dev"}
+]
+
 dev = [
     {include-group = "gui"}, # Include GUI dependencies in dev
     {include-group = "docs"}, # Include documentation dependencies in dev
@@ -51,20 +63,20 @@ dev = [
     "commitizen",
     "commitlint",
     "periodictable >= 2.0.2", # Due to changes in neutron element as zeroth element.
-    "black",
     "numpydoc",
     "ruff",
+    "pyinstaller", # For creating standalone executables of the GUI
 ]
 
 docs = [
     "sphinx",
     "sphinx_pyproject", # to include conf.py information in pyproject.toml
+    "sphinx-copybutton", # Add a copybutton to code blocks
     "intersphinx-registry", # to reference other projects in sphinx
     # "sphinx-rtd-theme",
     "pydata-sphinx-theme",
     "myst-parser", # For parsing md files in sphinx
     "numpydoc",
-    "sphinx-copybutton", # Add a copybutton to code blocks
     # "sphinx-autoapi", # Automatically generate API documentation instead of using autodoc/autosummary extensions.
     "matplotlib",
 ]
@@ -76,8 +88,19 @@ gui = [
     "pyyaml",
 ]
 
-[tool.setuptools.packages.find]
-exclude = ["docs*", "tests*"]
+# [tool.setuptools.packages.find]
+# exclude = ["docs*", "tests*"]
+[tool.hatch.build]
+directory = "./dist"
+targets.sdist.include = [
+    "pyNexafs/**",
+]
+targets.sdist.exclude = [
+    "pyNexafs/utils/decorators.py", # Exclude decorators from distribution
+    "docs/**",
+    "tests/**",
+]
+
 
 #######################################################
 #############  Pre-commit configurations  #############
@@ -108,7 +131,10 @@ line-ending = "auto"
 
     exclude = [
         '^tests*$',
-        '.*/gui/.*',
+    ]
+
+    exclude_files = [
+        '^pyNexafs/gui/*',
     ]
 
     override_SS05 = [
@@ -124,10 +150,27 @@ line-ending = "auto"
 [tool.commitizen]
 name = "cz_conventional_commits"
 version_files = ["pyproject.toml:project.version"]
+[tool.commitizen.customize]
+message_length_limit = 72
+max_line_length = 72 # one of these to be supported? https://github.com/commitizen-tools/commitizen/issues/1571
+types = [
+    {type = "fix", bump = "patch", section = "A bug fixes. Correlates with PATCH in SemVer."},
+    {type = "feat", bump = "minor", section = "A new feature. Correlates with MINOR in SemVer."},
+    {type = "perf", bump = "patch", section = "A code change that improves performance."},
+    {type = "docs", bump = "patch", section = "Documentation only changes."},
+    {type = "style", bump = "patch", section = "Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc)."},
+    {type = "refactor", bump = "patch", section = "A code change that neither fixes a bug nor adds a feature."},
+    {type = "test", bump = "patch", section = "Adding missing tests or correcting existing tests."},
+    {type = "build", bump = "patch", section = "Changes that affect the build system or external dependencies (example scopes: gulp, broccoli, npm)."},
+    {type = "ci", bump = "patch", section = "Changes to CI configuration files and scripts (example scopes: GitLabCI)."},
+    {type = "chore", bump = "patch", section = "Additional chores that don't modify src or test files."},
+    {type = "wip", bump = "", section = "Work in progress, partial commits but not ready for review."},
+]
 # version_provider = "pep621" #equivalent to version_files description
 
-# Commitlint
-
+# # Commitlint - not supported in pyproject.toml yet.
+# [tool.commitlint]
+# extends = ["@commitlint/config-conventional"]
 
 # Python-Sem-Ver
 [tool.semantic_release.branches.main]
@@ -166,6 +209,7 @@ exclude_commit_patterns = [
     '''test(?:\([^)]*?\))?: .+''',
     '''build\((?!deps\): .+)''',
     '''Initial [Cc]ommit.*''',
+    '''wip(?:\([^)]*?\))?: .+''',
 ]
 
 [tool.semantic_release.commit_parser_options]
@@ -226,5 +270,6 @@ html_theme = "pydata_sphinx_theme"
 
 # Esbonio Sphinx extension for VS Code integration - https://docs.esbon.io
 [tool.esbonio.sphinx]
-    buildCommand = ["sphinx-build", "-M", "dirhtml", "./docs", "./docs/_build"]
+    # buildCommand = ["sphinx-build", "-M", "dirhtml", "./docs", "./docs/_build"]
+    buildCommand = ["sphinx-build", "-M", "html", "./docs", "./docs/_build"] # sphinx-build -M html ./docs ./docs/_build
     pythonCommand = ["${venv:pyNexafs}"]

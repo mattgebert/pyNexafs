@@ -1,1 +1,3 @@
-from . import widgets
+from pyNexafs.gui import widgets
+
+__all__ = ["widgets"]

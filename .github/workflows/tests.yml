@@ -1,0 +1,81 @@
+name: Tests 🔧 (PyTest, Coveralls)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}-testing
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      matrix:
+        os: [Ubuntu]
+        python-version: ["3.13", "3.12"]
+        # sphinx-version:
+        #   ["sphinx==6.0", "sphinx==6.2", "sphinx==7.0", "sphinx>=7.3"]
+        include:
+            - os: Windows
+              python-version: "3.13" # replace with latest supported on Windows
+              if: ${{ github.repository_owner == 'xraysoftmat' || github.repository_owner == 'benajamin' }}
+            # sphinx-version: "sphinx" # version shouldn't really matter here
+            - os: macOS
+              python-version: "3.13" # replace with latest supported on macOS
+              if: ${{ github.repository_owner == 'xraysoftmat' || github.repository_owner == 'benajamin' }}
+    defaults:
+      run:
+        shell: bash -eo pipefail {0} # Fail on any error (-e), fail on any failed command in a pipeline.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Python setup
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup environment
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          python -m pip install coverage
+          python -m pip list
+        #   python -m pip install ${{ matrix.sphinx-version }}
+
+      - name: Install
+        run: |
+          python -m pip install . --group dev --group docs
+          pip list
+
+      - name: Run test suite
+        run: |
+          pytest -v --pyargs .
+
+      - name: Test coverage
+        run: |
+          coverage run --source=pyNexafs -m pytest tests/
+          coverage xml  # generates coverage.xml for Coveralls
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload coverage to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          format: cobertura
+          file: coverage.xml
+          parallel: true
+          flag-name: run-${{ matrix.os }}-py${{ matrix.python-version }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  finish:
+    needs: test
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close parallel build
+        uses: coverallsapp/github-action@v2
+        with:
+          parallel-finished: true

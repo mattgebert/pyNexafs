@@ -13,7 +13,7 @@ import matplotlib.axes
 import matplotlib.figure
 
 from pyNexafs.nexafs.scan import scanAbstract
-from pyNexafs.parsers import parser_base
+from pyNexafs.parsers import parserBase
 from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas, NavTBQT
 
 # from pyNexafs.gui.widgets.normaliser import NavTBQT_Norm, normaliserSettings
@@ -86,7 +86,7 @@ class nexafsViewer(QWidget):
 
     def add_parsers_to_scans(
         self,
-        parsers: dict[str, type[parser_base]] | list[type[parser_base]],
+        parsers: dict[str, type[parserBase]] | list[type[parserBase]],
         load_all_columns: bool = True,
         override_scans: bool = False,
     ) -> None:
@@ -97,7 +97,7 @@ class nexafsViewer(QWidget):
 
         Parameters
         ----------
-        parsers : dict[str, scan_abstract] | list[type[parser_base]]
+        parsers : dict[str, scan_abstract] | list[type[parserBase]]
             Dictionary of filename and corresponding parser objects, or a list of parser objects upon which filenames will be interred from the filename attribute.
         load_all_columns : bool
             Load all columns unreferenced by `COLUMN_ASSIGNMENTS` parser object attribute, by default True.
@@ -332,7 +332,7 @@ class nexafsViewer(QWidget):
 class normalisingGraph(QWidget):
     def __init__(
         self,
-        graph_scans: list[Type[scanAbstract | parser_base]] = None,
+        graph_scans: list[Type[scanAbstract | parserBase]] = None,
         dataseries_selection: list[str] = [],
         background_fixed_scans: list[Type[scanAbstract]] = [],
         # norm_settings: normaliserSettings = None,
@@ -358,11 +358,11 @@ class normalisingGraph(QWidget):
         # self.norm_settings = norm_settings
 
     @property
-    def graph_scans(self) -> list[Type[scanAbstract | parser_base]]:
+    def graph_scans(self) -> list[Type[scanAbstract | parserBase]]:
         return self._toolbar.graph_scans.copy()
 
     @graph_scans.setter
-    def graph_scans(self, scans: list[Type[scanAbstract | parser_base]]):
+    def graph_scans(self, scans: list[Type[scanAbstract | parserBase]]):
         self.toolbar.graph_scans = scans.copy() if scans is not None else None
 
     @property
@@ -376,11 +376,11 @@ class normalisingGraph(QWidget):
         )
 
     @property
-    def background_fixed_scans(self) -> list[Type[scanAbstract | parser_base]]:
+    def background_fixed_scans(self) -> list[Type[scanAbstract | parserBase]]:
         return self._toolbar.background_fixed_scans.copy()
 
     @background_fixed_scans.setter
-    def background_fixed_scans(self, scans: list[Type[scanAbstract | parser_base]]):
+    def background_fixed_scans(self, scans: list[Type[scanAbstract | parserBase]]):
         self.toolbar.background_fixed_scans = (
             scans.copy() if scans is not None else None
         )
@@ -428,8 +428,8 @@ class normalisingGraph(QWidget):
                             x = scan.x
                             y = scan.y[:, ind]
                             ax.plot(x, y, label=scan.filename + ":" + ds)
-                        elif isinstance(scan, parser_base):
-                            assert isinstance(scan, parser_base)
+                        elif isinstance(scan, parserBase):
+                            assert isinstance(scan, parserBase)
 
                     except ValueError:
                         # Catch Value errors if the label is not found: don't plot.

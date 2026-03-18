@@ -1,0 +1,155 @@
+# This workflow will build a set of executable package for the GUI aspect of the project upon release.
+# Uses PyInstaller to create the executable.
+# This workflow should be run by other workflows, not manually, so the output artifacts can be attached to releases.
+# Pillow is used to convert png icons to the appropriate format for each OS.
+# Outputs:
+# - `BUILD_NAME` : The name of the built executable package without file extension.
+
+name: GUI 💻 (PyInstaller App Build)
+run-name: ${{ github.actor }} - ${{ github.event.inputs.os }} pyNexafs GUI 💻
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}-pyinstaller-${{ github.event.inputs.os }}
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: 'Operating System Build'
+        required: true
+        type: choice
+        options:
+          - Windows
+          - MacOS
+          - Ubuntu
+        default: 'Windows'
+  workflow_call:
+    inputs:
+      os:
+        description: 'Operating System Build'
+        required: true
+        type: string
+        default: 'Windows'
+      sha:
+        description: 'The commit SHA to build from'
+        required: false
+        type: string
+        default: ''
+    outputs:
+      BUILD_NAME:
+        description: 'The name of the built executable package'
+        value: ${{ jobs.PyInstaller-Build.outputs.BUILD_NAME }}
+      OS:
+        description: 'The operating system the executable was built for'
+        value: ${{ jobs.PyInstaller-Build.outputs.OS }}
+      # ARTIFACT_ID:
+      #   description: 'The ID of the uploaded artifact containing the built executable'
+      #   value: ${{ jobs.PyInstaller-Build.outputs.ARTIFACT_ID }}
+
+jobs:
+  PyInstaller-Build:
+    name: ${{ inputs.os }} GUI Build
+    runs-on: ${{ inputs.os }}-latest
+    outputs:
+      BUILD_NAME: ${{ steps.build-name.outputs.BUILD_NAME }}
+      OS: ${{ inputs.os }}
+      # ARTIFACT_ID: ${{ steps.upload-windows.outputs.artifact-id || steps.upload-mac.outputs.artifact-id || steps.upload-linux.outputs.artifact-id }}
+
+    # Alternative, can use `$ {{ matrix.os }}` from the strategy below
+    # strategy:
+    #   matrix:
+    #     os: ["${{ github.event.inputs.os }}"]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      with:
+        ref: ${{ inputs.sha || github.sha }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+
+    - name: Install dependencies
+      id: install-deps
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller Pillow
+        pip install . --group gui -v
+        echo "MODULE_VERSION=$(python -c "from importlib.metadata import version; print(version('pyNexafs'))")"
+        echo "MODULE_VERSION=$(python -c "from importlib.metadata import version; print(version('pyNexafs'))")" >> $GITHUB_ENV
+
+    - name: Build executable name variable
+      id: build-name
+      shell: bash
+      run: |
+        echo "BUILD_NAME=pyNexafs-${{ env.MODULE_VERSION }}-gui-${{ inputs.os}}"
+        echo "BUILD_NAME=pyNexafs-${{ env.MODULE_VERSION }}-gui-${{ inputs.os}}" >> $GITHUB_ENV
+        echo "BUILD_NAME=pyNexafs-${{ env.MODULE_VERSION }}-gui-${{ inputs.os}}" >> $GITHUB_OUTPUT
+
+    ## Alternative way to make spec file and build, kept for reference.
+    ## Does not provide functionality to remove unwanted DLLs like the custom spec file does.
+    ## Resulting executable is about 15 MB larger in size.
+    # - name: Make spec file with PyInstaller
+    #   run:
+    #     >
+    #     pyi-makespec .\pyNexafs\__main__.py
+    #     --name "${{ env.BUILD_NAME }}"
+    #     --onefile
+    #     --windowed
+    #     --add-data "pyNexafs/data;pyNexafs/data"
+    #     --add-data "pyNexafs/asf_database/ASF.json.gz;pyNexafs/asf_database"
+    #     --icon "docs/source/_static/logo2.png"
+    #
+    # - name: Build executable with PyInstaller
+    #   run: |
+    #     pyinstaller "${{ env.BUILD_NAME }}.spec"
+
+    ###################### Temporarily disable build to test workflow #########################
+
+    - name: Build executable with PyInstaller
+      run: |
+        pyinstaller .github/pyNexafs-gui.spec -- -n "${{ env.BUILD_NAME }}"
+
+    - name : List built executable files
+      shell: bash
+      run: |
+        echo "Listing contents of dist gui directory:"
+        ls -la dist/
+
+    # Conditionally upload artifacts based on OS
+    # Only using windows at the moment!
+    - name: Cache Windows Executable Artifacts
+      id: upload-windows
+      if: inputs.os == 'Windows'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.BUILD_NAME }}
+        path: dist/${{ env.BUILD_NAME }}.exe
+        overwrite: true
+        retention-days: 7
+
+    - name: Cache MacOS Executable Artifacts
+      id: upload-mac
+      if: inputs.os == 'MacOS'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.BUILD_NAME }}
+        path: dist/${{ env.BUILD_NAME }}
+        overwrite: true
+        retention-days: 7
+
+    - name: Cache Linux Executable Artifacts
+      id: upload-linux
+      if: inputs.os == 'Ubuntu'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.BUILD_NAME }}
+        path: dist/${{ env.BUILD_NAME }}
+        overwrite: true
+        retention-days: 7
+
+    #############################################################################################

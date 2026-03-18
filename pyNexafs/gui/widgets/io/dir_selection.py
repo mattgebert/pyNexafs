@@ -7,6 +7,10 @@ This allows the selection of a filepath.
 import os
 from PyQt6 import QtWidgets, QtCore, QtGui
 
+# Extras for __main__ testing
+from PyQt6.QtWidgets import QApplication
+import sys
+
 
 class directorySelector(QtWidgets.QWidget):
     """
@@ -209,9 +213,6 @@ class directorySelector(QtWidgets.QWidget):
             formatted_path += slashes
         return formatted_path
 
-
-from PyQt6.QtWidgets import QApplication
-import sys
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

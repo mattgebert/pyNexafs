@@ -6,27 +6,29 @@ concurrency:
   cancel-in-progress: true
 
 on:
+  workflow_call:
+  workflow_dispatch:
   push:
   pull_request:
-    branches:
-      - main
 
 jobs:
-  build:
+  lint:
     runs-on: ${{ matrix.os }}-latest
     strategy:
       matrix:
         os: [Ubuntu]
-        python-version: ["3.13", "3.12", "3.11"]
+        python-version: ["3.13", "3.12"]
         include:
           - os: Windows
             python-version: "3.13"
+            if: ${{ github.repository_owner == 'xraysoftmat'}}
           - os: macOS
             python-version: "3.13"
+            if: ${{ github.repository_owner == 'xraysoftmat'}}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
@@ -38,9 +40,10 @@ jobs:
       run: |
         ruff check
 
-    - name: Analysing the code with black
-      run: |
-        black --check .
+    # Leave this here for legacy purposes. Try to use Ruff in the same style as Black.
+    # - name: Analysing the code with black
+    #   run: |
+    #     black --check .
 
     - name: Analysing the code with numpydoc
       run: | # Exclude test and gui files.

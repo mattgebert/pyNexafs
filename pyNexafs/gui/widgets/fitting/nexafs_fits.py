@@ -7,6 +7,12 @@ from pyNexafs.gui.widgets.graphing.matplotlib.graphs import FigureCanvas, NEXAFS
 from pyNexafs.nexafs import scanBase
 from matplotlib.figure import Figure
 
+# Extras for __main__ testing
+import sys
+import os
+from PyQt6.QtWidgets import QApplication
+from pyNexafs.parsers.au.aus_sync.MEX2 import MEX2_NEXAFS
+
 
 class globalFitter(QWidget):
     """
@@ -38,12 +44,6 @@ class globalFitter(QWidget):
         layout.addWidget(fig_canvas)
         layout.addWidget(fig_canvas_nav)
 
-
-# Example
-import sys
-import os
-from PyQt6.QtWidgets import QApplication
-from pyNexafs.parsers.au.aus_sync.MEX2 import MEX2_NEXAFS
 
 if __name__ == "__main__":
     # Load some example parsers

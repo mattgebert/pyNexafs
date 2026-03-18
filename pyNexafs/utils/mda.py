@@ -23,10 +23,10 @@ Contains the following classes:
 """
 
 import os
-import io
+from io import BufferedReader, BytesIO
 from xdrlib3 import Unpacker
 from enum import Enum
-from typing import Any, Self
+from typing import Any, Self, BinaryIO
 import numpy as np
 import numpy.typing as npt
 
@@ -514,8 +514,9 @@ class MDAFileReader:
 
     Parameters
     ----------
-    path : str
-        The path to the MDA file.
+    file : str | typing.BinaryIO
+        The path to the MDA file or a buffered reader of the file.
+        Should be opened in binary mode.
 
     Methods
     -------
@@ -529,12 +530,24 @@ class MDAFileReader:
         Reads the scan data from the MDA file.
     """
 
-    def __init__(self, path: str):
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"File {path} does not exist.")
-        self.path = path
-        # Stored buffer to open and close on public functions.
-        self._buffered_reader = None
+    def __init__(self, file: str | BinaryIO):
+        if isinstance(file, str):
+            if not os.path.exists(file):
+                raise FileNotFoundError(f"File {file} does not exist.")
+            self.path = file
+            # Stored buffer to open and close on public functions.
+            self._buffered_reader = None
+        elif isinstance(file, (BinaryIO, BufferedReader, BytesIO)):
+            self.path = (
+                file.name
+                if hasattr(file, "name")
+                else f"<{file.__class__.__name__}-NoName>"
+            )
+            self._buffered_reader = file
+        else:
+            raise TypeError(
+                "file must be a string path or a binary IO object (e.g. BufferedReader, BytesIO)."
+            )
 
         # Stored for reading various parts of the MDA file fast.
         self.pointer_header = 0
@@ -546,7 +559,7 @@ class MDAFileReader:
         self.dimensions = None
 
     @property
-    def buffered_reader(self) -> io.BufferedReader:
+    def buffered_reader(self) -> BinaryIO:
         """
         Property for a buffered reader of the MDA file.
 
@@ -554,11 +567,16 @@ class MDAFileReader:
 
         Returns
         -------
-        io.BufferedReader
-            A buffered reader of the MDA file.
+        typing.BinaryIO
+            A implementation of a buffered reader of the MDA file.
         """
         if self._buffered_reader is None:
-            self._buffered_reader = open(self.path, "rb")
+            if isinstance(self.path, str) and os.path.exists(self.path):
+                self._buffered_reader = open(self.path, "rb")
+            else:
+                raise ValueError(
+                    f"Cannot open buffered reader. The assumed file path {self.path} is invalid or the file does not exist."
+                )
         return self._buffered_reader
 
     @buffered_reader.deleter
@@ -660,9 +678,12 @@ class MDAFileReader:
             A MDAHeader object containing the header information of the MDA file.
         """
         # Check if the unpacker is sufficiently long enough to contain all the header information.
-        if len(u.get_buffer()) < 4 * 5 + 4 * min_rank:
+        buff = u.get_buffer()
+        lbuff = len(buff)
+        req_len = 4 * 5 + 4 * min_rank
+        if lbuff < req_len:
             raise ValueError(
-                "Unpacker obj insufficiently long to decode all header information."
+                f"Unpacker obj insufficiently long ({lbuff}) to decode all header information ({req_len})."
             )
         # Decode
         version = u.unpack_float()  # 4 bytes
@@ -683,7 +704,7 @@ class MDAFileReader:
     @staticmethod
     def header_to_dataFrame(
         header: tuple[float, int, int, list[int], int, int, int],
-    ) -> "DataFrame":
+    ) -> "pd.DataFrame":
         """
         Create a DataFrame from the header information of the MDA file.
 
@@ -760,7 +781,9 @@ class MDAFileReader:
         buff = br.read()
         u = Unpacker(buff)
         params = MDAFileReader._read_pExtra(u)
-        del self.buffered_reader
+
+        # Let user decide when to close the file after reading, do not close after reading.
+        # del self.buffered_reader
         return params
 
     @staticmethod
@@ -790,7 +813,7 @@ class MDAFileReader:
         Raises
         ------
         ImportError
-            _description_
+            When the unpacked parameter type doesn't match any known `DBR` types.
         """
         # Read the number of extra parameters
         numExtra = u.unpack_int()
@@ -881,13 +904,14 @@ class MDAFileReader:
                 scans.append(s)
         else:
             data, scans = MDAFileReader._read_ND_scans(br, self.dimensions)
-        # Close file after reading
-        del self.buffered_reader
+
+        # Do not close file after reading, let user decide.
+        # del self.buffered_reader
         return data, scans
 
     @staticmethod
     def _read_ND_scans(
-        br: io.BufferedReader,
+        br: BinaryIO,
         dimensions: list[int],
         accum_data: list[npt.NDArray] | None = None,
     ) -> tuple[list[npt.NDArray], list[MDAScan]]:
@@ -899,7 +923,7 @@ class MDAFileReader:
 
         Parameters
         ----------
-        br : io.BufferedReader
+        br : typing.BinaryIO
             Buffered reader of the MDA file.
         dimensions : list[int]
             The dimensions of each rank of the scan data.
@@ -931,7 +955,8 @@ class MDAFileReader:
                 # Setup array to store scan ND data
                 plen = len(diving_scan.positioners)
                 dlen = len(diving_scan.detectors)
-                tlen = len(diving_scan.triggers)
+                # tlen = len(diving_scan.triggers)
+
                 # don't add tlen, as triggers are not stored in the data array.
                 datastreams = plen + dlen  # + tlen
                 # Setup shape of each rank to match datastreams present in the scan,
@@ -953,10 +978,12 @@ class MDAFileReader:
             # Unpack accumulated data:
             arrays = accum_data
             scans = None
+
         # Check first array element matches size of scan data
         plen = len(scan.positioners)
         dlen = len(scan.detectors)
-        tlen = len(scan.triggers)
+        # tlen = len(scan.triggers)
+
         datastreams = (
             plen + dlen
         )  # Don't add tlen, as triggers are not stored in the data array.
@@ -983,13 +1010,13 @@ class MDAFileReader:
         return arrays, scans
 
     @staticmethod
-    def _read_scan(br: io.BufferedReader, header_only: bool = False) -> MDAScan:
+    def _read_scan(br: BinaryIO, header_only: bool = False) -> MDAScan:
         """
         Read the scan data from the MDA file.
 
         Parameters
         ----------
-        br : io.BufferedReader
+        br : typing.BinaryIO
             Buffered reader of the MDA file.
         header_only : bool, optional
             Whether to load data or not, by default False.
@@ -1221,7 +1248,10 @@ class MDAFileReader:
         """
         strlen = u.unpack_int()
         if strlen:
-            assert strlen == u.unpack_int()
+            second = u.unpack_int()
+            assert strlen == second, (
+                f"String length ({strlen}) does not match expected length ({second})."
+            )
             return u.unpack_fstring(strlen).decode("utf-8")
         else:
             return None
