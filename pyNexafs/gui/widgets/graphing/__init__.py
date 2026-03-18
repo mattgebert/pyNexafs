@@ -1,1 +1,3 @@
-import pyNexafs.gui.widgets.graphing.matplotlib.graphs
+from pyNexafs.gui.widgets.graphing.matplotlib import graphs
+
+__all__ = ["graphs"]

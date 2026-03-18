@@ -21,7 +21,7 @@ from PyQt6.QtCore import (
     pyqtSignal,
 )
 import sys
-from pyNexafs.parsers import parser_loaders, parser_base
+from pyNexafs.parsers import parser_loaders, parserBase
 from typing import Type
 from pyNexafs.gui.widgets.io.dir_selection import directorySelector
 from pyNexafs.gui.widgets.io.fileviewer import (
@@ -290,37 +290,37 @@ class nexafsFileLoader(QWidget):
         self.log.setText("")
 
     @property
-    def loaded_parser_headers(self) -> dict[str, Type[parser_base] | None]:
+    def loaded_parser_headers(self) -> dict[str, Type[parserBase] | None]:
         """
         Returns the parser headers loaded in the directory viewer.
 
         Returns
         -------
-        dict[str, Type[parser_base]]
+        dict[str, Type[parserBase]]
             A dictionary of filenames and their corresponding parser headers.
         """
         return self.directory_viewer._parser_headers
 
     @property
-    def loaded_parsers_files(self) -> dict[str, Type[parser_base] | None]:
+    def loaded_parsers_files(self) -> dict[str, Type[parserBase] | None]:
         """
         Returns the full-file parsers loaded in the directory viewer.
 
         Returns
         -------
-        dict[str, Type[parser_base]]
+        dict[str, Type[parserBase]]
             A dictionary of filenames and their corresponding parser objects.
         """
         return self.directory_viewer._parser_files
 
     @property
-    def loaded_parser_files_selection(self) -> dict[str, Type[parser_base] | None]:
+    def loaded_parser_files_selection(self) -> dict[str, Type[parserBase] | None]:
         """
         Returns the selection subset of full-file parsers from the directory viewer.
 
         Returns
         -------
-        dict[str, Type[parser_base]]
+        dict[str, Type[parserBase]]
             A dictionary of filenames and their corresponding scan objects.
         """
         selected = self.directory_viewer.selected_filenames
@@ -362,14 +362,14 @@ class nexafsParserSelector(QComboBox):
         self.addItems([key for key in self.parsers.keys()])
 
     @property
-    def current_parser(self) -> type[parser_base] | None:
+    def current_parser(self) -> type[parserBase] | None:
         """
         Current selected parser.
 
         Returns
         -------
-        type[parser_base] | None
-            Returns the current parser which inherits from parser_base, or None if no parser is selected.
+        type[parserBase] | None
+            Returns the current parser which inherits from parserBase, or None if no parser is selected.
         """
         return self.parsers[self.currentText()]
 
@@ -461,19 +461,19 @@ class directoryFilterWidget(QWidget):
         return [selection] if selection != "" else self.parser.ALLOWED_EXTENSIONS
 
     @property
-    def parser(self) -> type[parser_base] | None:
+    def parser(self) -> type[parserBase] | None:
         """
         Returns the currently selected parser.
 
         Returns
         -------
-        type[parser_base] | None
+        type[parserBase] | None
             The currently used parser, or None if no parser is selected.
         """
         return self._parser_selection
 
     @parser.setter
-    def parser(self, parser: type[parser_base] | None):
+    def parser(self, parser: type[parserBase] | None):
         """
         Sets the (external) parser selection.
 
@@ -481,7 +481,7 @@ class directoryFilterWidget(QWidget):
 
         Parameters
         ----------
-        parser : type[parser_base] | None
+        parser : type[parserBase] | None
             Currently used parser, or None if no parser is selected.
         """
         self._changing_parser = True
