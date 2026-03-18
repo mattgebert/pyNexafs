@@ -4,36 +4,45 @@
 #######################################################
 
 [build-system]
-    requires = [
-        "setuptools-scm >= 6.4.2", # For versioning
-        "setuptools >= 61.2.0", # Minimum version for pyproject.toml support
-        "uv >= 0.7.20" # Current version as of 2025-July
-    ]
-    build-backend = "setuptools.build_meta"
+requires = [
+    # "setuptools-scm >= 6.4.2", # For versioning
+    # "setuptools >= 61.2.0", # Minimum version for pyproject.toml support
+    "hatchling",
+    "uv >= 0.7.20", # Current version as of 2025-July
+]
+# build-backend = "setuptools.build_meta"
+build-backend = "hatchling.build" # using hatchling which provides better support for excluding files than setuptools
 
 [project]
-    # Project information
-    name = "pyNexafs"
-    version = "0.1.0-beta.1"
-    description = "A package for processing and analysing NEXAFS data."
-    readme = "README.rst"
-    license = {file = "LICENSE"}
-    keywords = ["NEXAFS", "XANES", "Near", "Edge", "X-ray", "Absorption", "Fine", "Structure", "Spectroscopy", "Optical Data", "XAS", "Synchrotron"]
-    authors = [
-        {name = "Matthew Gebert", email="matthew.gebert@monash.edu"},
-        ]
-    maintainers = [
-        {name = "Matthew Gebert", email="matthew.gebert@monash.edu"},
+# Project information
+name = "pyNexafs"
+version = "0.1.0-beta.1"
+description = "A package for processing and analysing NEXAFS data."
+readme = "README.rst"
+license = {file = "LICENSE"}
+keywords = ["NEXAFS", "XANES", "Near", "Edge", "X-ray", "Absorption", "Fine", "Structure", "Spectroscopy", "Optical Data", "XAS", "Synchrotron"]
+authors = [
+    {name = "Matthew Gebert", email="mattheuu.gebert@gmail.com"},
     ]
+maintainers = [
+    {name = "Matthew Gebert", email="mattheuu.gebert@gmail.com"},
+]
 
-    # Project compatibility:
-    requires-python = ">=3.11"
-    dependencies = [
-        "numpy",
-        "overrides", # for type hinting
-        "scipy",
-        "xdrlib3", # function bindings for reading binary data from mda files
-    ]
+# Project compatibility:
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "overrides", # for type hinting
+    "scipy",
+    "xdrlib3", # function bindings for reading binary data from mda files
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
 
 [project.urls]
     # Website, documentation and other continuous integration URLS.
@@ -42,6 +51,10 @@
 
 [dependency-groups]
 # Dependency groups for optional dependencies. Requires pip >= 25.1
+all = [
+    {include-group = "dev"}
+]
+
 dev = [
     {include-group = "gui"}, # Include GUI dependencies in dev
     {include-group = "docs"}, # Include documentation dependencies in dev
@@ -51,7 +64,6 @@ dev = [
     "commitizen",
     "commitlint",
     "periodictable >= 2.0.2", # Due to changes in neutron element as zeroth element.
-    "black",
     "numpydoc",
     "ruff",
 ]
@@ -59,12 +71,12 @@ dev = [
 docs = [
     "sphinx",
     "sphinx_pyproject", # to include conf.py information in pyproject.toml
+    "sphinx-copybutton", # Add a copybutton to code blocks
     "intersphinx-registry", # to reference other projects in sphinx
     # "sphinx-rtd-theme",
     "pydata-sphinx-theme",
     "myst-parser", # For parsing md files in sphinx
     "numpydoc",
-    "sphinx-copybutton", # Add a copybutton to code blocks
     # "sphinx-autoapi", # Automatically generate API documentation instead of using autodoc/autosummary extensions.
     "matplotlib",
 ]
@@ -76,8 +88,19 @@ gui = [
     "pyyaml",
 ]
 
-[tool.setuptools.packages.find]
-exclude = ["docs*", "tests*"]
+# [tool.setuptools.packages.find]
+# exclude = ["docs*", "tests*"]
+[tool.hatch.build]
+directory = "./dist"
+targets.sdist.include = [
+    "pyNexafs/**",
+]
+targets.sdist.exclude = [
+    "pyNexafs/utils/decorators.py", # Exclude decorators from distribution
+    "docs/**",
+    "tests/**",
+]
+
 
 #######################################################
 #############  Pre-commit configurations  #############
@@ -183,6 +206,7 @@ exclude_commit_patterns = [
     '''test(?:\([^)]*?\))?: .+''',
     '''build\((?!deps\): .+)''',
     '''Initial [Cc]ommit.*''',
+    '''wip(?:\([^)]*?\))?: .+''',
 ]
 
 [tool.semantic_release.commit_parser_options]
@@ -243,5 +267,6 @@ html_theme = "pydata_sphinx_theme"
 
 # Esbonio Sphinx extension for VS Code integration - https://docs.esbon.io
 [tool.esbonio.sphinx]
-    buildCommand = ["sphinx-build", "-M", "dirhtml", "./docs", "./docs/_build"]
+    # buildCommand = ["sphinx-build", "-M", "dirhtml", "./docs", "./docs/_build"]
+    buildCommand = ["sphinx-build", "-M", "html", "./docs", "./docs/_build"] # sphinx-build -M html ./docs ./docs/_build
     pythonCommand = ["${venv:pyNexafs}"]

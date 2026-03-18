@@ -9,11 +9,12 @@ from pyNexafs.nexafs.scan import scanBase, scanAbstract, scanSimple
 from pyNexafs.nexafs.normalisation import (
     configChannel,
     configExternalChannel,
+    configEdges,
     configSeries,
-    normConfigEdges,
+    normMethod,
     scanNorm,
     scanNormExt,
-    scanNormBackgroundChannel,
+    scanDoubleNorm,
     scanNormEdges,
 )
 
@@ -24,3 +25,21 @@ from pyNexafs.nexafs.normalisation import (
 #     scan_background_subtraction,
 #     scan_normalised_background_channel,
 # )
+
+__all__ = [
+    # Configuration classes
+    "configChannel",
+    "configExternalChannel",
+    "configEdges",
+    "configSeries",
+    # Normalisation classes
+    "normMethod",
+    "scanNorm",
+    "scanNormExt",
+    "scanDoubleNorm",
+    "scanNormEdges",
+    # Scan data classes
+    "scanBase",
+    "scanAbstract",
+    "scanSimple",
+]

@@ -3,7 +3,7 @@ Parser classes for the Medium Energy X-ray 2 (MEX1) beamline at the Australian S
 """
 
 # Internal
-from pyNexafs.parsers import parser_base, parser_meta
+from pyNexafs.parsers import parserBase, parserMeta
 from pyNexafs.utils.mda import MDAFileReader
 from pyNexafs.utils.reduction import reducer
 from pyNexafs.parsers.au.aus_sync.MEX1_relabels import RELABELS
@@ -45,7 +45,7 @@ INTERESTING_BINS_IDX = [80, 2000]  # 80 to 900 for MEX2.
 # ]
 
 
-class MEX1_NEXAFS_META(parser_meta):
+class MEX1_NEXAFS_META(parserMeta):
     def __init__(
         cls: type,
         name: str,
@@ -57,11 +57,11 @@ class MEX1_NEXAFS_META(parser_meta):
         cls.reduction_bin_domain: list[tuple[int, int]] | None = None
         """Tracker for the binning settings used in the most recent data reduction."""
 
-        # Perform the normal class creation via parser_meta.
+        # Perform the normal class creation via parserMeta.
         return super().__init__(name=name, bases=bases, namespace=namespace, **kwds)
 
 
-class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
+class MEX1_NEXAFS(parserBase, metaclass=MEX1_NEXAFS_META):
     """
     Australian Synchrotron Soft X-ray (SXR) NEXAFS parser.
 
@@ -261,7 +261,7 @@ class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
         labels = (
             header_line[2:].strip().split()
         )  # split on whitespace, even though formatting seems to use "   " (i.e. three spaces).
-        labels = [label.strip() if type(label) == str else label for label in labels]
+        labels = [label.strip() if type(label) is str else label for label in labels]
 
         if header_only:
             # Do not process remaining lines
@@ -376,7 +376,7 @@ class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
                     if has_PYQT:
                         # Create a QT application to run the dialog.
                         if QtWidgets.QApplication.instance() is None:
-                            app = QtWidgets.QApplication([])
+                            QtWidgets.QApplication([])
                         # Run the Bin Selector dialog
                         window = EnergyBinReducerDialog(
                             energies=energies, dataset=dataset, bin_energies=bin_e
@@ -481,7 +481,7 @@ class MEX1_NEXAFS(parser_base, metaclass=MEX1_NEXAFS_META):
 
 
 def MEX1_to_QANT_AUMainAsc(
-    parser: parser_base,
+    parser: parserBase,
     extrainfo_mapping={
         "SR14ID01MCS02FAM:X.RBV": None,  # "Mono.d_spacing",
         "SR14ID01MCS02FAM:Y.RBV": None,
@@ -497,7 +497,7 @@ def MEX1_to_QANT_AUMainAsc(
 
     Parameters
     ----------
-    parser : parser_base
+    parser : parserBase
         The parser object (with data, labels, units, and params loaded) to convert.
     extrainfo_mapping : dict[str:str|None], optional
         Optional mapping for known read-values for the QANT AUMainAsc format to

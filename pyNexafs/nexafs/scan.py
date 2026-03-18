@@ -5,12 +5,20 @@ This module defines validated scan objects that can perform intelligent operatio
 on synchrotron data. These objects are constructed from a `parser` object that contains
 the raw data and metadata.
 
-# See Also
-# --------
-pynexafs.parsers.parser_base : Base class for synchrotron data parsers.
+See Also
+--------
+pynexafs.parsers.parserBase : Base class for synchrotron data parsers.
 """
 
+# Stdlib imports
 from __future__ import annotations  # For type hinting within class definitions
+import abc
+import datetime
+import os
+import io
+from typing import TYPE_CHECKING, Self, override, overload
+
+# External imports
 import numpy.typing as npt
 import numpy as np
 
@@ -22,16 +30,12 @@ try:
     HAS_MPL = True
 except ImportError:
     HAS_MPL = False
-import abc
-import warnings
-import overrides
-import datetime
-import os
-import io
-from typing import Type, TYPE_CHECKING, Self
+
+# Internal imports
+from pyNexafs.types import dtype
 
 if TYPE_CHECKING:
-    from ..parsers import parser_base
+    from ..parsers import parserBase
 
 
 class scanAbstract(metaclass=abc.ABCMeta):
@@ -43,35 +47,30 @@ class scanAbstract(metaclass=abc.ABCMeta):
 
     def __init__(self) -> None:
         # Internal variables
-        self._x = None  # NDArray - single variable
-        self._y = None  # NDArray - multiple variables
-        self._x_errs = None  # NDArray - single variable
-        self._y_errs = None  # NDArray - multiple variables
-        self._x_label = None  # str
-        self._x_unit = None  # str
-        self._y_labels = []  # List[str]
-        self._y_units = []  # List[str]
+        self._x: npt.NDArray | None = None
+        self._y: npt.NDArray | None = None
+        self._x_errs: npt.NDArray | None = None
+        self._y_errs: npt.NDArray | None = None
+        self._x_label: str | None = None
+        self._x_unit: str | None = None
+        self._y_labels: list[str | None] | None = None
+        self._y_units: list[str | None] | None = None
         return
 
     @abc.abstractmethod
-    def copy(self, *args, **kwargs) -> Self:
+    def copy(self) -> Self:
         """
         Create a copy of the scan object.
 
         Implemented method should call this method to copy the data attributes, and implement
         copying of any subclass specific attributes.
 
-        Parameters
-        ----------
-        *args, **kwargs
-            Additional arguments and keyword arguments to pass to the constructor of the subclass.
-
         Returns
         -------
         Self
             A copy of the scan object with unique data.
         """
-        newobj = self.__class__(*args, **kwargs)
+        newobj = self.__class__()
 
         # Copy Data
         newobj._x = self._x.copy() if self._x is not None else None
@@ -99,14 +98,15 @@ class scanAbstract(metaclass=abc.ABCMeta):
         return newobj
 
     @property
-    def ctime(self) -> datetime.datetime:
+    def ctime(self) -> datetime.datetime | None:
         """
         The creation time of the file as a datetime object.
 
         Returns
         -------
-        datetime.datetime
+        datetime.datetime | None
             The creation time of the file.
+            None if not defined.
 
         Raises
         ------
@@ -116,14 +116,15 @@ class scanAbstract(metaclass=abc.ABCMeta):
         raise NotImplementedError("ctime property not implemented.")
 
     @property
-    def mtime(self) -> datetime.datetime:
+    def mtime(self) -> datetime.datetime | None:
         """
         The modification time of the file as a datetime object.
 
         Returns
         -------
-        datetime.datetime
+        datetime.datetime | None
             The modification time of the file.
+            None if not defined.
 
         Raises
         ------
@@ -133,19 +134,7 @@ class scanAbstract(metaclass=abc.ABCMeta):
         raise NotImplementedError("mtime property not implemented.")
 
     @property
-    def filename(self) -> str:
-        """
-        Property for the filename of the scan object.
-
-        Returns
-        -------
-        str
-            The filename of the scan object.
-        """
-        return ""
-
-    @property
-    def x(self) -> npt.NDArray:
+    def x(self) -> npt.NDArray | None:
         """
         Property for the 1D X data (beam energy) of the scan.
 
@@ -156,7 +145,7 @@ class scanAbstract(metaclass=abc.ABCMeta):
 
         Returns
         -------
-        npt.NDArray
+        npt.NDArray | None
             The beam energies of the scan.
         """
         return self._x
@@ -173,15 +162,14 @@ class scanAbstract(metaclass=abc.ABCMeta):
         if self._x_errs is not None and self._x_errs.shape != self._x.shape:
             self._x_errs = None
 
-    # @y_property
     @property
-    def y(self) -> npt.NDArray:
+    def y(self) -> npt.NDArray | None:
         """
         Property for the Y data of the scan.
 
         Parameters
         ----------
-        val : npt.NDArray | list[int|float]
+        val : npt.NDArray | list[int|float] | None
             A numpy array of data or a list of datapoints.
 
         Returns
@@ -193,7 +181,7 @@ class scanAbstract(metaclass=abc.ABCMeta):
 
     @y.setter
     def y(
-        self, vals: npt.NDArray | list[list[int | float]] | list[int | float]
+        self, vals: npt.NDArray | list[list[int | float]] | list[int | float] | None
     ) -> None:
         # Set Y values
         if isinstance(vals, np.ndarray):
@@ -208,6 +196,11 @@ class scanAbstract(metaclass=abc.ABCMeta):
             else:
                 # Assuming int/floats, add additional axis as well.
                 self._y = np.array(vals)[:, np.newaxis]
+        elif vals is None:
+            self._y = None
+            self._y_errs = None
+            self._y_labels = None
+            return
         else:
             raise ValueError("Is not a list or a np.ndarray.")
 
@@ -219,36 +212,9 @@ class scanAbstract(metaclass=abc.ABCMeta):
         ylabels = self.y_labels
         if ylabels is not None and len(ylabels) != self._y.shape[1]:
             self.y_labels = None
-        if self.y_units is not None and len(self.y_units) != self._y.shape[1]:
+        yunits = self.y_units
+        if yunits is not None and len(yunits) != self._y.shape[1]:
             self.y_units = None
-
-    # @y.getter_item
-    # def y(self, key: int | str) -> npt.NDArray:
-    #     """
-    #     Returns a single Y channel from the Y data.
-
-    #     Parameters
-    #     ----------
-    #     index : int | str
-    #         Index of the Y channel to return, or the label of the Y channel if defined in y_labels.
-
-    #     Returns
-    #     -------
-    #     npt.NDArray
-    #         The Y channel data.
-    #     """
-    #     print("Getting Y data.")
-    #     if isinstance(key, int):
-    #         return self._y[:, key]
-    #     elif isinstance(key, str):
-    #         if self._y_labels is not None:
-    #             try:
-    #                 index = self._y_labels.index(key)
-    #                 return self._y[:, index]
-    #             except ValueError:
-    #                 raise ValueError(f"Label {key} not found in y_labels.")
-    #         else:
-    #             raise ValueError("No y_labels defined.")
 
     @property
     def y_errs(self) -> npt.NDArray | None:
@@ -268,19 +234,42 @@ class scanAbstract(metaclass=abc.ABCMeta):
         return self._y_errs
 
     @y_errs.setter
-    def y_errs(self, errs: npt.NDArray | None) -> None:
+    def y_errs(
+        self, errs: npt.NDArray | list[list[int | float]] | list[int | float] | None
+    ) -> None:
         if errs is None:
             self._y_errs = None
-        elif isinstance(errs, np.ndarray) and self.y.shape == errs.shape:
-            self._y_errs = errs.copy()
+            return
+        y = self.y
+
+        if isinstance(errs, np.ndarray):
+            if len(errs.shape) == 2:
+                errs = errs.copy()
+            else:
+                # Add additional axis to make y 2D instead of 1D
+                errs = errs.copy()[:, np.newaxis]
+        elif isinstance(errs, list):
+            if isinstance(errs[0], list):
+                errs = np.array(errs)
+            else:
+                # Assuming int/floats, add additional axis as well.
+                errs = np.array(errs)[:, np.newaxis]
         else:
-            raise ValueError(
-                f"Shape of errors {errs.shape} doesn't match existing y shape {self.y.shape}."
-            )
+            raise ValueError("Is not a list of numbers or a np.ndarray.")
+
+        if y is not None:
+            if y.shape == errs.shape:
+                self._y_errs = errs
+            else:
+                raise ValueError(
+                    f"Shape of errors {errs.shape} doesn't match existing y shape {y.shape}."
+                )
+        else:
+            self._y_errs = errs  # Allow setting errs if y is None.
         return
 
     @property
-    def x_errs(self) -> npt.NDArray:
+    def x_errs(self) -> npt.NDArray | None:
         """
         Property for error data corresponding to the X values.
 
@@ -300,12 +289,19 @@ class scanAbstract(metaclass=abc.ABCMeta):
     def x_errs(self, errs: npt.NDArray | None) -> None:
         if errs is None:
             self._x_errs = None
-        elif isinstance(errs, npt.NDArray) and errs.shape == self.x.shape:
-            self._x_errs = errs.copy()
+        x = self.x
+        if isinstance(errs, np.ndarray):
+            if x is not None:
+                if errs.shape == x.shape:
+                    self._x_errs = errs.copy()
+                else:
+                    raise ValueError(
+                        f"Shape of errors {errs.shape} doesn't match existing x shape {x.shape}."
+                    )
+            else:
+                self._x_errs = errs.copy()  # Allow setting errs if x is None.
         else:
-            raise ValueError(
-                f"Shape of errors {errs.shape} doesn't match existing x shape {self.x.shape}."
-            )
+            raise ValueError("Is not a np.ndarray.")
 
     @property
     def x_label(self) -> str:
@@ -337,7 +333,7 @@ class scanAbstract(metaclass=abc.ABCMeta):
             raise ValueError(f"New label `{label}` is not string.")
 
     @property
-    def y_labels(self) -> list[str]:
+    def y_labels(self) -> list[str | None] | None:
         """
         Property for the labels of the y axis.
 
@@ -346,38 +342,46 @@ class scanAbstract(metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        label : list[str]
+        labels : list[str | None] | None
             String to replace existing y labels. Must match number of columns in the y attribute.
 
         Returns
         -------
-        list[str]
+        list[str | None] | None
             A direct reference to the y labels list. If y data has been redefined
             without redefining y_labels, y labels are generated in the form 'Data Col. N'.
         """
         if self._y_labels is not None:
             return self._y_labels
         else:
+            y = self.y
+            if y is None:
+                return None
+
             chars_col_len = int(
-                np.ceil(np.log10(self.y.shape[1] + 1))
+                np.ceil(np.log10(y.shape[1] + 1))
             )  # Gets number of characters for a given number.
             self._y_labels = [
                 "Data Col. " + str(i + 1).zfill(chars_col_len)
-                for i in range(self.y.shape[1])
+                for i in range(y.shape[1])
             ]
             return self._y_labels
 
     @y_labels.setter
-    def y_labels(self, labels: list[str] | None) -> None:
+    def y_labels(self, labels: list[str | None] | None) -> None:
         if isinstance(labels, list) and np.all(
-            [isinstance(label, str) for label in labels]
+            [isinstance(label, str) or label is None for label in labels]
         ):
-            if len(labels) == self.y.shape[1]:
-                self._y_labels = labels.copy()
+            y = self.y
+            if y is not None:
+                if len(labels) == y.shape[1]:
+                    self._y_labels = labels.copy()
+                else:
+                    raise ValueError(
+                        f"Number of labels ({len(labels)}) does not match y data columns ({y.shape[1]})."
+                    )
             else:
-                raise ValueError(
-                    f"Number of labels ({len(labels)}) does not match y data columns ({self.y.shape[1]})."
-                )
+                self._y_labels = labels.copy()  # Allow setting labels if y is None.
         elif labels is None:
             self._y_labels = None
         else:
@@ -399,35 +403,57 @@ class scanAbstract(metaclass=abc.ABCMeta):
         Returns
         -------
         str
-            The label of the x data.
+            The label of the x data. Defaults to "eV" if no unit is defined.
         """
+        if self._x_unit is None:
+            return "eV"
         return self._x_unit
 
     @x_unit.setter
-    def x_unit(self, unit: str) -> None:
+    def x_unit(self, unit: str | None) -> None:
         if isinstance(unit, str):
             self._x_unit = unit
+        elif unit is None:
+            self._x_unit = None
         else:
             raise ValueError(f"Provided `unit` {unit} is not a string.")
         return
 
     @property
-    def y_units(self) -> list[str]:
+    def y_units(self) -> list[str | None] | None:
+        """
+        Property for the units of the y data.
+
+        Parameters
+        ----------
+        units : list[str | None] | None
+            A list of strings to replace existing y units. Must match number of columns in the y attribute.
+
+        Returns
+        -------
+        list[str | None] | None
+            A direct reference to the y units list. If y data has been redefined
+            without redefining y_units, y units are generated in the form 'Data Col. N'.
+        """
         return self._y_units
 
     @y_units.setter
-    def y_units(self, units: list[str] | None):
+    def y_units(self, units: list[str | None] | None):
         if units is None:
             self._y_units = None
         elif isinstance(units, list) and np.all(
-            [isinstance(unit, str) for unit in units]
+            [isinstance(unit, str | None) for unit in units]
         ):
-            if len(units) == self.y.shape[1]:
-                self._y_units = units.copy()
+            y = self.y
+            if y is not None:
+                if len(units) == y.shape[1]:
+                    self._y_units = units.copy()
+                else:
+                    raise ValueError(
+                        f"Shape of 'units' ({len(units)}) does not match shape of y data ({y.shape[1]})."
+                    )
             else:
-                raise ValueError(
-                    f"Shape of 'units' ({len(units)}) does not match shape of y data ({self.y.shape[1]})."
-                )
+                self._y_units = units.copy()  # Allow setting units if y is None.
         else:
             raise ValueError(f"Provided 'units' {units} is not a list of strings.")
         return
@@ -451,15 +477,21 @@ class scanAbstract(metaclass=abc.ABCMeta):
         ------
         ImportError
             If matplotlib is not installed.
+        ValueError
+            If Y data is not defined.
         """
         if not HAS_MPL:
             raise ImportError(
                 "Matplotlib is not installed, cannot generate a snapshot graphic."
             )
+
+        y = self.y
+        if y is None:
+            raise ValueError("Y data is not defined.")
         if columns is None:
-            columns = int(np.ceil(np.sqrt(self.y.shape[1])))
-        rows = int(np.ceil(self.y.shape[1] / columns))
-        fig, ax = plt.subplots(rows, columns, sharex=True, figsize=(10, 10), dpi=300)
+            columns = int(np.ceil(np.sqrt(y.shape[1])))
+        rows = int(np.ceil(y.shape[1] / columns))
+        fig, ax = plt.subplots(rows, columns, sharex=True, figsize=(10, 10), dpi=300)  # type: ignore - Covered by HAS_MPL check.
 
         # Ensure axis array is 2D.
         if not isinstance(ax, np.ndarray):
@@ -468,17 +500,29 @@ class scanAbstract(metaclass=abc.ABCMeta):
             ax = np.array([ax])
 
         # Plot the data.
-        for i, ydata in enumerate(self.y.T):
+        ylabels = self.y_labels
+        yunits = self.y_units
+        for i, ydata in enumerate(y.T):
             r, c = divmod(i, columns)
             ax[r][c].plot(self.x, ydata)
-            ax[r][c].set_ylabel(self.y_labels[i])
+            if ylabels is not None:
+                ax[r][c].set_title(
+                    ylabels[i] if yunits is None else f"{ylabels[i]} ({yunits[i]})"
+                )
         for i in range(columns):
             ax[rows - 1][i].set_xlabel(self.x_label)
         return fig
 
-    def to_csv(self, filename: str | None = None, delim: str = ",") -> None | str:
+    def to_csv(
+        self,
+        filename: str | None = None,
+        delim: str = ",",
+        combine_label_unit: bool = True,
+    ) -> None | str:
         r"""
         Save the processed data as a CSV (comma-separated values) file.
+
+        TODO: Currently doesn't save errors.
 
         Parameters
         ----------
@@ -488,6 +532,9 @@ class scanAbstract(metaclass=abc.ABCMeta):
         delim : str, optional
             The delimiter to use in the csv file, by default ",".
             Another common option is to use "\t" for tab delimited.
+        combine_label_unit : bool, optional
+            If True, combines the label and unit in the header, by default True.
+            Otherwise label and unit are separate rows.
 
         Returns
         -------
@@ -499,6 +546,13 @@ class scanAbstract(metaclass=abc.ABCMeta):
         IOError
             If the specified file already exists.
         """
+        x = self.x
+        if x is None:
+            raise ValueError("X data is not defined.")
+        y = self.y
+        if y is None:
+            raise ValueError("Y data is not defined.")
+
         if filename is None:
             csv_file = io.StringIO()
         else:
@@ -506,12 +560,41 @@ class scanAbstract(metaclass=abc.ABCMeta):
                 raise IOError(f"The following filepath already exists:\n{filename}")
             csv_file = open(filename, "w")
         # Write the header
-        csv_file.write(f"{self.x_label}{delim}{delim.join(self.y_labels)}\n")
+        y_labels = self.y_labels
+        y_units = self.y_units
+        if combine_label_unit:
+            if y_labels is not None and y_units is not None:
+                combo = []
+                for label, unit in zip(y_labels, y_units):
+                    if label is not None and unit is not None:
+                        combo.append(f"{label} ({unit})")
+                    elif label is not None:
+                        combo.append(label)
+                    elif unit is not None:
+                        combo.append(f"({unit})")
+                    else:
+                        combo.append("")
+                csv_file.write(
+                    f"{self.x_label} ({self.x_unit}){delim}{delim.join(combo)}\n"
+                )
+            elif y_labels is not None:
+                combo = [label if label is not None else "" for label in y_labels]
+                csv_file.write(
+                    f"{self.x_label} ({self.x_unit}){delim}{delim.join(combo)}\n"
+                )
+            else:
+                csv_file.write(f"{self.x_label}{delim}Y Data\n")
+        else:
+            # Write labels, then units.
+            if y_labels is not None:
+                combo = [label if label is not None else "" for label in y_labels]
+                csv_file.write(f"{self.x_label}{delim}{delim.join(combo)}\n")
+            if y_units is not None:
+                combo = [unit if unit is not None else "" for unit in y_units]
+                csv_file.write(f"{self.x_unit}{delim}{delim.join(combo)}\n")
         # Write the data
-        for i in range(len(self.x)):
-            csv_file.write(
-                f"{self.x[i]}{delim}{delim.join(str(y) for y in self.y[i])}\n"
-            )
+        for i in range(len(x)):
+            csv_file.write(f"{x[i]}{delim}{delim.join(str(y) for y in y[i])}\n")
 
         if filename is None:
             csv_file.seek(0)  # Reset the buffer to the beginning
@@ -539,25 +622,29 @@ class scanSimple(scanAbstract):
 
     Parameters
     ----------
-    x : npt.NDArray
+    x : npt.NDArray | None
         1D array of x data (e.g., beam energy).
-    y : npt.NDArray
+    y : npt.NDArray | None
         2D array of y data (e.g., multiple Y channels). First index is data points, second index is channels.
     *args, **kwargs
         Additional arguments and keyword arguments to pass to the parent class.
     """
 
-    def __init__(self, x: npt.NDArray, y: npt.NDArray, *args, **kwargs) -> None:
+    def __init__(
+        self, x: npt.NDArray | None, y: npt.NDArray | None, *args, **kwargs
+    ) -> None:
         super().__init__(*args, **kwargs)
-        x = np.array(x)  # make unique
-        y = np.array(y)
+        x = np.array(x) if x is not None else None  # make unique
+        y = np.array(y) if y is not None else None
         # Validate x and y data
-        if not isinstance(x, np.ndarray) or len(x.shape) != 1:
-            raise ValueError("x must be a 1D numpy array.")
-        if not isinstance(y, np.ndarray) or len(y.shape) > 2:
-            raise ValueError("y must be a 1D or 2D numpy array.")
-        if len(y.shape) == 1:
-            y = y[:, np.newaxis]
+        if x is not None:
+            if not isinstance(x, np.ndarray) or len(x.shape) != 1:
+                raise ValueError("x must be a 1D numpy array.")
+        if y is not None:
+            if not isinstance(y, np.ndarray) or len(y.shape) > 2:
+                raise ValueError("y must be a 1D or 2D numpy array.")
+            if len(y.shape) == 1:
+                y = y[:, np.newaxis]
         self._x = x
         self._y = y
         return
@@ -571,7 +658,7 @@ class scanSimple(scanAbstract):
         """
         return None
 
-    @overrides.overrides
+    @override
     def copy(self) -> scanSimple:
         """
         Create a copy of the scan object.
@@ -583,7 +670,11 @@ class scanSimple(scanAbstract):
         scanSimple
             A new instance of scanSimple with copied data.
         """
-        new_obj = scanSimple(x=self.x.copy(), y=self.y.copy())
+        x = self.x
+        y = self.y
+        x = x.copy() if x is not None else None
+        y = y.copy() if y is not None else None
+        new_obj = scanSimple(x=x, y=y)
         return new_obj
 
 
@@ -597,23 +688,25 @@ class scanBase(scanAbstract):
 
     Parameters
     ----------
-    parser : Type[parser_base] | parser_base | None
+    parser : Type[parserBase] | parserBase | None
         A parser object that contains the raw data and metadata.
         Parser data is loaded, and can be re-loaded.
         If None, the scan object is empty and must be loaded from a parser object.
     load_all_columns : bool, optional
-        By default False, only loads the columns defined in `parser.COLUMN_ASSIGNMENTS`.
-        If True, load all columns from the parser object, including those not defined in `parser.COLUMN_ASSIGNMENTS`.
+        If True, load all columns from the parser object.
+        If False, only loads the columns defined in `parser.COLUMN_ASSIGNMENTS`.
+        Default is False, as this is more memory efficient and typically only the
+        x/y columns are needed for analysis.
 
     See Also
     --------
-    parser_base : Base class for synchrotron data parsers.
+    parserBase : Base class for synchrotron data parsers.
     """
 
-    @overrides.overrides
+    @override
     def __init__(
         self,
-        parser: Type[parser_base] | parser_base | None,
+        parser: parserBase | None,
         load_all_columns: bool = False,
     ) -> None:
         # Initialise data arrays, including x, y, etc.
@@ -621,16 +714,48 @@ class scanBase(scanAbstract):
 
         # Store parser reference.
         self._parser = parser
+        self._parser_class = parser.__class__ if parser is not None else None
         self._all_columns_loaded = (
             False  # internal tracking on whether all columns have been loaded or not.
         )
+        self._filepath = parser.filepath if parser is not None else None
+        self._mtime = parser.mtime if parser is not None else None
+        self._ctime = parser.ctime if parser is not None else None
 
         # Load data from parser
-        if self.parser is not None:
-            self._load_from_parser(load_all_columns=load_all_columns)
+        if parser is not None:
+            parser.to_scan(load_all_columns=load_all_columns, scan_obj=self)
             self._all_columns_loaded = load_all_columns
 
-    @overrides.overrides
+    def detach_parser(self) -> None:
+        """
+        Remove the reference to the parser, to reduce memory usage.
+
+        Allows for garbage collector to remove the parser object.
+        Especially useful if parsed a large file that has been reduced.
+        """
+        del self.parser
+
+    @property
+    def parser_class(self) -> type[parserBase]:
+        """
+        Property for the class of the parser object linked to the scan object.
+
+        Returns
+        -------
+        type[parserBase]
+            The class of the parser object linked to the scan object.
+
+        Raises
+        ------
+        ValueError
+            If no parser class has been linked to the scan object.
+        """
+        if self._parser_class is None:
+            raise ValueError("No parser class has been linked to this scan object.")
+        return self._parser_class
+
+    @override
     def copy(self, *args, **kwargs) -> Self:
         """
         Create a copy of the scan object.
@@ -646,7 +771,7 @@ class scanBase(scanAbstract):
             A new instance of scanBase with copied data.
         """
         # Create a new instance that copies the data
-        newobj = super().copy(parser=None)
+        newobj = self.__class__(parser=None, *args, **kwargs)
         # Copy the base scan attributes:
         newobj._parser = self._parser  # Keep the same parser reference.
         newobj._all_columns_loaded = self._all_columns_loaded
@@ -654,59 +779,100 @@ class scanBase(scanAbstract):
         return newobj
 
     @property
-    def ctime(self) -> datetime.datetime:
+    def ctime(self) -> datetime.datetime | None:
         """
         Return the creation time of the file as a datetime object.
 
         Returns
         -------
-        datetime.datetime
+        datetime.datetime | None
             The creation time of the file.
+            None if not defined.
         """
-        return self.parser.ctime
+        return self._ctime
 
     @property
-    def mtime(self) -> datetime.datetime:
+    def mtime(self) -> datetime.datetime | None:
         """
         The modification time of the file as a datetime object.
 
         Returns
         -------
-        datetime.datetime
+        datetime.datetime | None
             The modification time of the file.
+            None if not defined.
         """
-        return self.parser.mtime
+        return self._mtime
 
-    @scanAbstract.filename.getter
-    def filename(self) -> str:
+    @property
+    def filename(self) -> str | None:
         """
         Property for the filename of the scan object.
 
         Returns
         -------
-        str
+        str | None
             The filename of the scan object.
+            None if not defined.
         """
-        return self.parser.filename
+        return os.path.basename(self._filepath) if self._filepath is not None else None
 
     @property
-    def parser(self) -> Type[parser_base] | parser_base:
+    def filepath(self) -> str | None:
+        """
+        Property for the full filepath of the scan object.
+
+        Returns
+        -------
+        str | None
+            The full filepath of the scan object.
+            None if not defined.
+
+        Raises
+        ------
+        ValueError
+            If the filepath is not defined.
+        """
+        return self._filepath
+
+    @property
+    def parser(self) -> parserBase | None:
         """
         Property for the parser object linked to the scan object.
 
         Parameters
         ----------
-        parser : Type[parser_base] | parser_base
+        parser : parserBase | None
             A parser object that contains the raw data and metadata.
             Parser data is loaded, and can be re-loaded.
             If None, the scan object is empty and must be loaded from a parser object.
 
         Returns
         -------
-        Type[parser_base] | parser_base
+         | parserBase
             The parser object linked to the scan object.
         """
         return self._parser
+
+    @parser.setter
+    def parser(self, parser: parserBase | None) -> None:
+        self._parser = parser
+        if parser is not None:
+            self._filename = parser.filename
+            self._filepath = parser.filepath
+            self._mtime = parser.mtime
+            self._ctime = parser.ctime
+            self._parser_class = parser.__class__
+        return
+
+    @parser.deleter
+    def parser(self) -> None:
+        self._parser = None
+        return
+
+    # TODO Access parser class without attached object.
+    # @property
+    # def parser_class
 
     def reload(self, load_all_columns: bool | None = None) -> None:
         """
@@ -714,7 +880,7 @@ class scanBase(scanAbstract):
 
         If `load_all_columns` is provided, it will override the current attribute setting `_all_columns_loaded`
         otherwise uses the `_all_columns_loaded` attribute to determine to load all columns or only those
-        defined in `COLUMN_ASSIGNMENTS`.
+        defined in `COLUMN_ASSIGNMENTS`, which is defaulted to `false`.
         Also reloads the x, y, y_errs, x_errs, labels and units from the parser object.
 
         Parameters
@@ -724,13 +890,22 @@ class scanBase(scanAbstract):
             If True, load all columns from the parser object.
             If False, only loads the columns defined in `parser.COLUMN_ASSIGNMENTS`.
             If None, uses the current value of `_all_columns_loaded`.
+
+        Raises
+        ------
+        ValueError
+            If the parser object is not defined, cannot reload data.
         """
-        if load_all_columns is not None:
-            self._all_columns_loaded = load_all_columns
-            self._load_from_parser(load_all_columns)
-        else:
-            self._load_from_parser(self._all_columns_loaded)
-        return
+        parser = self.parser
+        if parser is None:
+            raise ValueError("Parser object is not defined, cannot reload data.")
+        # Run the parser-scan conversion method, applying to self.
+        parser.to_scan(
+            load_all_columns=self._all_columns_loaded
+            if load_all_columns is None
+            else load_all_columns,
+            scan_obj=self,
+        )
 
     def reload_labels_from_parser(self) -> None:
         """
@@ -739,107 +914,219 @@ class scanBase(scanAbstract):
         Useful when the user wants to switch from the raw parameter names to useful names.
         Alternatively scan labels can be manually set.
         """
-        self._load_from_parser(self._all_columns_loaded, only_labels=True)
+        parser = self.parser
+        if parser is None:
+            raise ValueError("Parser object is not defined, cannot reload data.")
+        parser.to_scan(
+            load_all_columns=self._all_columns_loaded, scan_obj=None, only_labels=True
+        )
         return
 
-    def _load_from_parser(self, load_all_columns=False, only_labels=False) -> None:
+    @property
+    def channel_map(self) -> dict[str, dtype]:
         """
-        Load data from parser object.
+        A list of the available `dtype` channels available on the object.
 
-        By default, only loads the y data specified by the class COLUMN_ASSIGNMENTS property.
-        If `load_all_columns` is True, all columns are loaded.
-        Data is indexed by the COLUMN_ASSIGNMENTS property.
+        Uses the pre-defined `CHANNEL_MAP` from the parser class to find relevant channels.
+
+        Returns
+        -------
+        dict[str, dtype]
+            A list of the enumerate datatypes.
+        """
+        parser = self.parser
+        if parser is None:
+            raise ValueError("Parser object is not defined, cannot get channel map.")
+        return parser.CHANNEL_MAP
+
+    @overload
+    def _channels_indexes(
+        self,
+        relabel: bool | None,
+        reduced_labels: list[str | None] | None,
+        specific: None = None,
+    ) -> dict[dtype, int]: ...
+
+    @overload
+    def _channels_indexes(
+        self,
+        relabel: bool | None,
+        reduced_labels: list[str | None] | None,
+        specific: dtype,
+    ) -> int: ...
+
+    def _channels_indexes(
+        self,
+        relabel: bool | None = None,
+        reduced_labels: list[str | None] | None = None,
+        specific: dtype | None = None,
+    ) -> dict[dtype, int] | int:
+        """
+        The mapping of the available dtype channels.
+
+        If a specific dtype is requested, the index of that dtype channel is returned instead of the full mapping.
 
         Parameters
         ----------
-        load_all_columns : bool, optional
-            Load all columns from the parser object, by default False.
-        only_labels : bool, optional
-            Only load labels and units from the parser object, by default False.
+        relabel : bool | None
+            Whether to check relabelled names or not.
+            By default None, which defers to using the default class setting.
+        reduced_labels : list[str | None] | None
+            Replaces use of default `parser.labels`, particularly useful when using reduced data.
+        specific : dtype, optional
+            A specific dtype to search for if provided.
+
+        Returns
+        -------
+        dict[dtype, int]
+            The mapping of the available dtype channels.
+
+        Raises
+        ------
+        ValueError
+            If the parser class is not defined, cannot get channel mapping information.
+        ValueError
+            If a specific dtype is requested but not found in the labels.
         """
-        # Get assignments from parser object.
-        assignments = self.parser.COLUMN_ASSIGNMENTS  # Validated column assignments.
-
-        ### Load data from parser
-        # X data - locate column
-        x_index = self.parser.label_index(assignments["x"])
-        # Y data - locate columns
-        y_labels = assignments["y"]
-        if isinstance(y_labels, list):
-            y_indices = []
-            for label in y_labels:
-                try:
-                    # label could be multiple labels, or a tuple of labels.
-                    index = self.parser.label_index(label)
-                    y_indices.append(index)
-                except (AttributeError, ValueError):
-                    warnings.warn(
-                        f"Label {label} not found in parser object {self.parser}."
-                    )
-        else:  # Singular index.
-            y_indices = [self.parser.label_index(assignments["y"])]
-        # Y errors - locate columns
-        y_errs_labels = assignments["y_errs"]
-        if isinstance(y_errs_labels, list):
-            y_errs_indices = [
-                (
-                    self.parser.label_index(label)
-                    if label in y_errs_labels and y_errs_labels[label] is not None
-                    else None
-                )
-                for label in y_errs_labels
-            ]
-        elif isinstance(y_errs_labels, str):
-            y_errs_indices = [self.parser.label_index(y_errs_labels)]
-        else:  # y_errs_labels is None:
-            y_errs_indices = None
-        # X errors - locate column
-        x_errs_label = assignments["x_errs"]
-        x_errs_index = (
-            self.parser.label_index(x_errs_label) if x_errs_label is not None else None
-        )
-        ### add conditional for load_all_columns.
-        if load_all_columns:
-            # iterate over columns, and add to y_indices if not existing indices.
-            for i in range(self.parser.data.shape[1]):
-                if (
-                    i not in y_indices
-                    and (y_errs_indices is None or i not in y_errs_indices)
-                    and i != x_index
-                    and (x_errs_index is None or i != x_errs_index)
-                ):
-                    y_indices.append(i)
-
-        ### Generate data clones.
-        # Data-points
-        if not only_labels:
-            self._x = self.parser.data[:, x_index].copy()
-            self._y = self.parser.data[:, y_indices].copy()
-            self._y_errs = (
-                self.parser.data[:, y_errs_indices].copy()
-                if y_errs_indices is not None
-                else None
+        pclass = self._parser_class
+        if pclass is None:
+            raise ValueError(
+                "Parser class is not defined, cannot get channel mapping information."
             )
-            self._x_errs = (
-                self.parser.data[:, x_errs_index].copy()
-                if x_errs_index is not None
-                else None
-            )
-        # Labels and Units
-        self._x_label = (
-            self.parser.labels[x_index] if self.parser.labels is not None else None
-        )
-        self._x_unit = (
-            self.parser.units[x_index] if self.parser.units is not None else None
-        )
-        self._y_labels = (
-            [self.parser.labels[i] for i in y_indices]
-            if self.parser.labels is not None
-            else None
-        )
-        self._y_units = (
-            [self.parser.units[i] for i in y_indices]
-            if self.parser.units is not None
-            else None
-        )
-        return
+
+        parser = self.parser
+        if relabel is None:
+            if parser is not None:
+                relabel = parser.relabel
+            elif pclass is not None:
+                relabel = pclass.relabel
+            else:
+                # No relabelling available.
+                relabel = False
+
+        specific_search = specific is not None
+        mapping: dict[dtype, int] = {}
+
+        labels = self.y_labels if reduced_labels is None else None
+        if not specific_search:
+            if labels is not None:
+                for dt, label in pclass._CHANNEL_MAP_REVERSE.items():
+                    # Name directly in channel labels
+                    if labels is not None and label in labels:
+                        mapping[dt] = labels.index(label)
+                    elif relabel:
+                        # Check the RELABELS of the channel map label.
+                        if label in pclass.RELABELS:
+                            rlabel = pclass.RELABELS[label]
+                            # Check the relabel
+                            if rlabel in labels:
+                                mapping[dt] = labels.index(rlabel)
+                            else:
+                                # Check each
+                                reverse = pclass.RELABELS_REVERSE[rlabel]
+                                if isinstance(reverse, tuple):
+                                    for olabel in reverse:
+                                        if olabel in labels:
+                                            mapping[dt] = labels.index(olabel)
+        else:
+            if labels is not None:
+                label = pclass._CHANNEL_MAP_REVERSE.get(specific, None)
+                if label is not None and label in labels:
+                    return labels.index(label)
+                elif relabel and label is not None:
+                    if label in pclass.RELABELS:
+                        rlabel = pclass.RELABELS[label]
+                        if rlabel in labels:
+                            return labels.index(rlabel)
+                        else:
+                            reverse = pclass.RELABELS_REVERSE[rlabel]
+                            if isinstance(reverse, tuple):
+                                for olabel in reverse:
+                                    if olabel in labels:
+                                        return labels.index(olabel)
+            raise ValueError(f"Channel {specific} not found in labels.")
+        return mapping
+
+    @property
+    def channels(self, relabel: bool | None = None) -> list[dtype]:
+        """
+        A list of the available `dtype` channels available on the object.
+
+        Uses the pre-defined `CHANNEL_MAP` to find relevant channels.
+
+        Parameters
+        ----------
+        relabel : bool | None
+            Whether to check relabelled names or not.
+            By default None, which defers to using the default class setting.
+
+        Returns
+        -------
+        list[dtype]
+            A list of the enumerate datatypes.
+        """
+        if relabel is None:
+            relabel = self.__class__.relabel
+
+        found = []
+        labels = self.labels
+        if labels is not None:
+            for dt, label in self.__class__._CHANNEL_MAP_REVERSE.items():
+                # Name directly in channel labels
+                if labels is not None and label in labels:
+                    found.append(dt)
+                elif relabel:
+                    # Check the RELABELS of the channel map label.
+                    if label in self.RELABELS:
+                        rlabel = self.RELABELS[label]
+                        # Check the relabel
+                        if rlabel in labels:
+                            found.append(dt)
+                        else:
+                            # Check each
+                            reverse = self.RELABELS_REVERSE[rlabel]
+                            if isinstance(reverse, tuple):
+                                for olabel in reverse:
+                                    if olabel in labels:
+                                        found.append(dt)
+        return found
+
+    @property
+    def AEY(self) -> npt.NDArray | None:
+        """
+        The Auger Electron Yield (AEY) channel data if available.
+
+        Returns
+        -------
+        npt.NDArray | None
+            The AEY channel data if available. Otherwise None.
+        """
+        if dtype.AEY in self.channels:
+            idx = self._channels_indexes()[dtype.AEY]
+            if isinstance(self.data, tuple):
+                data = self.data[0] if len(self.data) == 1 else None
+            else:
+                data = self.data
+            if data is not None:
+                return data[:, idx]
+        return None
+
+    @property
+    def TEY(self) -> npt.NDArray | None:
+        """
+        The Total Electron Yield (TEY) channel data if available.
+
+        Returns
+        -------
+        npt.NDArray | None
+            The TEY channel data if available. Otherwise None.
+        """
+        if dtype.TEY in self.channels:
+            idx = self._channels_indexes()[dtype.TEY]
+            if isinstance(self.data, tuple):
+                data = self.data[0] if len(self.data) == 1 else None
+            else:
+                data = self.data
+            if data is not None:
+                return data[:, idx]
+        return None
