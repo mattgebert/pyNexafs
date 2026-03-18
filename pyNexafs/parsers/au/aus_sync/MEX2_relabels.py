@@ -300,8 +300,8 @@ RELABELS = {
     "ROI_AD_AVG": "ROI Average",
     (
         "ifluor",
-        'Fluorescence Sum',
-        'Fluorescence Sum (Reduced)',
+        "Fluorescence Sum",
+        "Fluorescence Sum (Reduced)",
     ): "Fluorescence",
     "ROI.start_bin": "Fluorescence Start Bin",
     "ROI.end_bin": "Fluorescence End Bin",

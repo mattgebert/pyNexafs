@@ -2744,7 +2744,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                 )
         else:
             labels_1D = labels
-        
+
         for query in queries:
             # Check default queries
             try:
@@ -2760,27 +2760,30 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                             )  # throws value error if not found
                         except ValueError:
                             pass
-                        
+
                         # Search values instead to reverse for key
                         k = None
                         v = None
                         for k, v in self.RELABELS.items():
                             if v == self.RELABELS[query]:
                                 break
-                            
+
                         if isinstance(k, str):
                             try:
-                                return labels_1D.index(k)  # throws value error if not found
+                                return labels_1D.index(
+                                    k
+                                )  # throws value error if not found
                             except ValueError:
                                 pass
                         if isinstance(k, tuple):
                             for kk in k:
                                 try:
-                                    return labels_1D.index(kk)  # throws value error if not found
+                                    return labels_1D.index(
+                                        kk
+                                    )  # throws value error if not found
                                 except ValueError:
                                     pass
-                        
-                    
+
         # Check higher order dimensions in case the value is not in the 1D list.
         if isinstance(labels, tuple) and len(labels) > 1:
             for i, labels_ND in enumerate(labels[1:]):

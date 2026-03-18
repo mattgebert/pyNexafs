@@ -293,7 +293,7 @@ class MEX2_NEXAFS(parserBase):
                         self.reduction_kwargs = dict(
                             energy_bin_domain=energy_bin_domain
                         )
-                        
+
                         # Return the reduced data.
                         return (
                             reduced_data,
