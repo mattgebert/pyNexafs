@@ -1,14 +1,14 @@
 import sys
+from typing import override
 import numpy as np
 import matplotlib as mpl
-
-mpl.use("QtAgg")
 import matplotlib.figure
 import matplotlib.colors
 from PyQt6 import QtGui, QtWidgets, QtCore
 import PIL.ImageQt as PILImageQt
 import PIL.Image as PILImage
-import overrides
+
+mpl.use("QtAgg")
 
 
 class QColormapPushButton(QtWidgets.QPushButton):
@@ -28,7 +28,7 @@ class QColormapPushButton(QtWidgets.QPushButton):
         self._w = self.width()
         self._h = self.height()
 
-    @overrides.override
+    @override
     def resizeEvent(self, event):
         if callable(self._resizeFn):
             self._resizeFn(event)

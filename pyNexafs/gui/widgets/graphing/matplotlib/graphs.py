@@ -3,8 +3,8 @@ import sys
 import matplotlib.figure
 import matplotlib.axes
 import matplotlib.pyplot as plt
-import overrides
 import numpy as np
+from typing import override
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.backend_bases import NavigationToolbar2 as NavTB
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavTBQT
@@ -31,7 +31,7 @@ class NEXAFS_NavQT(NavTBQT, QtWidgets.QToolBar):
     # )
 
     # Redefine init method to include custom icons in toolbar without attempting to join string to icon name.
-    @overrides.overrides
+    @override
     def __init__(self, canvas, parent=None, coordinates=True):
         """coordinates: should we show the coordinates on the right?"""
         QtWidgets.QToolBar.__init__(self, parent)
@@ -92,7 +92,7 @@ class NEXAFS_NavQT(NavTBQT, QtWidgets.QToolBar):
         # Initialise normalisation options.
         self._normalisation_options = None
 
-    @overrides.overrides
+    @override
     def _icon(
         self,
         name: (
@@ -165,7 +165,7 @@ class NEXAFS_NavQT(NavTBQT, QtWidgets.QToolBar):
             )
         pass
 
-    @overrides.overrides
+    @override
     def event(self, event: QtCore.QEvent) -> bool:
         """
         Event handler for the widget.

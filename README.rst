@@ -43,7 +43,8 @@ pyNexafs
 Motivation
 ##########
 
-``pyNexafs`` was designed to solve backwards-compatibility issues between (inevitably changing or upgraded) Synchrotron beamline configurations, and allow reproducable analysis (reduction, normalisation and fitting) of NEXAFS data. This is done by separating file parsing and NEXAFS (scan) handling.
+``pyNexafs`` was designed to solve backwards-compatibility issues between (inevitably changing or upgraded) Synchrotron beamline configurations, and allow reproducable analysis (reduction, normalisation and fitting) of NEXAFS data.
+This is done by separating file parsing and NEXAFS (scan) handling.
 
 Todo List
 #########
@@ -53,7 +54,7 @@ This repository is in a Beta development state. The following list maps the requ
 - ☑ Implement base classes for parsing and NEXAFS
 - ☑ Implement core normalisation wrappers
 - ☑ Implement support for Australian Synchrotron NEXAFS beamlines
-- ☐ Fix parser classes to be more flexible (multi-dimensional data) but allow/encourage overriding of `to_scan` method.
+- ☑ Fix parser classes to be more flexible (multi-dimensional data) but allow/encourage overriding of `to_scan` method.
 - ☐ Ensure parser `load` method records the successful method signature.
 - ☐ Comprehensive mapping structure for NEXAFS data types (including accessors for a single scan, i.e. `scan.drain`, `scan.flour` or `scan.PFY`...)
 - ☐ Comprehensive readthedocs documentation.

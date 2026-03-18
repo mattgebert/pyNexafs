@@ -1,7 +1,8 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-from pyNexafs.parsers._base import parser_base
+from pyNexafs.parsers._base import parserBase
 from pyNexafs.nexafs.scan import scanBase
 from typing import Type
+from builtins import function
 import sys
 from pyNexafs.gui.widgets.io.dir_selection import directorySelector
 import pyNexafs.parsers.au as AU_PARSERS
@@ -94,7 +95,7 @@ class horLine(QtWidgets.QFrame):
 
 
 class nexafsParserConverter(QtWidgets.QWidget):
-    def __init__(self, parsers: list[Type[parser_base | scanBase]] = [], parent=None):
+    def __init__(self, parsers: list[Type[parserBase | scanBase]] = [], parent=None):
         super().__init__(parent)
         self._parsers = {parser.filename: parser for parser in parsers}
         self._conversions = []
@@ -290,7 +291,7 @@ class nexafsParserConverter(QtWidgets.QWidget):
         self.diff_series_selector.clear()
         current_idx = self.diff_parser_selector.currentIndex()
         parsers = self.parsers
-        if current_idx == None:
+        if current_idx is None:
             self.diff_series_selector.clear()
             return
         elif (
@@ -529,11 +530,11 @@ class nexafsParserConverter(QtWidgets.QWidget):
 
     @staticmethod
     def calculation_single(
-        parser: parser_base | scanBase,
+        parser: parserBase | scanBase,
         method: NaN_OPTION,
         treat_zero_as_nan: bool = False,
         zero_block_min_size=3,
-    ) -> parser_base | scanBase:
+    ) -> parserBase | scanBase:
         # Copy parser
         copy_parser = parser.copy()
         # Treat zeros as NaN values
@@ -838,25 +839,25 @@ class nexafsParserConverter(QtWidgets.QWidget):
         self.analyse_filesize()
 
     @property
-    def parsers(self) -> list[Type[parser_base] | parser_base]:
+    def parsers(self) -> list[Type[parserBase] | parserBase]:
         """
         The current set of parsers to use for conversion.
 
         Parameters
         ----------
-        parsers : list[Type[parser_base]]
+        parsers : list[Type[parserBase]]
             A list of parser classes to use for conversion.
             None values are disregarded when setting.
 
         Returns
         -------
-        list[Type[parser_base]]
+        list[Type[parserBase]]
             A list of parser classes to use for conversion.
         """
         return list(self._parsers.values())
 
     @parsers.setter
-    def parsers(self, parsers: list[Type[parser_base] | parser_base]):
+    def parsers(self, parsers: list[Type[parserBase] | parserBase]):
         self._parsers = {
             parser.filename: parser for parser in parsers if parser is not None
         }
@@ -870,7 +871,7 @@ class nexafsParserConverter(QtWidgets.QWidget):
         self.diff_parser_selector.blockSignals(False)
 
     @property
-    def conversions(self) -> list[Type[parser_base]]:
+    def conversions(self) -> list[Type[parserBase]]:
         return self._conversions
 
     @property
@@ -916,7 +917,7 @@ class nexafsParserConverter(QtWidgets.QWidget):
 
 
 class nexafsConverterQANT(nexafsParserConverter):
-    def __init__(self, parsers: list[Type[parser_base]] = [], parent=None):
+    def __init__(self, parsers: list[Type[parserBase]] = [], parent=None):
         super().__init__(parsers, parent)
         self._title_label.setText("QANT Conversion:")
 

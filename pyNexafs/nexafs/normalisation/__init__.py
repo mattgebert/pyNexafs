@@ -6,18 +6,26 @@ the order of operations is clear and the normalisation can be reproduced between
 different datasets.
 """
 
+# Config Classes
 from pyNexafs.nexafs.normalisation.norm_settings import (
     configBase,
     configSeries,
     configChannel,
     configExternalChannel,
-    normConfigEdges,
+    configEdges,
 )
 
+# Config Enumerates
+from pyNexafs.nexafs.normalisation.norm_settings import (
+    normMethod,
+    extSelection,
+)
+
+#
 from pyNexafs.nexafs.normalisation.scan_normalised import (
     scanNorm,
     scanNormExt,
-    scanNormBackgroundChannel,
+    scanDoubleNorm,
     scanNormEdges,
 )
 
@@ -28,3 +36,20 @@ from pyNexafs.nexafs.normalisation.scan_normalised import (
 #     # scan_background_subtraction,
 #     scan_normalised_background_channel,
 # )
+
+__all__ = [
+    # Config Classes
+    "configBase",
+    "configSeries",
+    "configChannel",
+    "configExternalChannel",
+    "configEdges",
+    # Enumerates
+    "normMethod",
+    "extSelection",
+    # Normalisation Classes
+    "scanNorm",
+    "scanNormExt",
+    "scanDoubleNorm",
+    "scanNormEdges",
+]

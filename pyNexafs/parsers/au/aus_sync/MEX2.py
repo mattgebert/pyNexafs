@@ -3,20 +3,29 @@ Parser classes for the Medium Energy X-ray 2 (MEX2) beamline at the Australian S
 """
 
 # Internal
-from pyNexafs.parsers import parser_base, parser_meta
+from pyNexafs.parsers import parserBase
 from pyNexafs.utils.mda import MDAFileReader
 from pyNexafs.utils.reduction import reducer
 from pyNexafs.parsers.au.aus_sync.MEX2_relabels import RELABELS
+from pyNexafs.types import dtype, parse_fn_ret_type, reduction_type
+from pyNexafs.parsers.au.aus_sync.MEX_detectors import (
+    DanteFluorescence,
+    Xpress3Fluorescence,
+)
+from pyNexafs.nexafs import scanBase
 
 # Standard
-from io import TextIOWrapper
-from typing import Any
+import typing
 import ast
 import warnings
 import datetime
 import os
+import io
 
 # External
+import numpy as np
+import numpy.typing as npt
+
 has_PYQT: bool
 try:
     from PyQt6 import QtWidgets
@@ -25,8 +34,6 @@ try:
     from pyNexafs.gui.widgets.reducer import EnergyBinReducerDialog
 except ImportError:
     has_PYQT = False
-from numpy.typing import NDArray
-import numpy as np
 
 
 def MEX2_datetime_conversion(MEX2_TIME: float) -> datetime.datetime:
@@ -56,95 +63,7 @@ def MEX2_datetime_conversion(MEX2_TIME: float) -> datetime.datetime:
     return ret_time
 
 
-class DanteFluorescence:
-    """Configuration for interpreting the Dante MCA Fluorescence data."""
-
-    FLUOR_NAMES: list[str] = [
-        "MEX2ES01DPP01:ch1:W:ArrayData",
-        "MEX2ES01DPP01:ch2:W:ArrayData",
-        "MEX2ES01DPP01:ch3:W:ArrayData",
-        "MEX2ES01DPP01:ch4:W:ArrayData",
-    ]
-    BIN_ENERGY_DELTA: float = 11.935
-    """The energy difference (eV) between each bin in the MEX2 data."""
-    BIN_96_ENERGY: float = 96 * BIN_ENERGY_DELTA - 1146.7
-    """The energy (eV) of the 96th bin in the MEX2 data."""
-    TOTAL_BINS: int = 4096
-    """The total number of bins in the MEX2 data."""
-    TOTAL_BIN_ENERGIES: NDArray = np.linspace(
-        start=BIN_96_ENERGY - 95 * BIN_ENERGY_DELTA,
-        stop=BIN_96_ENERGY + (TOTAL_BINS - 96) * BIN_ENERGY_DELTA,
-        num=TOTAL_BINS,
-    )
-    """The energy (eV) of each bin in the MEX2 data."""
-    INTERESTING_BINS_IDX: tuple[int, int] = (80, 900)
-    """The indices of the interesting bins (non-zero) in the MEX2 data."""
-    INTERESTING_BINS_ENERGIES: NDArray = TOTAL_BIN_ENERGIES[
-        INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1]
-    ]
-    """The energy (eV) of the interesting bins (non-zero) in the MEX2 data."""
-
-
-class Xpress3Fluorescence:
-    """Configuration for interpreting the Xpress3 MCA Fluorescence data."""
-
-    FLUOR_NAMES: list[str] = [
-        "MEX2ES01DPP02:MCA1:ArrayData",  # New MCA
-        "MEX2ES01DPP02:MCA2:ArrayData",
-        "MEX2ES01DPP02:MCA3:ArrayData",
-        "MEX2ES01DPP02:MCA4:ArrayData",
-    ]
-    BIN_ENERGY_DELTA: float = 10
-    """The energy difference (eV) between each bin in the MEX2 data."""
-    BIN_96_ENERGY: float = 96 * BIN_ENERGY_DELTA - 0
-    """The energy (eV) of the 96th bin in the MEX2 data."""
-    TOTAL_BINS: int = 4096
-    """The total number of bins in the MEX2 data."""
-    TOTAL_BIN_ENERGIES: NDArray = np.linspace(
-        start=BIN_96_ENERGY - 95 * BIN_ENERGY_DELTA,
-        stop=BIN_96_ENERGY + (TOTAL_BINS - 96) * BIN_ENERGY_DELTA,
-        num=TOTAL_BINS,
-    )
-    """The energy (eV) of each bin in the MEX2 data."""
-    INTERESTING_BINS_IDX: tuple[int, int] = (0, 800)
-    """The indices of the interesting bins (non-zero) in the MEX2 data."""
-    INTERESTING_BINS_ENERGIES: NDArray = TOTAL_BIN_ENERGIES[
-        INTERESTING_BINS_IDX[0] : INTERESTING_BINS_IDX[1]
-    ]
-    """The energy (eV) of the interesting bins (non-zero) in the MEX2 data."""
-
-
-class MEX2_NEXAFS_META(parser_meta):
-    """
-    Metaclass for MEX2 NEXAFS, implements a bin domain class property.
-
-    Parameters
-    ----------
-    name : str
-        The name of the class.
-    bases : tuple[type, ...]
-        The base classes of the class.
-    namespace : dict[str, Any]
-        The namespace of the class.
-    **kwds : Any
-        Additional keyword arguments.
-    """
-
-    def __init__(
-        cls: type,
-        name: str,
-        bases: tuple[type, ...],
-        namespace: dict[str, Any],
-        **kwds: Any,
-    ) -> None:
-        # Add extra class property for MEX2 mda data, to track binning settings
-        cls.reduction_bin_domain: list[tuple[int, int]] | None = None
-        """Tracker for the binning settings used in the most recent data reduction."""
-
-        return super().__init__(name=name, bases=bases, namespace=namespace, **kwds)
-
-
-class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
+class MEX2_NEXAFS(parserBase):
     """
     Australian Synchrotron Medium X-ray (MEX) NEXAFS parser.
 
@@ -159,13 +78,6 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         If True, only the header of the file is read, by default False.
     relabel : bool | None, optional
         If True, then the parser will relabel the data columns, by default None.
-    energy_bin_domain : tuple[float, float] | None = None
-        The energy domain to bin the data Fluorescence Detector data, if .MDA file.
-        The domain should be specified in eV. By default None.
-    use_recent_binning : bool, optional
-        If True, then the '.mda' parsers will use the most recent class
-        reduction binning settings. By default True, as UIs will use this,
-        and assume the parser will use the same binning settings.
     **kwargs
         Additional keyword arguments that will be passed to the `file_parser` method.
 
@@ -203,9 +115,7 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                 "Fluorescence Sum",
                 "Fluorescence Sum (Reduced)",
             ),
-            ("Count Time", "count_time"),
-            "ICR_AVG",
-            "OCR_AVG",
+            ("Gate Time Setpoint", "Count Time", "count_time"),
             "Fluorescence Detector 1",
             "Fluorescence Detector 2",
             "Fluorescence Detector 3",
@@ -219,47 +129,248 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
     # See MEX2_relabels.py for the relabels dictionary.
     RELABELS = RELABELS
 
+    # Mappings
+    CHANNEL_MAP = {
+        "MEX2ES01ZEB01:CALC_ENERGY_EV": dtype.E,  # measured energy
+        "MEX2ES01DAQ01:ch2:S:MeanValue_RBV": dtype.I0,
+        "MEX2ES01DAQ01:ch3:S:MeanValue_RBV": dtype.TEY,
+        "ifluor": dtype.PFY,
+    }
+
     def __init__(
         self,
         filepath: str | None,
         header_only: bool = False,
         relabel: bool | None = None,
-        energy_bin_domain: tuple[float, float] | None = None,
-        # TODO Perhaps make `use_recent_binning` a property of the base class,
-        # that way UIs can reset such settings if needed upon directory change etc.
-        use_recent_binning: bool = True,
         **kwargs,
     ) -> None:
-        # Manually add kwargs
-        common_kwargs = {}
-        if use_recent_binning is not None:
-            common_kwargs.update(use_recent_binning=use_recent_binning)
-        if (
-            energy_bin_domain is not None
-            and filepath is not None
-            and filepath.endswith(".mda")
-        ):
-            common_kwargs.update(energy_bin_domain=energy_bin_domain)
-        # User kwargs override common kwargs
-        kwargs.update(common_kwargs)
-        # Init
+        # Could do something with other arguments here...
         super().__init__(filepath, header_only, relabel, **kwargs)
+
+    @typing.override
+    def reduce(
+        self,
+        use_prior_params: bool = True,
+        energy_bin_domain: tuple[float, float] | None = None,
+    ) -> reduction_type:
+        """
+        Perform data reduction on the loaded data, particularly relevant for .mda files with Fluorescence binning.
+
+        Parameters
+        ----------
+        use_prior_params : bool, optional
+            Previously used parameters are stored on the class, matching the parser fn.
+        energy_bin_domain : tuple[float, float] | None, optional
+            The energy domain (in eV) to bin the data, by default None.
+
+        Returns
+        -------
+        reduced_data : npt.NDArray | None
+            The reduced data array, or None if no reduction is performed.
+        reduced_labels : list[str | None] | None
+            The reduced labels, or None if no reduction is performed.
+        reduced_units : list[str | None] | None
+            The reduced units, or None if no reduction is performed.
+        """
+        parser_fn = self._parser_fn
+        if parser_fn is None:
+            return None, None, None
+
+        match parser_fn:
+            case self.parse_mda_2024_11 | self.parse_mda_2025_02:
+                # Get the appropriate MCA channel names:
+                if parser_fn == self.parse_mda_2024_11:
+                    detector = DanteFluorescence
+                elif parser_fn == self.parse_mda_2025_02:
+                    detector = Xpress3Fluorescence
+                else:
+                    raise ValueError("Invalid parser function for MDA reduction.")
+
+                # Reduce the data
+                data = self.data
+                labels = self.labels
+                if data is None:
+                    return None, None, None
+                else:
+                    if isinstance(data, tuple):
+                        # Reduce the Flourescence data!
+                        flour_data = data[1]
+                        assert flour_data.ndim == 3, (
+                            f"Fluorescence data should be indexed with energy, binning and channel but has rank {data.ndim}."
+                        )
+                        assert isinstance(labels, tuple) and len(labels) > 1, (
+                            f"Fluorescence data labels not found, instead labels={labels}."
+                        )
+                        flour_labels = labels[1]
+
+                        # Collect the labels
+                        fluorescence_labels = detector.FLUOR_NAMES
+                        relabelled_flour_labels = [
+                            self.RELABELS[label] for label in fluorescence_labels
+                        ]
+                        # Check strings in labels match expected values, either in original or relabelled form.
+                        if (
+                            fluorescence_labels != flour_labels
+                            and flour_labels != relabelled_flour_labels
+                        ):
+                            raise ValueError(
+                                f"Fluorescence detector labels do not match expected values.\nFound {flour_labels}, expected {fluorescence_labels} or {relabelled_flour_labels}. Reduction failed."
+                            )
+
+                        # Take properties from 1D and 2D arrays:
+                        energies = (
+                            data[0][:, 0] * 1000
+                        )  # Convert keV to eV for MEX beamline
+                        interest_bins = detector.INTERESTING_BIN_IDX
+                        bin_slice = (
+                            slice(interest_bins[0], interest_bins[1])
+                            if interest_bins is not None
+                            else slice(None)
+                        )
+                        dataset = flour_data[:, bin_slice, :]  # eneergy, bins, channels
+                        bin_e = detector.INTERESTING_BIN_ENERGIES()  # pre-calibrated.
+
+                        ## Perform binning on 2D array:
+                        # Is an existing binning range available?
+                        reduction_kwargs = self.reduction_kwargs
+                        if energy_bin_domain is not None:
+                            # Update the class variable with the new binning settings.
+                            red = reducer(energies, dataset, bin_e)
+                        elif (
+                            use_prior_params
+                            and reduction_kwargs is not None
+                            and "energy_bin_domain" in reduction_kwargs
+                        ):
+                            # Uses the most recent binning settings.
+                            red = reducer(energies, dataset, bin_e)
+                            energy_bin_domain = reduction_kwargs["energy_bin_domain"]
+                        else:
+                            if has_PYQT:
+                                # Create a QT application to run the dialog.
+                                if QtWidgets.QApplication.instance() is None:
+                                    _ = QtWidgets.QApplication([])
+
+                                # Run the Bin Selector dialog
+                                window = EnergyBinReducerDialog(
+                                    energies=energies,
+                                    dataset=dataset,
+                                    bin_energies=bin_e,
+                                )
+                                window.show()
+                                if window.exec():
+                                    # If successful, store the binning settings and data reducer
+                                    energy_bin_domain = window.domain
+                                    red = window.reducer
+                                else:
+                                    raise ValueError("No binning settings selected.")
+                            else:
+                                raise ValueError(
+                                    "No binning settings selected, and no PyQt available to run the dialog."
+                                )
+                                # TODO: Add a command line interface for binning settings.
+
+                        # Use the binning settings to reduce the data.
+                        _, reduced_summed_data = red.reduce_by_sum(
+                            bin_domain=energy_bin_domain,
+                            axis=None,  # all axes
+                        )
+
+                        _, reduced_single_detector_data = red.reduce_by_sum(
+                            bin_domain=energy_bin_domain,
+                            axis="bin_energies",  # just the bin energies
+                        )
+
+                        # Concatenate the reduced data:
+                        reduced_data = np.concatenate(
+                            [
+                                reduced_single_detector_data,
+                                reduced_summed_data[:, np.newaxis],
+                            ],
+                            axis=-1,
+                        )
+
+                        # Save the energy bin domain
+                        self.reduction_kwargs = dict(
+                            energy_bin_domain=energy_bin_domain
+                        )
+
+                        # Return the reduced data.
+                        return (
+                            reduced_data,
+                            detector.FLUOR_NAMES + ["ifluor"],
+                            ["a.u."] * (reduced_data.shape[1]),
+                        )
+
+                    else:
+                        warnings.warn("Data is not a tuple, no reduction performed.")
+                        return None, None, None
+            case _:
+                # No reduction performed
+                return None, None, None
+        return super().reduce()
+
+    @typing.override
+    def to_scan(
+        self,
+        use_prior_params: bool = True,
+        energy_bin_domain: tuple[float, float] | None = None,
+        *,
+        load_all_columns: bool = False,
+        warn_missing_labels: bool = True,
+        only_labels: bool = False,
+        scan_obj: scanBase | None = None,
+        **kwargs,
+    ) -> scanBase:
+        """
+        Same as `parserBase.to_scan`, but with additional reduction parameters.
+
+        Parameters
+        ----------
+        use_prior_params : bool, optional
+            Previously used parameters are stored on the class, matching the parser fn.
+        energy_bin_domain : tuple[float, float] | None, optional
+            The energy domain (in eV) to bin the data, by default None.
+        load_all_columns : bool, optional
+            If True, then all columns in the data are loaded, by default False.
+        warn_missing_labels : bool, optional
+            If True, then a warning is raised if any expected labels are missing, by default True.
+        only_labels : bool, optional
+            If True, then only the labels are returned, by default False.
+        scan_obj : scanBase | None, optional
+            An existing scan object to populate, by default None.
+        **kwargs
+            Additional keyword arguments that will be passed to the `file_parser` method.
+
+        Returns
+        -------
+        scanBase
+            The populated scan object.
+        """
+        return super().to_scan(
+            use_prior_params=use_prior_params,
+            energy_bin_domain=energy_bin_domain,
+            load_all_columns=load_all_columns,
+            warn_missing_labels=warn_missing_labels,
+            only_labels=only_labels,
+            scan_obj=scan_obj,
+            **kwargs,
+        )
 
     @classmethod
     def parse_xdi(
         cls,
-        file: TextIOWrapper,
+        file: typing.IO | str,
         header_only: bool = False,
-    ) -> tuple[NDArray | None, list[str], list[str], dict[str, Any]]:
+    ) -> parse_fn_ret_type:
         """
         Read Australian Synchrotron '.xdi' files.
 
         Parameters
         ----------
-        file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.xdi', 'r')).
+        file : typing.IO | str
+            An of the datafile (i.e. open('file.xdi', 'r')).
         header_only : bool, optional
-            If True, then only the header of the file is read and NDArray is returned as None, by default False.
+            If True, then only the header of the file is read and npt.NDArray is returned as None, by default False.
 
         Returns
         -------
@@ -274,6 +385,23 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         ValueError
             If the file is not a valid .xdi file.
         """
+        # Ensure text and read mode:
+        if isinstance(file, str):
+            # Open the file in text mode
+            with open(file, "r", encoding="utf-8") as f:
+                return cls.parse_xdi(f, header_only=header_only)
+        elif isinstance(file, typing.BinaryIO):
+            return cls.parse_xdi(
+                io.TextIOWrapper(file, encoding="utf-8"), header_only=header_only
+            )
+        else:
+            assert isinstance(file, typing.TextIO), (
+                "File must be a typing.IO implementation or file path string."
+            )
+        # Check read mode
+        if "r" not in file.mode:
+            raise ValueError(f"File {file.name} is not opened in read mode.")
+
         # Initialise structures
         params = {}
         labels = []
@@ -333,9 +461,9 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
             line = file.readline()
             i += 1
 
-        assert (
-            line == "# ///\n"
-        ), "End of initial parameter values"  # Check end of initial parameters
+        assert line == "# ///\n", (
+            "End of initial parameter values"
+        )  # Check end of initial parameters
 
         # Get samplename from first comment line
         line = file.readline()
@@ -352,9 +480,9 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         # Some xdi conversion have a "default mda2xdi" line.
         line = file.readline()
         try:
-            assert (
-                line == "# xdi from default mda2xdi preset for mex2.\n"
-            ), "Conversion line"
+            assert line == "# xdi from default mda2xdi preset for mex2.\n", (
+                "Conversion line"
+            )
             assert file.readline() == "#--------\n", "Conversion line"
         except AssertionError:
             assert line == "#--------\n", "Conversion line"
@@ -365,7 +493,7 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
         labels = (
             header_line[2:].strip().split()
         )  # split on whitespace, even though formatting seems to use "   " (i.e. three spaces).
-        labels = [label.strip() if type(label) == str else label for label in labels]
+        labels = [label.strip() if type(label) is str else label for label in labels]
 
         if header_only:
             # Do not process remaining lines
@@ -382,12 +510,8 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
 
     @classmethod
     def parse_mda_2025_02(
-        cls,
-        file: TextIOWrapper,
-        header_only: bool = False,
-        energy_bin_domain: tuple[float, float] | None = None,
-        use_recent_binning: bool = False,
-    ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
+        cls, file: typing.IO | str, header_only: bool = False
+    ) -> parse_fn_ret_type:
         """
         Read Australian Synchrotron MEX2 NEXAFS '.mda' files.
 
@@ -398,138 +522,102 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
 
         Parameters
         ----------
-        file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.mda', 'r')).
+        file : typing.IO | str
+            Implementation of typing.IO of the datafile (i.e. open('file.mda', 'rb')).
         header_only : bool, optional
             If True, then only the header of the file is read and
-            NDArray is returned as None, by default False.
-        energy_bin_domain : tuple[float, float] | None, optional
-            The energy domain (in eV) to bin the data, by default None.
-        use_recent_binning : bool, optional
-            If True, then the most recent binning settings are used
-            for data reduction, by default False.
-            Ignored if `energy_bin_range` is specified.
+            npt.NDArray is returned as None, by default False.
 
         Returns
         -------
-        tuple[NDArray, list[str], dict[str, Any]]
-            Returns a set of data as a numpy array,
-            labels as a list of strings,
-            units as a list of strings,
-            and parameters as a dictionary.
+        data : npt.NDArray | tuple[npt.NDArray, ...] | None
+            A set of data as a numpy array, or a tuple of numpy arrays for multiple scans.
+        labels : list[str | None] | list[str] | tuple[list[str] | None, ...]
+            Labels as a list of strings, or a tuple of lists for multiple scans.
+        units : list[str | None] | list[str] | tuple[list[str] | None, ...]
+            Units as a list of strings, or a tuple of lists for multiple scans.
+        params : dict[str, Any]
+            Parameters as a dictionary.
 
         Raises
         ------
         ValueError
             If the file is not a valid .mda file.
         """
+        if isinstance(file, str):
+            if not os.path.exists(file):
+                raise ValueError(f"File path '{file}' cannot be found for MDA reading.")
+            # Open the file in binary mode
+            with open(file, "rb") as f:
+                return cls.parse_mda_2025_02(f, header_only=header_only)
+        elif isinstance(file, (typing.TextIO, io.TextIOWrapper)):
+            return cls.parse_mda_2025_02(file.buffer, header_only=header_only)
+        else:
+            assert isinstance(file, (typing.BinaryIO, io.BufferedReader, io.BytesIO)), (
+                f"File must be a typing.BinaryIO implementation or file path string. Was '{type(file)}'."
+            )
+
         # Initialise parameter list
         params = {}
-        labels = []
-        units = []
+        data: npt.NDArray | tuple[npt.NDArray, ...] | None = None
+        labels: list[str | None] | list[str] | tuple[list[str] | None, ...]
+        units: list[str | None] | list[str] | tuple[list[str] | None, ...]
 
         # Check valid format.
         if not file.name.endswith(".mda"):
             raise ValueError(f"File {file.name} is not a valid .mda file.")
 
         # Need to reopen the file in byte mode.
-        file.close()
-        mda = MDAFileReader(file.name)
+        mda = MDAFileReader(file)
         mda_header = mda.read_header_as_dict()
         ## Previously threw error for higher dimensional data, now just a warning.
         mda_params = mda.read_parameters()
         mda_arrays, mda_scans = mda.read_scans(header_only=header_only)
 
+        # Convert to tuple if multiple dimensional scans
+        labels = tuple([[] for _ in range(len(mda_scans))])
+        units = tuple([[] for _ in range(len(mda_scans))])
+
         # Add values to params dict
         params.update(mda_header)
         params.update(mda_params)
 
-        # Initialise to None for header only reading.
-        mda_1d = None
-        # Add column types and descriptions to params.
-        if not header_only:
-            # 1D array essential
-            mda_1d = mda_arrays[0]
-            # 2D array optional
-            if len(mda_arrays) > 1:
-                mda_2d = mda_arrays[1]
-                mda_2d_scan = mda_scans[1]
-                # Check 'multi-channel-analyser-spectra of fluorescence-detector' names are as expected
-                fluorescence_labels = Xpress3Fluorescence.FLUOR_NAMES
-                # Check which detector is used.
-                for i in range(len(fluorescence_labels)):
-                    if mda_2d_scan.labels() == fluorescence_labels[i]:
-                        fluorescence_labels = fluorescence_labels[i]
-                        break
+        positioners = None
+        detectors = None
+        for i, scan in enumerate(mda_scans):
+            # Add new positioners and detectors to the existing lists
+            positioners = (
+                scan.positioners
+                if positioners is None
+                else positioners + scan.positioners
+            )
+            detectors = (
+                scan.detectors if detectors is None else detectors + scan.detectors
+            )
 
-                assert mda_2d_scan.labels() == fluorescence_labels
-
-                # Take properties from 1D and 2D arrays:
-                energies = mda_1d[:, 0] * 1000  # Convert keV to eV for MEX beamline
-                dataset = mda_2d[
-                    :,
-                    Xpress3Fluorescence.INTERESTING_BINS_IDX[
-                        0
-                    ] : Xpress3Fluorescence.INTERESTING_BINS_IDX[1],
-                    :,
-                ]
-                bin_e = Xpress3Fluorescence.INTERESTING_BINS_ENERGIES  # pre-calibrated.
-
-                ## Perform binning on 2D array:
-                # Is an existing binning range available?
-                if energy_bin_domain is not None:
-                    # Update the class variable with the new binning settings.
-                    cls.reduction_bin_domain = energy_bin_domain
-                    red = reducer(energies, dataset, bin_e)
-                elif use_recent_binning and cls.reduction_bin_domain is not None:
-                    # Uses the most recent binning settings.
-                    red = reducer(energies, dataset, bin_e)
-                else:
-                    if has_PYQT:
-                        # Create a QT application to run the dialog.
-                        if QtWidgets.QApplication.instance() is None:
-                            app = QtWidgets.QApplication([])
-                        # Run the Bin Selector dialog
-                        window = EnergyBinReducerDialog(
-                            energies=energies, dataset=dataset, bin_energies=bin_e
-                        )
-                        window.show()
-                        if window.exec():
-                            # If successful, store the binning settings and data reducer
-                            cls.reduction_bin_domain = window.domain
-                            red = window.reducer
-                        else:
-                            raise ValueError("No binning settings selected.")
-                    else:
-                        raise ValueError(
-                            "No binning settings selected, and no PyQt available to run the dialog."
-                        )
-                        # TODO: Add a command line interface for binning settings.
-
-                # Use the binning settings to reduce the data.
-                _, reduced_summed_data = red.reduce_by_sum(
-                    bin_domain=cls.reduction_bin_domain,
-                    axis=None,  # all axes
-                )
-                _, reduced_single_detector_data = red.reduce_by_sum(
-                    bin_domain=cls.reduction_bin_domain,
-                    axis="bin_energies",  # just the bin energies
+            # Check 'multi-channel-analyser-spectra of fluorescence-detector' names are as expected
+            if i == 1:
+                assert scan.labels() == Xpress3Fluorescence.FLUOR_NAMES, (
+                    f"Fluorescence detector labels do not match expected values. Found {scan.labels()}"
                 )
 
-            # 3D array unhandled.
-            if len(mda_arrays) > 2:
-                warnings.warn(
-                    "MDA file(s) contain more than two dimension, handling of higher dimensions is not yet implemented."
-                )
-        # Collect units and labels:
-        scan_1d = mda_scans[0]
-        positioners = scan_1d.positioners
-        detectors = scan_1d.detectors
-        if len(mda_scans) > 1:
-            scan_2d = mda_scans[1]
-            positioners += scan_2d.positioners
-            detectors += scan_2d.detectors
+            scan_labels = labels[i]
+            scan_units = units[i]
+            for p in scan.positioners:
+                scan_labels.append(p.name)
+                scan_units.append(p.unit)
+            for d in scan.detectors:
+                scan_labels.append(d.name)
+                scan_units.append(d.unit)
 
+        if len(mda_scans) == 1:
+            labels = labels[0]
+            units = units[0]
+
+        if mda_arrays is not None:
+            data = tuple(mda_arrays)
+
+        # Collect a full set of the column descriptions
         column_types = {
             "Positioner": (
                 "name",
@@ -546,50 +634,37 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                 "unit",
             ),
         }
-        column_descriptions = {
-            i: [
-                p.name,
-                p.desc,
-                p.step_mode,
-                p.unit,
-                p.readback_name,
-                p.readback_desc,
-                p.readback_unit,
-            ]
-            for i, p in enumerate(positioners)
-        }
-        column_descriptions.update(
+
+        column_descriptions = (
             {
-                i + len(positioners): [d.name, d.desc, d.unit]
-                for i, d in enumerate(detectors)
+                i: [
+                    p.name,
+                    p.desc,
+                    p.step_mode,
+                    p.unit,
+                    p.readback_name,
+                    p.readback_desc,
+                    p.readback_unit,
+                ]
+                for i, p in enumerate(positioners)
             }
+            if positioners is not None
+            else {}
         )
+        if detectors is not None:
+            column_descriptions.update(
+                {
+                    i + (len(positioners) if positioners is not None else 0): [
+                        d.name,
+                        d.desc,
+                        d.unit,
+                    ]
+                    for i, d in enumerate(detectors)
+                }
+            )
         params["column_types"] = column_types
         params["column_descriptions"] = column_descriptions
 
-        # Collect units and labels:
-        for i, p in enumerate(positioners):
-            labels.append(p.name)
-            units.append(p.unit)
-        for i, d in enumerate(detectors):
-            labels.append(d.name)
-            units.append(d.unit)
-        # If 2D data is present, add reduced data to 1D data.
-        if not header_only and len(mda_arrays) > 1:
-            # Check rows (energies) match length
-            assert reduced_summed_data.shape[0] == mda_1d.shape[0]
-            assert reduced_single_detector_data.shape[0] == mda_1d.shape[0]
-
-            # Correct the fluorescence detector data according to the input and output count rates.
-            # if
-            # reduced_single_detector_data *= ()
-
-            # Add reduced data to 1D data as extra columns
-            mda_1d = np.c_[mda_1d, reduced_single_detector_data, reduced_summed_data]
-            # Add labels and units for reduced data
-            # (Detector data labels/units already added via positioners and detectors above.)
-            labels += ["Fluorescence Sum (Reduced)"]
-            units += ["a.u."]
         # Use scan time if available, otherwise let system time be used.
         if "MEX1ES01GLU01:MEX_TIME" in params:
             assert (
@@ -598,16 +673,14 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
             newtime = MEX2_datetime_conversion(params["MEX1ES01GLU01:MEX_TIME"][2])
             params["created"] = newtime
 
-        return mda_1d, labels, units, params
+        return data, labels, units, params
 
     @classmethod
     def parse_mda_2024_11(
         cls,
-        file: TextIOWrapper,
+        file: typing.IO | str,
         header_only: bool = False,
-        energy_bin_domain: tuple[float, float] | None = None,
-        use_recent_binning: bool = True,
-    ) -> tuple[NDArray, list[str], list[str], dict[str, Any]]:
+    ) -> parse_fn_ret_type:
         """
         Read Australian Synchrotron MEX2 NEXAFS .mda files.
 
@@ -615,129 +688,103 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
 
         Parameters
         ----------
-        file : TextIOWrapper
-            TextIOWrapper of the datafile (i.e. open('file.mda', 'r')).
+        file : typing.IO | str
+            Implementation of typing.IO or file path string of the datafile (i.e. open('file.mda', 'rb')).
         header_only : bool, optional
             If True, then only the header of the file is read and
-            NDArray is returned as None, by default False.
-        energy_bin_domain : tuple[float, float] | None, optional
-            The energy domain (in eV) to bin the data, by default None.
-        use_recent_binning : bool, optional
-            If True, then the most recent binning settings are used
-            for data reduction, by default True.
-            Ignored if `energy_bin_range` is specified.
+            npt.NDArray is returned as None, by default False.
 
         Returns
         -------
-        tuple[NDArray, list[str], list[str] dict[str, Any]]
-            Returns a set of data as a numpy array,
-            labels as a list of strings,
-            units as a list of strings,
-            and parameters as a dictionary.
+        data : npt.NDArray | tuple[npt.NDArray, ...] | None
+            A set of data as a numpy array, or a tuple of numpy arrays for multiple scans.
+        labels : list[str | None] | list[str] | tuple[list[str] | None, ...]
+            Labels as a list of strings, or a tuple of lists for multiple scans.
+        units : list[str | None] | list[str] | tuple[list[str] | None, ...]
+            Units as a list of strings, or a tuple of lists for multiple scans.
+        params : dict[str, Any]
+            Parameters as a dictionary.
 
         Raises
         ------
         ValueError
             If the file is not a valid .mda file.
         """
+        if isinstance(file, str):
+            if not os.path.exists(file):
+                raise ValueError(f"File path '{file}' cannot be found for MDA reading.")
+            # Open the file in binary mode
+            with open(file, "rb") as f:
+                return cls.parse_mda_2024_11(f, header_only=header_only)
+        elif isinstance(file, (typing.TextIO, io.TextIOWrapper)):
+            # use the underlying binary buffer
+            return cls.parse_mda_2024_11(file.buffer, header_only=header_only)
+        else:
+            assert isinstance(file, (typing.BinaryIO, io.BufferedReader, io.BytesIO)), (
+                "File must be a typing.BinaryIO implementation or file path string."
+            )
+
         # Initialise parameter list
         params = {}
-        labels = []
-        units = []
+        data: npt.NDArray | tuple[npt.NDArray, ...] | None = None
+        labels: list[str | None] | list[str] | tuple[list[str] | None, ...]
+        units: list[str | None] | list[str] | tuple[list[str] | None, ...]
 
         # Check valid format.
-        if not file.name.endswith(".mda"):
-            raise ValueError(f"File {file.name} is not a valid .mda file.")
+        fname = file.name
+        if not fname.endswith(".mda"):
+            raise ValueError(f"File {fname} is not a valid .mda file.")
 
-        # Need to reopen the file in byte mode.
-        file.close()
-        mda = MDAFileReader(file.name)
+        mda = MDAFileReader(file)
         mda_header = mda.read_header_as_dict()
         ## Previously threw error for higher dimensional data, now just a warning.
         mda_params = mda.read_parameters()
         mda_arrays, mda_scans = mda.read_scans(header_only=header_only)
 
+        # Convert to tuple if multiple dimensional scans
+        labels = tuple([[] for _ in range(len(mda_scans))])
+        units = tuple([[] for _ in range(len(mda_scans))])
+
         # Add values to params dict
         params.update(mda_header)
         params.update(mda_params)
 
-        # Initialise to None for header only reading.
-        mda_1d = None
-        # Add column types and descriptions to params.
-        if not header_only:
-            # 1D array essential
-            mda_1d = mda_arrays[0]
-            # 2D array optional
-            if len(mda_arrays) > 1:
-                mda_2d = mda_arrays[1]
-                mda_2d_scan = mda_scans[1]
-                # Check 'multi-channel-analyser-spectra of fluorescence-detector' names are as expected
-                print(mda_2d_scan.labels())
-                fluorescence_labels = DanteFluorescence.FLUOR_NAMES
-                assert (
-                    mda_2d_scan.labels() == fluorescence_labels
-                )  # list matching works here, no need for `all(list)`.
+        positioners = None
+        detectors = None
+        for i, scan in enumerate(mda_scans):
+            # Add new positioners and detectors to the existing lists
+            positioners = (
+                scan.positioners
+                if positioners is None
+                else positioners + scan.positioners
+            )
+            detectors = (
+                scan.detectors if detectors is None else detectors + scan.detectors
+            )
 
-                # Take properties from 1D and 2D arrays:
-                energies = mda_1d[:, 0] * 1000  # Convert keV to eV for MEX beamline
-                dataset = mda_2d[
-                    :,
-                    DanteFluorescence.INTERESTING_BINS_IDX[
-                        0
-                    ] : DanteFluorescence.INTERESTING_BINS_IDX[1],
-                    :,
-                ]
-                bin_e = DanteFluorescence.INTERESTING_BINS_ENERGIES  # pre-calibrated.
-
-                ## Perform binning on 2D array:
-                # Is an existing binning range available?
-                if energy_bin_domain is not None:
-                    # Update the class variable with the new binning settings.
-                    cls.reduction_bin_domain = energy_bin_domain
-                    red = reducer(energies, dataset, bin_e)
-                elif use_recent_binning and cls.reduction_bin_domain is not None:
-                    # Uses the most recent binning settings.
-                    red = reducer(energies, dataset, bin_e)
-                else:
-                    # Create a QT application to run the dialog.
-                    if QtWidgets.QApplication.instance() is None:
-                        app = QtWidgets.QApplication([])
-                    # Run the Bin Selector dialog
-                    window = EnergyBinReducerDialog(
-                        energies=energies, dataset=dataset, bin_energies=bin_e
-                    )
-                    window.show()
-                    if window.exec():
-                        # If successful, store the binning settings and data reducer
-                        cls.reduction_bin_domain = window.domain
-                        red = window.reducer
-                    else:
-                        raise ValueError("No binning settings selected.")
-
-                # Use the binning settings to reduce the data.
-                _, reduced_summed_data = red.reduce_by_sum(
-                    bin_domain=cls.reduction_bin_domain,
-                    axis=None,  # all axes
-                )
-                _, reduced_single_detector_data = red.reduce_by_sum(
-                    bin_domain=cls.reduction_bin_domain,
-                    axis="bin_energies",  # just the bin energies
+            # Check 'multi-channel-analyser-spectra of fluorescence-detector' names are as expected
+            if i == 1:
+                assert scan.labels() == DanteFluorescence.FLUOR_NAMES, (
+                    f"Fluorescence detector labels do not match expected values. Found {scan.labels()}"
                 )
 
-            # 3D array unhandled.
-            if len(mda_arrays) > 2:
-                warnings.warn(
-                    "MDA file(s) contain more than two dimension, handling of higher dimensions is not yet implemented."
-                )
-        # Collect units and labels:
-        scan_1d = mda_scans[0]
-        positioners = scan_1d.positioners
-        detectors = scan_1d.detectors
-        if len(mda_scans) > 1:
-            scan_2d = mda_scans[1]
-            positioners += scan_2d.positioners
-            detectors += scan_2d.detectors
+            scan_labels = labels[i]
+            scan_units = units[i]
+            for p in scan.positioners:
+                scan_labels.append(p.name)
+                scan_units.append(p.unit)
+            for d in scan.detectors:
+                scan_labels.append(d.name)
+                scan_units.append(d.unit)
 
+        if len(mda_scans) == 1:
+            labels = labels[0]
+            units = units[0]
+
+        if mda_arrays is not None:
+            data = tuple(mda_arrays)
+
+        # Collect a full set of the column descriptions
         column_types = {
             "Positioner": (
                 "name",
@@ -754,50 +801,37 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
                 "unit",
             ),
         }
-        column_descriptions = {
-            i: [
-                p.name,
-                p.desc,
-                p.step_mode,
-                p.unit,
-                p.readback_name,
-                p.readback_desc,
-                p.readback_unit,
-            ]
-            for i, p in enumerate(positioners)
-        }
-        column_descriptions.update(
+
+        column_descriptions = (
             {
-                i + len(positioners): [d.name, d.desc, d.unit]
-                for i, d in enumerate(detectors)
+                i: [
+                    p.name,
+                    p.desc,
+                    p.step_mode,
+                    p.unit,
+                    p.readback_name,
+                    p.readback_desc,
+                    p.readback_unit,
+                ]
+                for i, p in enumerate(positioners)
             }
+            if positioners is not None
+            else {}
         )
+        if detectors is not None:
+            column_descriptions.update(
+                {
+                    i + (len(positioners) if positioners is not None else 0): [
+                        d.name,
+                        d.desc,
+                        d.unit,
+                    ]
+                    for i, d in enumerate(detectors)
+                }
+            )
         params["column_types"] = column_types
         params["column_descriptions"] = column_descriptions
 
-        # Collect units and labels:
-        for i, p in enumerate(positioners):
-            labels.append(p.name)
-            units.append(p.unit)
-        for i, d in enumerate(detectors):
-            labels.append(d.name)
-            units.append(d.unit)
-        # If 2D data is present, add reduced data to 1D data.
-        if not header_only and len(mda_arrays) > 1:
-            # Check rows (energies) match length
-            assert reduced_summed_data.shape[0] == mda_1d.shape[0]
-            assert reduced_single_detector_data.shape[0] == mda_1d.shape[0]
-
-            # Correct the fluorescence detector data according to the input and output count rates.
-            # if
-            # reduced_single_detector_data *= ()
-
-            # Add reduced data to 1D data as extra columns
-            mda_1d = np.c_[mda_1d, reduced_single_detector_data, reduced_summed_data]
-            # Add labels and units for reduced data
-            # (Detector data labels/units already added via positioners and detectors above.)
-            labels += ["Fluorescence Sum (Reduced)"]
-            units += ["a.u."]
         # Use scan time if available, otherwise let system time be used.
         if "MEX1ES01GLU01:MEX_TIME" in params:
             assert (
@@ -806,10 +840,10 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
             newtime = MEX2_datetime_conversion(params["MEX1ES01GLU01:MEX_TIME"][2])
             params["created"] = newtime
 
-        return mda_1d, labels, units, params
+        return data, labels, units, params
 
-    # @overrides.overrides # type: ignore[override]
-    @parser_base.summary_param_names_with_units.getter
+    # @typing.overrides.typing.overrides # type: ignore[typing.override]
+    @parserBase.summary_param_names_with_units.getter
     def summary_params_with_units(self) -> list[str]:
         """
         A dictionary of summary parameters with units.
@@ -832,7 +866,7 @@ class MEX2_NEXAFS(parser_base, metaclass=MEX2_NEXAFS_META):
 
 
 def MEX2_to_QANT_AUMainAsc(
-    parser: parser_base,
+    parser: parserBase,
     extrainfo_mapping: dict[str, None | str] = {
         "SR14ID01MCS02FAM:X.RBV": None,
         "SR14ID01MCS02FAM:Y.RBV": None,
@@ -849,7 +883,7 @@ def MEX2_to_QANT_AUMainAsc(
 
     Parameters
     ----------
-    parser : parser_base
+    parser : parserBase
         The parser object (with data, labels, units, and params loaded) to convert.
     extrainfo_mapping : dict[str, str | None], optional
         Optional mapping for known read-values for the QANT AUMainAsc format to
@@ -1106,12 +1140,15 @@ if __name__ == "__main__":
     package_path = os.path.normpath(os.path.join(path, "../../../../"))
     mda_paths = [
         os.path.normpath(
-            os.path.join(package_path, f"tests/test_data/au/MEX2/MEX2_564{i}.mda")
+            os.path.join(
+                package_path, f"tests/test_data/au/MEX2/2024-03/MEX2_564{i}.mda"
+            )
         )
-        for i in range(4)
+        for i in range(3)
         if i != 1
     ]
-    mda_path1, mda_path2, mda_path3 = mda_paths
+    mda_path1, mda_path2 = mda_paths
+    # mda_path1, mda_path2, mda_path3 = mda_paths
     # mda_path1, mda_path2, mda_path3, mda_path4, mda_path5 = mda_paths
     print(mda_path1)
     print(mda_path2)
@@ -1119,19 +1156,19 @@ if __name__ == "__main__":
     test1 = MEX2_NEXAFS(mda_path1, header_only=True)
     # BODY
     test2 = MEX2_NEXAFS(mda_path1, header_only=False)
-    # Check if previous binning is applied to new data.
-    tests = [
-        MEX2_NEXAFS(mda_path, header_only=False, use_recent_binning=True)
-        for mda_path in mda_paths[1:]
-    ]
+
+    # Convert to a scan.
+    test1.load()
+    test1 = test1.to_scan(energy_bin_domain=(2230, 2390))
+    test2 = test2.to_scan(load_all_columns=True)
 
     # Check that the domain can be manually applied.
     test3 = MEX2_NEXAFS(
         mda_path2,
         header_only=False,
-        use_recent_binning=False,
-        energy_bin_domain=(3.1e3, 3.8e3),
     )
+
+    # Check if previous binning is applied to new data.
 
     import matplotlib.pyplot as plt
 
@@ -1140,14 +1177,14 @@ if __name__ == "__main__":
     fig: plt.Figure = subplts[0]
     ax: plt.Axes = subplts[1]
     idx = -1
-    ax.plot(test2.data[:, 0], test2.data[:, idx], label="Test2 " + test2.labels[idx])
-    [
-        ax.plot(
-            test.data[:, 0], test.data[:, idx], label=f"Tests[{i}]" + test.labels[idx]
-        )
-        for i, test in enumerate(tests)
-    ]
-    ax.plot(test3.data[:, 0], test3.data[:, idx], label="Test3 " + test3.labels[idx])
+    # ax.plot(test2.data[0][:, 0], test2.data[0][:, idx], label="Test2 " + test2.labels[0][idx])
+    # [
+    #     ax.plot(
+    #         test.data[0][:, 0], test.data[0][:, idx], label=f"Tests[{i}]" + test.labels[0][idx]
+    #     )
+    #     for i, test in enumerate(tests)
+    # ]
+    # ax.plot(test3.data[0][:, 0], test3.data[0][:, idx], label="Test3 " + test3.labels[0][idx])
     ax.legend()
     # plt.ioff()
 

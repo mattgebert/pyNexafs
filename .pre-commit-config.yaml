@@ -29,12 +29,13 @@ repos:
     # Run the formatter.
     - id: ruff-format
 
-# Black - for standard code formatting
--   repo: https://github.com/psf/black
-    rev: 24.10.0
-    hooks:
-    -   id: black
-        # extend-exclude: '^tests/test_data/.*$'
+# Remove Black due to conflicts with Ruff.
+# # Black - for standard code formatting
+# -   repo: https://github.com/psf/black
+#     rev: 24.10.0
+#     hooks:
+#     -   id: black
+#         # extend-exclude: '^tests/test_data/.*$'
 
 # NumPyDoc - for docstring validation
 -   repo: https://github.com/numpy/numpydoc

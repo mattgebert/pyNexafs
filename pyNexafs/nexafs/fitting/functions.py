@@ -102,7 +102,7 @@ def edge_decaying(
     x_decay = x[idxs]
 
     # Apply the decay
-    y_edge[idxs] *= np.exp(-alpha * (x[idxs] - x0))
+    y_edge[idxs] *= np.exp(-alpha * (x_decay - x0))
 
     # Return the result
     return y_edge

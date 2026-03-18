@@ -4,7 +4,13 @@ Table model and widget for the file display.
 
 import re
 import traceback
-import overrides
+import os
+import sys
+from typing import Any, override
+import warnings
+import numpy as np
+from datetime import datetime as dt
+from enum import Enum
 from PyQt6 import QtWidgets, QtCore, QtGui
 from PyQt6.QtWidgets import (
     QWidget,
@@ -23,16 +29,11 @@ from PyQt6.QtCore import (
     QRegularExpression,
     QAbstractTableModel,
     QThreadPool,
-    QThread,
+    # QThread,
 )
-import os
-from pyNexafs.parsers import parser_base
-from typing import Any
-import warnings
-import numpy as np
-from datetime import datetime as dt
+from pyNexafs.parsers import parserBase
 from pyNexafs.utils.sizes import btyes_to_human_readable
-from enum import Enum
+from pyNexafs.parsers.au.aus_sync.MEX2 import MEX2_NEXAFS
 
 
 # Construct the Table Model
@@ -78,7 +79,7 @@ class tableModel(QAbstractTableModel):
         )
         """Icon for file load success status."""
 
-    @overrides.overrides
+    @override
     def headerData(self, section, orientation, role):
         if self._header is None:
             return None
@@ -90,7 +91,7 @@ class tableModel(QAbstractTableModel):
         else:
             return super().headerData(section, orientation, role)
 
-    @overrides.overrides
+    @override
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         # Check that second column is being indexed for "loaded" status, to display icons.
         if (
@@ -130,13 +131,13 @@ class tableModel(QAbstractTableModel):
             return self._data[index.row()][index.column()]
         return None
 
-    @overrides.overrides
-    def rowCount(self, index):
+    @override
+    def rowCount(self, parent):
         # The length of the outer list.
         return len(self._data)
 
-    @overrides.overrides
-    def columnCount(self, index):
+    @override
+    def columnCount(self, parent):
         # The following takes the first sub-list, and returns
         # the length (only works if all rows are an equal length)
         if (
@@ -166,7 +167,7 @@ class directoryViewerTable(QTableView):
     __default_headers_list: list[str] = [
         "#",
         "Filename",
-    ]  # index and filename #TODO: Add "Created", "Modified" when implemented in parser_base.
+    ]  # index and filename #TODO: Add "Created", "Modified" when implemented in parserBase.
 
     def __init__(
         self,
@@ -186,11 +187,11 @@ class directoryViewerTable(QTableView):
         Overrides use of `directoryViewerTable._header_names`."""
 
         ## WE KEEP A DICT OF PARSERS, AND THEN USE THE PARSERS TO GENERATE THE TABLE.
-        self._parser_headers: dict[str, parser_base] = {}
-        self._parser_files: dict[str, parser_base] = {}
+        self._parser_headers: dict[str, parserBase] = {}
+        self._parser_files: dict[str, parserBase] = {}
 
         self._viewing_directory: str | None = None
-        self._parser: parser_base | None = None
+        self._parser: parserBase | None = None
         self._filetype_filters: list[str] | None = None
         self._str_filter: str | None = None
 
@@ -299,19 +300,19 @@ class directoryViewerTable(QTableView):
         self._header_names_custom = None
 
     @property
-    def parser(self) -> type[parser_base] | None:
+    def parser(self) -> type[parserBase] | None:
         """
         Returns the currently selected parser.
 
         Returns
         -------
-        type[parser_base] | None
+        type[parserBase] | None
             The currently selected parser, or None if no parser is selected.
         """
         return self._parser
 
     @parser.setter
-    def parser(self, parser: type[parser_base] | None):
+    def parser(self, parser: type[parserBase] | None):
         """
         Set the parser, used for tabling header information.
 
@@ -319,7 +320,7 @@ class directoryViewerTable(QTableView):
 
         Parameters
         ----------
-        parser : type[parser_base] | None
+        parser : type[parserBase] | None
             The currently selected parser, or None if no parser is selected.
         """
         self._parser = parser
@@ -666,7 +667,7 @@ class directoryViewerTable(QTableView):
 
             # Add parameter values
             if file in self._parser_headers and isinstance(
-                self._parser_headers[file], parser_base
+                self._parser_headers[file], parserBase
             ):
                 # Match indexing of parser.SUMMARY_PARAM_RAW_NAMES
                 filedata.extend(self._parser_headers[file].summary_param_values)
@@ -726,7 +727,7 @@ class directoryViewerTable(QTableView):
                     ):
                         # Use existing parser instance, add to files.
                         parser = self._parser_headers[filename]
-                        assert isinstance(parser, parser_base)
+                        assert isinstance(parser, parserBase)
                         try:
                             parser.load()  # use internal filepath to load
                             if parser.is_loaded:
@@ -786,9 +787,9 @@ class directoryViewerTable(QTableView):
 #         The thread number.
 #     files : list[str]
 #         The list of files to load.
-#     parser : type[parser_base]
+#     parser : type[parserBase]
 #         The parser class to use for loading the files.
-#     parsers: dict[str, parser_base] | None
+#     parsers: dict[str, parserBase] | None
 #         The dict of existing parsers to use for loading the files.
 #         I.e. If a header has been loaded but not the full data, use
 #         the same parser to load the data.
@@ -797,8 +798,8 @@ class directoryViewerTable(QTableView):
 #     """
 #     def __init__(self, n: int,
 #                  files: list[str],
-#                  parser: type[parser_base],
-#                  parsers: dict[str, parser_base] | None = None,
+#                  parser: type[parserBase],
+#                  parsers: dict[str, parserBase] | None = None,
 #                  progress_bar: QProgressBar | None = None,
 #                  load_kwargs: dict[str, Any] | None = None):
 #         super().__init__()
@@ -815,7 +816,7 @@ class directoryViewerTable(QTableView):
 #         """
 
 #         # Create storage for loaded parsers.
-#         self.loaded: dict[str, parser_base] = {}
+#         self.loaded: dict[str, parserBase] = {}
 #         """
 #         The dict of parsers loaded in the thread.
 #         """
@@ -917,14 +918,14 @@ class directoryViewerTableNew(QTableView):
         Overrides use of `directoryViewerTable._header_names`."""
 
         ## WE KEEP A DICT OF PARSERS, AND THEN USE THE PARSERS TO GENERATE THE TABLE.
-        self._parser_headers: dict[str, parser_base | None] = {}
+        self._parser_headers: dict[str, parserBase | None] = {}
         """The parsers who have been loaded with headers only."""
-        self._parser_files: dict[str, parser_base | None] = {}
+        self._parser_files: dict[str, parserBase | None] = {}
         """The parsers who have been loaded with full data."""
 
         self._viewing_directory: str | None = None
         """The internal directory that is being viewed."""
-        self._parser: type[parser_base] | None = None
+        self._parser: type[parserBase] | None = None
         """The selected parser class."""
         self._filetype_filters: list[str] | None = None
         """The list of filetypes that are allowed to be loaded."""
@@ -1075,26 +1076,26 @@ class directoryViewerTableNew(QTableView):
     #     return
 
     @property
-    def parser(self) -> type[parser_base] | None:
+    def parser(self) -> type[parserBase] | None:
         """
         Property for the selected parser.
 
         Parameters
         ----------
-        parser : type[parser_base] | None
+        parser : type[parserBase] | None
             A new parser class to use for loading files.
             The parser is used to set default extensions, and also
             resets the file data and header data and updates the table.
 
         Returns
         -------
-        type[parser_base] | None
+        type[parserBase] | None
             The currently selected parser, or None if no parser is selected.
         """
         return self._parser
 
     @parser.setter
-    def parser(self, parser: type[parser_base] | None):
+    def parser(self, parser: type[parserBase] | None):
         if self._parser != parser:
             self._parser = parser
             # Reset existing file data to use new parser.
@@ -1465,9 +1466,9 @@ class directoryViewerTableNew(QTableView):
         else:
             # Get defaults or custom selections...
             all_headers = self.header
-            assert (
-                all_headers is not None
-            ), f"`self._header_param_names_default`: Header names are None with parser {self.parser}."
+            assert all_headers is not None, (
+                f"`self._header_param_names_default`: Header names are None with parser {self.parser}."
+            )
             opt_headers = all_headers[
                 len(self.__REQUIRED_HEADER_LIST) :
             ]  # remove 'required' headers.
@@ -1485,7 +1486,7 @@ class directoryViewerTableNew(QTableView):
 
                 if file in parsers and parsers[file] is not None:
                     # Use existing parser instance, add to files.
-                    parser: parser_base = parsers[file]  # Checked above: # type: ignore
+                    parser: parserBase = parsers[file]  # Checked above: # type: ignore
                     # Iterate over the optional headers and add them to the data list.
                     for param in opt_headers:
                         if i == 0:
@@ -1639,11 +1640,11 @@ class directoryViewerTableNew(QTableView):
             """The global thread pool."""
             if pool is None:
                 pool = QThreadPool()
-            thread_count: int = pool.maxThreadCount()
-            THREAD_MIN_DIV: int = 5
-            """Minimum number of files to load in a thread."""
-            main_thread_core = QThread.currentThread()
-            """The main thread - leave this core for the GUI."""
+            # thread_count: int = pool.maxThreadCount()
+            # THREAD_MIN_DIV: int = 5
+            # """Minimum number of files to load in a thread."""
+            # main_thread_core = QThread.currentThread()
+            # """The main thread - leave this core for the GUI."""
 
             # Set the progress bar to zero.
             if self.progress_bar is not None:
@@ -1655,7 +1656,7 @@ class directoryViewerTableNew(QTableView):
             warnings.simplefilter("once", UserWarning)
 
             # Collect files to load in a thread.
-            # files_to_load: dict[str, parser_base] = {} # TODO: threading
+            # files_to_load: dict[str, parserBase] = {} # TODO: threading
             for i, row in enumerate(rows):
                 filename: str = self.proxy_model.data(row, Qt.ItemDataRole.DisplayRole)
                 # Check if the file already loaded:
@@ -1671,7 +1672,7 @@ class directoryViewerTableNew(QTableView):
                     ):
                         # Use existing parser instance, add to files.
                         parser = self._parser_headers[filename]
-                        assert isinstance(parser, parser_base)
+                        assert isinstance(parser, parserBase)
                         # files_to_load[filename] = parser TODO: threading
 
                         # TODO: Implement threading generation and signal emit when complete.
@@ -1788,7 +1789,7 @@ class SummaryParamSelector(QTableWidget):
 
     def __init__(
         self,
-        parsers: list[parser_base] | None = None,
+        parsers: list[parserBase] | None = None,
         parent: QWidget | None = None,
         existing_selection: list[str] | None = None,
     ):
@@ -1796,7 +1797,7 @@ class SummaryParamSelector(QTableWidget):
         super().__init__(parent)
 
         # Copy the list of parser_objects
-        self._parsers: list[parser_base] = parsers.copy() if parsers is not None else []
+        self._parsers: list[parserBase] = parsers.copy() if parsers is not None else []
         """A list of parser objects to select parameters from."""
 
         # Create a set of unique parameters
@@ -1807,7 +1808,7 @@ class SummaryParamSelector(QTableWidget):
         """The current filter text."""
 
         # Collect the set of parser classes
-        self._parser_cls: set[type[parser_base]] = self._collect_unique_parser_cls()
+        self._parser_cls: set[type[parserBase]] = self._collect_unique_parser_cls()
         """A list of the parser subclasses which default `param` values can be taken."""
 
         # Create a memory set of items (selected or not)
@@ -1856,11 +1857,11 @@ class SummaryParamSelector(QTableWidget):
         self._max_columns = val
 
     @property
-    def parsers(self) -> list[parser_base]:
+    def parsers(self) -> list[parserBase]:
         return self._parsers
 
     @parsers.setter
-    def parsers(self, parsers: list[parser_base] | None) -> None:
+    def parsers(self, parsers: list[parserBase] | None) -> None:
         self._parsers = parsers.copy() if parsers is not None else []
         # Update the collection
         self._params = self._collect_unique_parameters()
@@ -1893,16 +1894,16 @@ class SummaryParamSelector(QTableWidget):
                     params.add(p)
         return params
 
-    def _collect_unique_parser_cls(self) -> set[type[parser_base]]:
+    def _collect_unique_parser_cls(self) -> set[type[parserBase]]:
         """
         Collects the class types in the parser list.
 
         Returns
         -------
-        list[type[parser_base]]
+        list[type[parserBase]]
             A list of the unique parser classes in the parser
         """
-        cls_list: set[type[parser_base]] = set()
+        cls_list: set[type[parserBase]] = set()
         for p in self._parsers:
             if p.__class__ not in cls_list:
                 cls_list.add(p.__class__)
@@ -2061,7 +2062,7 @@ class SummaryParamSelectorDialog(QtWidgets.QDialog):
 
     def __init__(
         self,
-        parsers: list[parser_base] | None = None,
+        parsers: list[parserBase] | None = None,
         parent: QWidget | None = None,
         existing_selection: list[str] | None = None,
     ):
@@ -2175,7 +2176,7 @@ class SummaryParamSelectorDialog(QtWidgets.QDialog):
         """
         return self.selector.selection()
 
-    @overrides.override
+    @override
     def keyPressEvent(self, a0: QtGui.QKeyEvent | None) -> None:
         if a0 is None:
             return
@@ -2188,20 +2189,17 @@ class SummaryParamSelectorDialog(QtWidgets.QDialog):
         else:
             super().keyPressEvent(a0)
 
-    @overrides.overrides
+    @override
     def accept(self):
         print("OK")
         return super().accept()
 
-    @overrides.overrides
+    @override
     def reject(self):
         return super().reject()
 
 
 # Example
-import sys
-from pyNexafs.parsers.au.aus_sync.MEX2 import MEX2_NEXAFS
-
 if __name__ == "__main__":
     # Load some example parsers
     base_dir = os.getcwd()

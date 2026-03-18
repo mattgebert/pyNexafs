@@ -12,3 +12,11 @@ from pyNexafs.parsers.au.aus_sync import (
     MEX2_NEXAFS,
     MEX2_to_QANT_AUMainAsc,
 )
+
+__all__ = [
+    "SXR_NEXAFS",
+    "MEX1_NEXAFS",
+    "MEX1_to_QANT_AUMainAsc",
+    "MEX2_NEXAFS",
+    "MEX2_to_QANT_AUMainAsc",
+]
