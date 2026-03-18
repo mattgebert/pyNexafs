@@ -1042,7 +1042,7 @@ class SpanSelectorN(SpanSelector):
             The extents for each selection shape to be drawn.
         """
         for i, extent in enumerate(extents):
-            (vmin, vmax) = extent
+            vmin, vmax = extent
             # Reorder if necessary
             if vmin > vmax:
                 vmin, vmax = vmax, vmin

@@ -29,7 +29,6 @@ from pyNexafs.nexafs.normalisation.scan_normalised import (
     scanNormEdges,
 )
 
-
 # from pyNexafs.nexafs.normalisation.scan_normalised import (
 #     scan_norm,
 #     scan_normalised_edges,
