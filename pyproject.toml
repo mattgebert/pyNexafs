@@ -65,6 +65,7 @@ dev = [
     "periodictable >= 2.0.2", # Due to changes in neutron element as zeroth element.
     "numpydoc",
     "ruff",
+    "pyinstaller", # For creating standalone executables of the GUI
 ]
 
 docs = [
