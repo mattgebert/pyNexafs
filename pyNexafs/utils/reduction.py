@@ -473,6 +473,15 @@ class reducer:
         # Return the reduced dataset. Don't need to return bin_energies as
         return reduced_bin_energies, reduced_dset
 
+    @staticmethod
+    def _sum_fn_factor(sum_axes: tuple[int, ...]) -> Callable:
+        def fn(
+            energies: npt.NDArray, dataset: npt.NDArray, bin_energies: npt.NDArray
+        ) -> npt.NDArray:
+            return dataset.sum(axis=sum_axes)
+
+        return fn
+
     def reduce_by_sum(
         self,
         bin_domain: (
@@ -513,11 +522,12 @@ class reducer:
         if axis is not None and axis not in ["bin_energies", "detectors"]:
             raise ValueError("`axis` must be either 'bin_energies' or 'detectors'.")
         if axis == "bin_energies":
-            f = lambda energies, dataset, bin_energies: dataset.sum(axis=1)
+            # f = lambda energies, dataset, bin_energies: dataset.sum(axis=1)
+            f = self._sum_fn_factor(sum_axes=(1,))
         elif axis == "detectors":
-            f = lambda energies, dataset, bin_energies: dataset.sum(axis=2)
+            f = self._sum_fn_factor(sum_axes=(2,))
         else:
-            f = lambda energies, dataset, bin_energies: dataset.sum(axis=(1, 2))
+            f = self._sum_fn_factor(sum_axes=(1, 2))
         return self.reduce(fn=f, bin_domain=bin_domain)
 
     def reduce_to_bin_features(self) -> tuple[npt.NDArray, npt.NDArray]:

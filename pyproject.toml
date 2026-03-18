@@ -32,7 +32,6 @@ maintainers = [
 requires-python = ">=3.11"
 dependencies = [
     "numpy",
-    "overrides", # for type hinting
     "scipy",
     "xdrlib3", # function bindings for reading binary data from mda files
 ]
@@ -131,7 +130,10 @@ line-ending = "auto"
 
     exclude = [
         '^tests*$',
-        '.*/gui/.*',
+    ]
+
+    exclude_files = [
+        '^pyNexafs/gui/*',
     ]
 
     override_SS05 = [

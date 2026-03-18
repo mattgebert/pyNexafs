@@ -1,8 +1,10 @@
-# Configuration file for the Sphinx documentation builder.
-#
-# This file only contains a selection of the most common options. For a full
-# list see the documentation:
-# https://www.sphinx-doc.org/en/master/usage/configuration.html
+"""
+Configuration file for the Sphinx documentation builder.
+
+This file only contains a selection of the most common options. For a full
+list see the documentation:
+https://www.sphinx-doc.org/en/master/usage/configuration.html
+"""
 
 # Standard library imports
 import os
@@ -61,6 +63,7 @@ os.environ["MPLBACKEND"] = "Agg"  # avoid tkinter import errors on rtfd.io
 
 project = "pyNexafs"
 copyright = f"2024-{date.today().year}, pyNexafs maintainers"
+author = "Matthew Gebert"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -70,6 +73,8 @@ copyright = f"2024-{date.today().year}, pyNexafs maintainers"
 
 # version = .__version__
 # The full version, including alpha/beta/rc tags.
+# raise ValueError(f"The module: {pyNexafs.__file__, pyNexafs.__path__}\n{dir(pyNexafs)}")
+
 release = pyNexafs.__version__
 version = pyNexafs.__version__
 html_title = f"{project} v{version} Manual"

@@ -11,6 +11,7 @@ Allowed arguments:
 
 import sys
 import os
+from importlib.metadata import version
 
 if __name__ == "__main__":
     args = sys.argv[1:]  # Get command line arguments, excluding the script name
@@ -36,6 +37,9 @@ if __name__ == "__main__":
     # Check if the dependencies are met
     try:
         import PyQt6
+
+        assert PyQt6 is not None
+        print(f"PyQt6 ({version('PyQt6')}) is installed. Starting the GUI...")
     except ImportError as e:
         print(
             "PyQt6 is not installed. Please install PyQt6 to run the GUI."

@@ -45,45 +45,51 @@ class TestMEX2:
 
             # Check equivalence (i.e. the correct parser method was called)
             data, labels, units, params = parser_vals
-            pdata, plabels, punits, pparams = parser.data, parser.labels, parser.units, parser.params
+            pdata, plabels, punits, pparams = (
+                parser.data,
+                parser.labels,
+                parser.units,
+                parser.params,
+            )
             # Check consistency
             if isinstance(data, tuple) and isinstance(pdata, tuple):
-                for d, pd in zip(data, pdata):
+                for dat, pdat in zip(data, pdata):
                     assert (
-                        (isinstance(d, np.ndarray) and isinstance(pd, np.ndarray)) or
-                        (d is None and pd is None)
-                    )
-                    if d is not None:
-                        assert np.all(pd == d)
+                        isinstance(dat, np.ndarray) and isinstance(pdat, np.ndarray)
+                    ) or (dat is None and pdat is None)
+                    if dat is not None:
+                        assert np.all(pdat == dat)
             else:
-                assert (isinstance(data, np.ndarray) and isinstance(pdata, np.ndarray)) or (data is None and pdata is None)
+                assert (
+                    isinstance(data, np.ndarray) and isinstance(pdata, np.ndarray)
+                ) or (data is None and pdata is None)
                 if data is not None:
                     assert np.all(pdata == data)
             # Check labels, units and params
             if isinstance(labels, tuple) and isinstance(plabels, tuple):
-                for l, pl in zip(labels, plabels):
-                    if l is not None:
-                        assert np.all(pl == l)
+                for lab, plab in zip(labels, plabels):
+                    if lab is not None:
+                        assert np.all(plab == lab)
                     else:
-                        assert pl is None
-            else:            
+                        assert plab is None
+            else:
                 if labels is not None and plabels is not None:
                     assert np.all(plabels == labels)
                 else:
-                    assert (labels is None and plabels is None)
+                    assert labels is None and plabels is None
             # Check units
             if isinstance(units, tuple) and isinstance(punits, tuple):
-                for u, pu in zip(units, punits):
-                    if u is not None:
-                        assert np.all(pu == u)
+                for unit, punit in zip(units, punits):
+                    if unit is not None:
+                        assert np.all(punit == unit)
                     else:
-                        assert pu is None
+                        assert punit is None
             else:
                 if units is not None and punits is not None:
                     assert np.all(punits == units)
                 else:
-                    assert (units is None and punits is None)
-                
+                    assert units is None and punits is None
+
             # Check params:
             if isinstance(params, dict) and isinstance(pparams, dict):
                 for key in params:
@@ -114,7 +120,7 @@ class TestMEX2:
                 header_only=header_only,
                 relabel=False,
             )
-            
+
             data = parser.data
             if header_only:
                 with pytest.raises(
@@ -122,15 +128,19 @@ class TestMEX2:
                 ):
                     scan = parser.to_scan(energy_bin_domain=energy_bin_domain)
                 return
-            
+
             assert data is not None and isinstance(data, tuple) and len(data) == 2
             data1D, data2D = data
             assert data1D is not None and data2D is not None
-            
-            scan = parser.to_scan(energy_bin_domain=energy_bin_domain, load_all_columns=True)
+
+            scan = parser.to_scan(
+                energy_bin_domain=energy_bin_domain, load_all_columns=True
+            )
             # Add flourescence channels
             assert scan.y is not None
-            assert scan.y.shape[-1] == data1D.shape[-1] + data2D.shape[-1] + 1 - 1 # +1 for sum fluor, -1 for energy (x).
+            assert (
+                scan.y.shape[-1] == data1D.shape[-1] + data2D.shape[-1] + 1 - 1
+            )  # +1 for sum fluor, -1 for energy (x).
 
     class Test_MDA_2025_02:
         @pytest.mark.parametrize(
@@ -157,7 +167,7 @@ class TestMEX2:
                 header_only=header_only,
                 relabel=False,
             )
-            
+
             # Depending on `to_scan`, the scan data might or might not include the 2D variables.
             # Check instead that there has been "some" additional processing.
             data = parser.data
@@ -167,15 +177,19 @@ class TestMEX2:
                 ):
                     scan = parser.to_scan(energy_bin_domain=energy_bin_domain)
                 return
-            
+
             assert data is not None and isinstance(data, tuple) and len(data) == 2
             data1D, data2D = data
             assert data1D is not None and data2D is not None
-            
-            scan = parser.to_scan(energy_bin_domain=energy_bin_domain, load_all_columns=True)
+
+            scan = parser.to_scan(
+                energy_bin_domain=energy_bin_domain, load_all_columns=True
+            )
             # Add flourescence channels
             assert scan.y is not None
-            assert scan.y.shape[-1] == data1D.shape[-1] + data2D.shape[-1] + 1 - 1 # +1 for sum fluor, -1 for energy (x).
+            assert (
+                scan.y.shape[-1] == data1D.shape[-1] + data2D.shape[-1] + 1 - 1
+            )  # +1 for sum fluor, -1 for energy (x).
 
 
 if __name__ == "__main__":

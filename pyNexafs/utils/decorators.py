@@ -99,7 +99,7 @@ class staticproperty(property):
 \
     Notes
     -----
-    Incompatible with overrides.overrides decorator.
+    Incompatible with override decorator.
 
     Examples
     --------

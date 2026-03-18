@@ -35,7 +35,9 @@ Links
     :hidden:
 
     source/install
+    source/overview
     source/examples
+    source/gui
     source/api
 
 .. support

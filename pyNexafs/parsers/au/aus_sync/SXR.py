@@ -10,7 +10,7 @@ import typing
 from numpy.typing import NDArray
 import io
 import numpy as np
-import overrides
+from typing import override
 
 
 class SXR_NEXAFS(parserBase):
@@ -623,7 +623,7 @@ class SXR_NEXAFS(parserBase):
         return data, labels, units, params
 
     @property
-    @overrides.overrides
+    @override
     def summary_param_values(self) -> list[Any]:
         """
         Return a list of important parameter values of the data file.
@@ -640,7 +640,7 @@ class SXR_NEXAFS(parserBase):
         return [self.params[key][1] for key in self.SUMMARY_PARAM_RAW_NAMES]
 
     @property
-    @overrides.overrides
+    @override
     def summary_param_names_with_units(self) -> list[str]:
         """
         Return a list of important parameter names with units.
