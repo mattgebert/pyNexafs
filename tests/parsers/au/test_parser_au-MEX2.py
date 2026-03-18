@@ -32,7 +32,7 @@ class TestMEX2:
                 if file.endswith(".mda")
             ],
         )
-        def test_parser_mda_2024_11(self, filepath, header_only, energy_bin_domain):
+        def test_parser_mda_2024_11(self, filepath, header_only):
             # Test the class constructor success
             parser = MEX2_NEXAFS(
                 filepath,
@@ -45,11 +45,49 @@ class TestMEX2:
 
             # Check equivalence (i.e. the correct parser method was called)
             data, labels, units, params = parser_vals
-            assert np.all(parser.data == data)
-            assert np.all(parser.labels == labels)
-            assert np.all(parser.units == units)
-            for key in params:
-                assert np.all(parser.params[key] == params[key])
+            pdata, plabels, punits, pparams = parser.data, parser.labels, parser.units, parser.params
+            # Check consistency
+            if isinstance(data, tuple) and isinstance(pdata, tuple):
+                for d, pd in zip(data, pdata):
+                    assert (
+                        (isinstance(d, np.ndarray) and isinstance(pd, np.ndarray)) or
+                        (d is None and pd is None)
+                    )
+                    if d is not None:
+                        assert np.all(pd == d)
+            else:
+                assert (isinstance(data, np.ndarray) and isinstance(pdata, np.ndarray)) or (data is None and pdata is None)
+                if data is not None:
+                    assert np.all(pdata == data)
+            # Check labels, units and params
+            if isinstance(labels, tuple) and isinstance(plabels, tuple):
+                for l, pl in zip(labels, plabels):
+                    if l is not None:
+                        assert np.all(pl == l)
+                    else:
+                        assert pl is None
+            else:            
+                if labels is not None and plabels is not None:
+                    assert np.all(plabels == labels)
+                else:
+                    assert (labels is None and plabels is None)
+            # Check units
+            if isinstance(units, tuple) and isinstance(punits, tuple):
+                for u, pu in zip(units, punits):
+                    if u is not None:
+                        assert np.all(pu == u)
+                    else:
+                        assert pu is None
+            else:
+                if units is not None and punits is not None:
+                    assert np.all(punits == units)
+                else:
+                    assert (units is None and punits is None)
+                
+            # Check params:
+            if isinstance(params, dict) and isinstance(pparams, dict):
+                for key in params:
+                    assert np.all(parser.params[key] == params[key])
 
         # Test scan conversion for reduction of multi-dimensional flourescence data
         @pytest.mark.parametrize(
@@ -76,23 +114,23 @@ class TestMEX2:
                 header_only=header_only,
                 relabel=False,
             )
+            
+            data = parser.data
             if header_only:
                 with pytest.raises(
                     ValueError, match=r"(No data loaded into the parser object)(.*+)"
                 ):
                     scan = parser.to_scan(energy_bin_domain=energy_bin_domain)
                 return
-            else:
-                scan = parser.to_scan(energy_bin_domain=energy_bin_domain)
-
-            # Depending on `to_scan`, the scan data might or might not include the 2D variables.
-            # Check instead that there has been "some" additional processing.
-            pdata = parser.data  # Multi-dimensional sets
-            assert pdata is not None and isinstance(pdata, tuple) and len(pdata) == 2
-            assert pdata[0] is not None
-            assert scan.y is not None and scan.y.shape[1] + 1 > len(
-                pdata[0][0]
-            )  # [0] is 1D data, with first index energy, second index channels.
+            
+            assert data is not None and isinstance(data, tuple) and len(data) == 2
+            data1D, data2D = data
+            assert data1D is not None and data2D is not None
+            
+            scan = parser.to_scan(energy_bin_domain=energy_bin_domain, load_all_columns=True)
+            # Add flourescence channels
+            assert scan.y is not None
+            assert scan.y.shape[-1] == data1D.shape[-1] + data2D.shape[-1] + 1 - 1 # +1 for sum fluor, -1 for energy (x).
 
     class Test_MDA_2025_02:
         @pytest.mark.parametrize(
@@ -119,21 +157,33 @@ class TestMEX2:
                 header_only=header_only,
                 relabel=False,
             )
-            scan = parser.to_scan(energy_bin_domain=energy_bin_domain)
-
+            
             # Depending on `to_scan`, the scan data might or might not include the 2D variables.
             # Check instead that there has been "some" additional processing.
             data = parser.data
+            if header_only:
+                with pytest.raises(
+                    ValueError, match=r"(No data loaded into the parser object)(.*+)"
+                ):
+                    scan = parser.to_scan(energy_bin_domain=energy_bin_domain)
+                return
+            
             assert data is not None and isinstance(data, tuple) and len(data) == 2
-            assert data[0] is not None
-            assert scan.y is not None and scan.y.shape[1] + 1 > len(data[0])
+            data1D, data2D = data
+            assert data1D is not None and data2D is not None
+            
+            scan = parser.to_scan(energy_bin_domain=energy_bin_domain, load_all_columns=True)
+            # Add flourescence channels
+            assert scan.y is not None
+            assert scan.y.shape[-1] == data1D.shape[-1] + data2D.shape[-1] + 1 - 1 # +1 for sum fluor, -1 for energy (x).
 
 
 if __name__ == "__main__":
     # Test each of the parser functions with the test data.
     # MEX2 2024-03
     folder = "2025-03"
-    fname = "MEX2_13366.mda"
+    # fname = "MEX2_13366.mda"
+    fname = "MEX2_13385.mda"
     # fname = "MEX2_13366_processed.xdi"
     # MEX2 2025-03
     folder = "2024-03"

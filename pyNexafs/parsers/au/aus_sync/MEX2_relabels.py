@@ -10,7 +10,11 @@ RELABELS = {
     ##################################
     "MEX2DCM01:ENERGY": "Energy Setpoint",
     "MEX2ES01ZEB01:CALC_ENERGY_EV": "Energy",
-    "MEX2ES01ZEB01:GATE_TIME_SET": "Gate Time Setpoint",
+    (
+        "MEX2ES01ZEB01:GATE_TIME_SET",
+        "Count Time",
+        "count_time",
+    ): "Gate Time Setpoint",
     ("MEX2SSCAN01:saveData_comment1", "Comment 1", "Sample"): "Sample Name",
     "MEX2SSCAN01:saveData_comment2": "Comment 2",
     "MEX2ES01ZEB01:BRAGG_WITH_OFFSET": "Bragg",
@@ -294,7 +298,11 @@ RELABELS = {
     # "SampleDrain": "Sample Drain",
     #### XDI Names ####
     "ROI_AD_AVG": "ROI Average",
-    "ifluor": "Fluorescence",
+    (
+        "ifluor",
+        'Fluorescence Sum',
+        'Fluorescence Sum (Reduced)',
+    ): "Fluorescence",
     "ROI.start_bin": "Fluorescence Start Bin",
     "ROI.end_bin": "Fluorescence End Bin",
     "Element.symbol": "Element",

@@ -60,6 +60,7 @@ class TestRelabelsDict:
     )
     def test_set(self, key, value):
         # Create the relabel dictionary.
+        print("Type:", type(value))
         relabel_dict = parserMeta.relabels_dict(self.DummyParserRelabel.RELABELS)
         # Test setting
         relabel_dict[key] = value
@@ -278,7 +279,6 @@ class TestParserMeta:
     def test_missing_ALLOWED_EXTENSIONS(self):
         """Tests ValueError is raised when ALLOWED_EXTENSIONS is not defined."""
         with pytest.raises(ValueError) as e:
-
             class Test_Parser(parserBase):
                 pass
 

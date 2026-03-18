@@ -1932,16 +1932,17 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         # Use 1D data if provided
         data = self.data
         data = data[0] if isinstance(data, tuple) else data
+        if data is None:
+            raise ValueError(
+                "No data loaded into the parser object, only header information. Use parser.load() to load data."
+            )
+        assert len(data.shape) == 2, "Data must be 2D for to_scan conversion."
         dshape = data.shape if data is not None else ()
         labels = self.labels
         labels = labels[0] if isinstance(labels, tuple) else labels
         units = self.units
         units = units[0] if isinstance(units, tuple) else units
 
-        if data is None:
-            raise ValueError(
-                "No data loaded into the parser object, only header information. Use parser.load() to load data."
-            )
         assert len(dshape) > 0
 
         # No point making a scan object if there's no data.
@@ -2743,7 +2744,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                 )
         else:
             labels_1D = labels
-
+        
         for query in queries:
             # Check default queries
             try:
@@ -2759,23 +2760,27 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                             )  # throws value error if not found
                         except ValueError:
                             pass
-
-                    # Search values instead to reverse for key
-                    relabel_vals = list(self.RELABELS.values())
-                    if query in relabel_vals:
-                        relabel_keys = list(self.RELABELS.keys())
-                        # Check for multiple matching values (opposed to unique keys).
-                        warn = True if relabel_vals.count(query) > 1 else False
-                        # Find value in RELABELS
-                        i = relabel_vals.index(query)
-                        if warn:
-                            warnings.warn(
-                                f"Multiple labels matched `{query}` in {type(self)}.RELABELS. Using key '{relabel_keys[i]}' as the label."
-                            )
-                        # If labels found, return index of key.
-                        key = relabel_keys[i]
-                        if key in labels_1D:
-                            return labels_1D.index(key)
+                        
+                        # Search values instead to reverse for key
+                        k = None
+                        v = None
+                        for k, v in self.RELABELS.items():
+                            if v == self.RELABELS[query]:
+                                break
+                            
+                        if isinstance(k, str):
+                            try:
+                                return labels_1D.index(k)  # throws value error if not found
+                            except ValueError:
+                                pass
+                        if isinstance(k, tuple):
+                            for kk in k:
+                                try:
+                                    return labels_1D.index(kk)  # throws value error if not found
+                                except ValueError:
+                                    pass
+                        
+                    
         # Check higher order dimensions in case the value is not in the 1D list.
         if isinstance(labels, tuple) and len(labels) > 1:
             for i, labels_ND in enumerate(labels[1:]):
@@ -2826,7 +2831,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                                     Perhaps use `reduce_labels` parameter after reduction?"
                                     )
         # Finally
-        raise ValueError(f"Label(s) '{search}' not found in labels {self._labels}.")
+        raise ValueError(f"Label(s) '{search}' not found in labels {labels_1D}.")
 
     @property
     def summary_params(self) -> dict[str, Any]:

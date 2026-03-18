@@ -78,7 +78,7 @@ class TestSXR:
             )
             # Test the parser method
             with open(filepath, "r") as f:
-                parser_vals = SXR_NEXAFS.parse_mda(f, header_only=header_only)
+                parser_vals = SXR_NEXAFS.parse_mda_2024_03(f, header_only=header_only)
 
             # Check equivalence (i.e. the correct parser method was called)
             data, labels, units, params = parser_vals

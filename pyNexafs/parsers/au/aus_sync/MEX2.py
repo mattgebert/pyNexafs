@@ -116,8 +116,6 @@ class MEX2_NEXAFS(parserBase):
                 "Fluorescence Sum (Reduced)",
             ),
             ("Gate Time Setpoint", "Count Time", "count_time"),
-            "ICR_AVG",
-            "OCR_AVG",
             "Fluorescence Detector 1",
             "Fluorescence Detector 2",
             "Fluorescence Detector 3",
@@ -295,7 +293,7 @@ class MEX2_NEXAFS(parserBase):
                         self.reduction_kwargs = dict(
                             energy_bin_domain=energy_bin_domain
                         )
-
+                        
                         # Return the reduced data.
                         return (
                             reduced_data,
