@@ -540,10 +540,8 @@ class parserMeta(abc.ABCMeta):
     synonymous names (i.e. equipment replacement with a new channel name)."""
     _RELABELS_REVERSE: dict[str, str | tuple[str, ...]] = {}
     """Internal dictionary of label equivalence in reverse."""
-    _CHANNEL_MAP: dict[str, dtype]
-    """Internal dictionary mapping common channel names to NEXAFS dtypes."""
-    _CHANNEL_MAP_REVERSE: dict[dtype, str]
-    """Internal dictionary mapping NEXAFS dtypes to common channel names."""
+    _dtype_channels: list[dtype] = []
+    """A list of mapped datatype channels `dtype` found in RELABELS. These add dynamic accessor methods at runtime."""
     _relabel = True
     """Internal class boolean for relabels, by default True."""
 
@@ -596,8 +594,6 @@ class parserMeta(abc.ABCMeta):
                 namespace["SUMMARY_PARAM_RAW_NAMES"] = []
             if "RELABELS" not in namespace:
                 namespace["RELABELS"] = {}
-            if "CHANNEL_MAP" not in namespace:
-                namespace["CHANNEL_MAP"] = {}
 
             # Raise error if necessary variables are not defined.
             for prop in ["ALLOWED_EXTENSIONS", "COLUMN_ASSIGNMENTS"]:
@@ -610,7 +606,6 @@ class parserMeta(abc.ABCMeta):
                 "COLUMN_ASSIGNMENTS",
                 "SUMMARY_PARAM_RAW_NAMES",
                 "RELABELS",
-                "CHANNEL_MAP",
             ]:
                 namespace[f"_{prop}"] = namespace[
                     prop
@@ -620,6 +615,13 @@ class parserMeta(abc.ABCMeta):
             # Validate column assignments, and assign defaults if not provided.
             parserMeta.__validate_assignments(namespace["_COLUMN_ASSIGNMENTS"])
 
+            if "_dtype_channels" in namespace:
+                raise AttributeError(
+                    f"`{name}._dtype_channels` is reserved for a list of `dtype` that are found in `{name}.RELABELS`."
+                )
+            _dtype_channels: list[dtype] = []
+            """A list of `dtype` """
+
             # Check no overlapping duplicate values & create a copy of the RELABELS dictionary in reverse.
             reverse_dict = {}
             generic_msg = (
@@ -627,6 +629,34 @@ class parserMeta(abc.ABCMeta):
                 + r"\nI.e. {'old_name': 'new_name', ('old_name_2', 'old_name_3'): 'new_name_2'}"
             )
             for key, value in namespace["_RELABELS"].items():
+                # Process the key/value for dtype channels.
+                if isinstance(key, dtype):
+                    if key in _dtype_channels:
+                        raise ValueError(
+                            rf"Duplicate - dtype key '{key}' in class `{name}.RELABELS` dictionary with value '{namespace['_RELABELS'][key]}'."
+                            + generic_msg
+                        )
+                    else:
+                        _dtype_channels.append(key)
+                elif isinstance(key, tuple):
+                    for k in key:
+                        if isinstance(k, dtype):
+                            if k in _dtype_channels:
+                                raise ValueError(
+                                    rf"Duplicate - dtype key '{k}' in class `{name}.RELABELS` dictionary with value '{namespace['_RELABELS'][key]}'."
+                                    + generic_msg
+                                )
+                            else:
+                                _dtype_channels.append(k)
+                elif isinstance(value, dtype):
+                    if value in _dtype_channels:
+                        raise ValueError(
+                            rf"Duplicate - dtype value '{value}' in class `{name}.RELABELS` dictionary with key '{key}'."
+                            + generic_msg
+                        )
+                    else:
+                        _dtype_channels.append(value)
+
                 # The value item has already been registered
                 if value in reverse_dict:
                     raise ValueError(
@@ -678,25 +708,7 @@ class parserMeta(abc.ABCMeta):
             # Convert _RELABELS to a relabels_dict
             namespace["_RELABELS"] = parserMeta.relabels_dict(namespace["_RELABELS"])
 
-            # Validate the channel map
-            reverse_channel_map = {}
-            for key, value in namespace["_CHANNEL_MAP"].items():
-                if not isinstance(key, str):
-                    raise ValueError(
-                        f"Key '{key}' in `{name}.CHANNEL_MAP` is not a string (Channel map will use RELABELS)."
-                    )
-                if not isinstance(value, dtype):
-                    raise ValueError(
-                        f"Value '{value}' in CHANNEL_MAP is not a NEXAFS dtype."
-                    )
-                if value in reverse_channel_map:
-                    raise ValueError(
-                        f"Datatype `{value.name}` has already been assigned to `{reverse_channel_map[value]}`. \
-                            Each dtype can only be assigned to one channel name."
-                    )
-                else:
-                    reverse_channel_map[value] = key
-            namespace["_REVERSE_CHANNEL_MAP"] = reverse_channel_map
+        # Add the _dtype_channels to the namespace:
 
         return super().__new__(mcls, name, bases, namespace, **kwargs)
 
@@ -1211,7 +1223,6 @@ class parserBase(abc.ABC, metaclass=parserMeta):
     SUMMARY_PARAM_RAW_NAMES = parserMeta.SUMMARY_PARAM_RAW_NAMES
     RELABELS = parserMeta.RELABELS
     RELABELS_REVERSE = parserMeta.RELABELS_REVERSE
-    CHANNEL_MAP = parserMeta.CHANNEL_MAP
     # These methods are not class methods copies, but rather return names existing on the object instance.
     # summary_param_names_with_units = parserMeta.summary_param_names_with_units
     # summary_param_names = parserMeta.summary_param_names

@@ -48,6 +48,14 @@ classifiers = [
     code = "https://github.com/xraysoftmat/pyNexafs"
     documentation = "https://pyNexafs.readthedocs.io/en/latest/"
 
+[project.scripts]
+# Command line entry points.
+
+[project.gui-scripts]
+# GUI entry points for the command line
+pyNexafs = "pyNexafs.__main__:main"
+pyNexafs_tr = "kkcalc2.__main__:main_with_traceback"
+
 [dependency-groups]
 # Dependency groups for optional dependencies. Requires pip >= 25.1
 all = [
@@ -255,7 +263,7 @@ html_theme = "pydata_sphinx_theme"
     type = "fontawesome"
 
 [tool.sphinx-pyproject.html_sidebars]
-  "**" = []
+  "**" = ["sidebar-nav-bs", "sidebar-ethical-ads"]
 
 [tool.sphinx-pyproject.html_context]
     default_mode = "light"

@@ -39,13 +39,24 @@ class dtype(StrEnum):
     # Normalisation channels:
     I0 = "I0"  # Incident X-ray intensity
     """I0, where the incident X-ray intensity is measured typically via a mesh current, often used for normalisation."""
-
     PhD = "Photodiode"  # Photodiode scan without sample
-    """Photodiode, where the X-ray intensity is measured by a photodiode without the sample, often used for normalisation at the carbon edge."""
+    """
+    Photodiode, where the X-ray intensity is measured by a photodiode without the sample, often used for normalisation at the carbon edge.
+
+    For general absorption/transmission through a film, use dtype.A or dtype.T.
+    """
+    REF = "Reference Foil"
+    """A measurement of a reference foil, used for normalizing the energy spectrum."""
 
     # Energy channels:
     E = "Energy"
-    """Energy, the x-ray photon energy."""
+    """
+    Energy, the measured x-ray photon energy in eV.
+    """
+    Eset = "Energy Setpoint"
+    """
+    Energy, the setpoint of the x-ray photon energy in eV
+    """
 
 
 # Define the column assignments dictionary typing key-value pairs
