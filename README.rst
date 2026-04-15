@@ -14,7 +14,7 @@ pyNexafs
 .. |PyPI Version| image:: https://img.shields.io/pypi/v/pyNexafs?label=pyNexafs&logo=pypi
    :target: https://pypi.org/project/pyNexafs/
    :alt: pypi
-.. |PyTest| image:: https://github.com/xraysoftmat/pyNexafs/actions/workflows/test.yml/badge.svg
+.. |PyTest| image:: https://github.com/xraysoftmat/pyNexafs/actions/workflows/tests.yml/badge.svg
     :alt: PyTest
     :target: https://github.com/xraysoftmat/pyNexafs/actions/workflows/tests.yml
 .. |Linting| image:: https://github.com/xraysoftmat/pyNexafs/actions/workflows/linting.yml/badge.svg
