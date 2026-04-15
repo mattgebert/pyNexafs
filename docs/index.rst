@@ -26,17 +26,18 @@
 Links
 #####
 
-- Development: https://github.com/xraysoftmat/pyNexafs/
+- Development (Github): https://github.com/xraysoftmat/pyNexafs/
+- Releases:
+    * Github Releases: https://github.com/xraysoftmat/pyNexafs/releases
+    * PyPI: https://pypi.python.org/pypi/pyNexafs/
 - Documentation: https://pyNexafs.readthedocs.io/
-- PyPI: https://pypi.python.org/pypi/pyNexafs/
 
 
 .. toctree::
     :hidden:
 
     source/install
-    source/overview
-    source/examples
+    source/tutorials/index
     source/gui
     source/api
 
