@@ -10,6 +10,7 @@ from pyNexafs.parsers._base import parserBase, parserMeta
 
 # Specific Parsers
 from pyNexafs.parsers import au
+from pyNexafs.parsers.au import SXR_NEXAFS, MEX1_NEXAFS, MEX2_NEXAFS
 
 # Define loaders with string representation.
 parser_loaders = {
@@ -31,4 +32,7 @@ __all__ = [
     "parserMeta",
     "parser_loaders",
     "au",
+    "SXR_NEXAFS",
+    "MEX1_NEXAFS",
+    "MEX2_NEXAFS",
 ]

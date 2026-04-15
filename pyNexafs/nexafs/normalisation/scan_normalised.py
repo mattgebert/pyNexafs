@@ -20,6 +20,7 @@ from pyNexafs.nexafs.normalisation.norm_settings import (
     configExternalChannel,
     configEdges,
 )
+from pyNexafs.types import dtype
 
 if TYPE_CHECKING:
     from pyNexafs.parsers import parserBase  # For type hinting only.
@@ -46,14 +47,14 @@ class scanAbstractNorm(scanAbstract, metaclass=abc.ABCMeta):
     def __init__(
         self,
         scan: scanAbstract,
-        apply_to: list[int | str] | None = None,
+        apply_to: list[int | dtype | str] | None = None,
         conv_indexes: bool = True,
     ) -> None:
         self._origin = scan
         """The original scan object."""
         self._config = None
         """The normalisation configuration object, used to save settings."""
-        self._apply_to: list[str | int] | None
+        self._apply_to: list[str | dtype | int] | None
         """The list of y-channel labels (or indexes) to apply the normalisation to."""
 
         # Set the apply_to attribute
@@ -64,7 +65,7 @@ class scanAbstractNorm(scanAbstract, metaclass=abc.ABCMeta):
                 self._apply_to = apply_to.copy()  # type: ignore - all i are str.
                 return
             if y_labels is not None:
-                if all(isinstance(i, (int, str)) for i in apply_to):
+                if all(isinstance(i, (int, str, dtype)) for i in apply_to):
                     # Convert indexes to labels when available
                     self._apply_to = []
                     for i in range(len(apply_to)):
@@ -161,19 +162,19 @@ class scanAbstractNorm(scanAbstract, metaclass=abc.ABCMeta):
         return self._origin
 
     @property
-    def apply_to(self) -> list[str | int] | None:
+    def apply_to(self) -> list[str | dtype | int] | None:
         """
         The list of y-channel labels to apply the normalisation to.
 
         Parameters
         ----------
-        apply_to : list[str | int] | None
+        apply_to : list[str | dtype | int] | None
             The new list of y-channel labels (or indexes) to apply the normalisation to.
             If None, applies to all channels.
 
         Returns
         -------
-        list[str | int] | None
+        list[str | dtype | int] | None
             The list of y-channel labels (or indexes) to apply the normalisation to.
             If None, applies to all channels.
 
@@ -185,7 +186,7 @@ class scanAbstractNorm(scanAbstract, metaclass=abc.ABCMeta):
         return self._apply_to
 
     @apply_to.setter
-    def apply_to(self, apply_to: list[str | int] | None) -> None:
+    def apply_to(self, apply_to: list[str | dtype | int] | None) -> None:
         self._apply_to = apply_to
 
     @overload
@@ -226,7 +227,7 @@ class scanAbstractNorm(scanAbstract, metaclass=abc.ABCMeta):
             ylabels = self.y_labels
 
             if ylabels is None:
-                if any(isinstance(i, str) for i in at):
+                if any(isinstance(i, (str, dtype)) for i in at):
                     raise ValueError(
                         "Y labels are not defined in the scan object. Cannot match string labels in `apply_to`."
                     )
@@ -534,7 +535,7 @@ class scanNorm(scanAbstractNorm):
         Can provide a string name or an integer index, but will be stored as a string.
     norm_method : normMethod, optional
         The normalisation method to apply to the normalisation channel. See `configChannel.normMethod` for options.
-    apply_to : list[int] | list[str] | None, optional
+    apply_to : list[int] | list[str | dtype] | None, optional
         The list of y-channel indexes to apply the normalisation to.
     conv_indexes : bool, optional
         Whether to convert integer indexes in `apply_to` to string labels if available.
@@ -558,9 +559,9 @@ class scanNorm(scanAbstractNorm):
     def __init__(
         self,
         scan: scanAbstract,
-        norm_channel: str | int,
+        norm_channel: str | int | dtype,
         norm_method: normMethod = configChannel.normMethod.DIV,
-        apply_to: list[str | int] | None = None,
+        apply_to: list[str | int | dtype] | None = None,
         conv_indexes: bool = True,
     ) -> None:
         # Set reference for original scan object
@@ -575,7 +576,7 @@ class scanNorm(scanAbstractNorm):
             raise ValueError(
                 "Y labels are not defined in the scan object. Cannot match string label for `norm_channel`."
             )
-        if isinstance(norm_channel, str):
+        if isinstance(norm_channel, (str, dtype)):
             self._norm_idx = ylabels.index(norm_channel)
         else:
             self._norm_idx = norm_channel
@@ -1733,7 +1734,7 @@ class scanDoubleNorm(scanAbstractNorm):
         ext_scan: scanAbstract,
         norm_channel: str | int,
         double_norm_channel: str | int,
-        apply_to: list[str | int] | None = None,
+        apply_to: list[str | dtype | int] | None = None,
         conv_indexes: bool = True,
     ) -> None:
         ext_ylabels = ext_scan.y_labels

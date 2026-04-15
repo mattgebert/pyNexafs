@@ -16,7 +16,7 @@ import abc
 import datetime
 import os
 import io
-from typing import TYPE_CHECKING, Self, override, overload
+from typing import TYPE_CHECKING, Self, override
 
 # External imports
 import numpy.typing as npt
@@ -722,6 +722,10 @@ class scanBase(scanAbstract):
         self._mtime = parser.mtime if parser is not None else None
         self._ctime = parser.ctime if parser is not None else None
 
+        self._available_channels: list[dtype] = []
+        """A list of available dtype channels that have been loaded from the parser.
+        Populated when loading data from the parser. See `_base.parserBase.to_scan()` for more details."""
+
         # Load data from parser
         if parser is not None:
             parser.to_scan(load_all_columns=load_all_columns, scan_obj=self)
@@ -922,211 +926,71 @@ class scanBase(scanAbstract):
         )
         return
 
-    @property
-    def channel_map(self) -> dict[str, dtype]:
+    def __getitem__(self, key: str) -> npt.NDArray:
         """
-        A list of the available `dtype` channels available on the object.
-
-        Uses the pre-defined `CHANNEL_MAP` from the parser class to find relevant channels.
-
-        Returns
-        -------
-        dict[str, dtype]
-            A list of the enumerate datatypes.
-        """
-        parser = self.parser
-        if parser is None:
-            raise ValueError("Parser object is not defined, cannot get channel map.")
-        return parser.CHANNEL_MAP
-
-    @overload
-    def _channels_indexes(
-        self,
-        relabel: bool | None,
-        reduced_labels: list[str | None] | None,
-        specific: None = None,
-    ) -> dict[dtype, int]: ...
-
-    @overload
-    def _channels_indexes(
-        self,
-        relabel: bool | None,
-        reduced_labels: list[str | None] | None,
-        specific: dtype,
-    ) -> int: ...
-
-    def _channels_indexes(
-        self,
-        relabel: bool | None = None,
-        reduced_labels: list[str | None] | None = None,
-        specific: dtype | None = None,
-    ) -> dict[dtype, int] | int:
-        """
-        The mapping of the available dtype channels.
-
-        If a specific dtype is requested, the index of that dtype channel is returned instead of the full mapping.
+        Get a specific channel of data by its dtype name.
 
         Parameters
         ----------
-        relabel : bool | None
-            Whether to check relabelled names or not.
-            By default None, which defers to using the default class setting.
-        reduced_labels : list[str | None] | None
-            Replaces use of default `parser.labels`, particularly useful when using reduced data.
-        specific : dtype, optional
-            A specific dtype to search for if provided.
+        key : str
+            The dtype name of the channel to retrieve.
 
         Returns
         -------
-        dict[dtype, int]
-            The mapping of the available dtype channels.
+        npt.NDArray
+            The data corresponding to the requested channel.
 
         Raises
         ------
         ValueError
-            If the parser class is not defined, cannot get channel mapping information.
+            If the parser object is not defined, cannot get channel data.
         ValueError
-            If a specific dtype is requested but not found in the labels.
+            If the requested channel is not found in the labels.
         """
-        pclass = self._parser_class
-        if pclass is None:
-            raise ValueError(
-                "Parser class is not defined, cannot get channel mapping information."
-            )
-
-        parser = self.parser
-        if relabel is None:
-            if parser is not None:
-                relabel = parser.relabel
-            elif pclass is not None:
-                relabel = pclass.relabel
-            else:
-                # No relabelling available.
-                relabel = False
-
-        specific_search = specific is not None
-        mapping: dict[dtype, int] = {}
-
-        labels = self.y_labels if reduced_labels is None else None
-        if not specific_search:
-            if labels is not None:
-                for dt, label in pclass._CHANNEL_MAP_REVERSE.items():
-                    # Name directly in channel labels
-                    if labels is not None and label in labels:
-                        mapping[dt] = labels.index(label)
-                    elif relabel:
-                        # Check the RELABELS of the channel map label.
-                        if label in pclass.RELABELS:
-                            rlabel = pclass.RELABELS[label]
-                            # Check the relabel
-                            if rlabel in labels:
-                                mapping[dt] = labels.index(rlabel)
-                            else:
-                                # Check each
-                                reverse = pclass.RELABELS_REVERSE[rlabel]
-                                if isinstance(reverse, tuple):
-                                    for olabel in reverse:
-                                        if olabel in labels:
-                                            mapping[dt] = labels.index(olabel)
-        else:
-            if labels is not None:
-                label = pclass._CHANNEL_MAP_REVERSE.get(specific, None)
-                if label is not None and label in labels:
-                    return labels.index(label)
-                elif relabel and label is not None:
-                    if label in pclass.RELABELS:
-                        rlabel = pclass.RELABELS[label]
-                        if rlabel in labels:
-                            return labels.index(rlabel)
-                        else:
-                            reverse = pclass.RELABELS_REVERSE[rlabel]
-                            if isinstance(reverse, tuple):
-                                for olabel in reverse:
-                                    if olabel in labels:
-                                        return labels.index(olabel)
-            raise ValueError(f"Channel {specific} not found in labels.")
-        return mapping
+        y = self.y
+        if y is None:
+            raise ValueError("Y data is not defined, cannot get channel data.")
+        y_labels = self.y_labels
+        if y_labels is None:
+            raise ValueError("Y labels are not defined, cannot get channel data.")
+        # Attempt to get the channel from raw/relabelled names.
+        try:
+            idx = y_labels.index(key)
+        except ValueError:
+            # Key not found.
+            parser_cls = self.parser_class
+            if parser_cls is None:
+                raise ValueError(
+                    "Parser class is not defined, cannot get RELABEL data."
+                )
+            try:
+                idx = parser_cls._label_index(
+                    y_labels, key, True
+                )  # Check relabelled names as well.
+            except ValueError as e:
+                if "not found in labels" in str(e):
+                    raise KeyError(str(e)) from e
+        if idx is None:
+            raise ValueError(f"Requested channel '{key}' not found in labels.")
+        # Use the idx to get the corresponding data column.
+        return y[:, idx]
 
     @property
-    def channels(self, relabel: bool | None = None) -> list[dtype]:
+    def channels(self) -> list[dtype]:
         """
         A list of the available `dtype` channels available on the object.
-
-        Uses the pre-defined `CHANNEL_MAP` to find relevant channels.
-
-        Parameters
-        ----------
-        relabel : bool | None
-            Whether to check relabelled names or not.
-            By default None, which defers to using the default class setting.
 
         Returns
         -------
         list[dtype]
             A list of the enumerate datatypes.
-        """
-        if relabel is None:
-            relabel = self.__class__.relabel
 
-        found = []
-        labels = self.labels
-        if labels is not None:
-            for dt, label in self.__class__._CHANNEL_MAP_REVERSE.items():
-                # Name directly in channel labels
-                if labels is not None and label in labels:
-                    found.append(dt)
-                elif relabel:
-                    # Check the RELABELS of the channel map label.
-                    if label in self.RELABELS:
-                        rlabel = self.RELABELS[label]
-                        # Check the relabel
-                        if rlabel in labels:
-                            found.append(dt)
-                        else:
-                            # Check each
-                            reverse = self.RELABELS_REVERSE[rlabel]
-                            if isinstance(reverse, tuple):
-                                for olabel in reverse:
-                                    if olabel in labels:
-                                        found.append(dt)
-        return found
-
-    @property
-    def AEY(self) -> npt.NDArray | None:
+        Examples
+        --------
+        These names can be used to access data on the object directly, e.g. :
+        >>> scan.channels  #
+        ['I0', 'TEY', 'PFY']
+        >>> scan['I0']  # returns the data corresponding to the 'I0' channel.
+        >>> scan.I0 # returns the data corresponding to the 'I0' channel.
         """
-        The Auger Electron Yield (AEY) channel data if available.
-
-        Returns
-        -------
-        npt.NDArray | None
-            The AEY channel data if available. Otherwise None.
-        """
-        if dtype.AEY in self.channels:
-            idx = self._channels_indexes()[dtype.AEY]
-            if isinstance(self.data, tuple):
-                data = self.data[0] if len(self.data) == 1 else None
-            else:
-                data = self.data
-            if data is not None:
-                return data[:, idx]
-        return None
-
-    @property
-    def TEY(self) -> npt.NDArray | None:
-        """
-        The Total Electron Yield (TEY) channel data if available.
-
-        Returns
-        -------
-        npt.NDArray | None
-            The TEY channel data if available. Otherwise None.
-        """
-        if dtype.TEY in self.channels:
-            idx = self._channels_indexes()[dtype.TEY]
-            if isinstance(self.data, tuple):
-                data = self.data[0] if len(self.data) == 1 else None
-            else:
-                data = self.data
-            if data is not None:
-                return data[:, idx]
-        return None
+        return self._available_channels.copy()

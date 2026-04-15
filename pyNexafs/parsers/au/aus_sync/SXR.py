@@ -11,6 +11,7 @@ from numpy.typing import NDArray
 import io
 import numpy as np
 from typing import override
+from pyNexafs.types import dtype
 
 
 class SXR_NEXAFS(parserBase):
@@ -71,10 +72,10 @@ class SXR_NEXAFS(parserBase):
     ]
 
     RELABELS = {
-        "SR14ID01PGM:REMOTE_SP": "Photon Energy",
-        "SR14ID01PGM:LOCAL_SP": "Local Energy Setpoint",
-        "SR14ID01PGM_ENERGY_SP": "Energy Setpoint",
-        "SR14ID01PGM_CALC_ENERGY_MONITOR.P": "Encoder Photon Energy",
+        ("SR14ID01PGM:REMOTE_SP",): "Photon Energy",
+        ("SR14ID01PGM:LOCAL_SP"): "Local Energy Setpoint",
+        ("SR14ID01PGM_ENERGY_SP", "Energy Setpoint"): dtype.E_SET,
+        ("SR14ID01PGM_CALC_ENERGY_MONITOR.P", "Encoder Photon Energy"): dtype.E,
         (
             "SR14ID01IOC68:scaler1.TPSR14ID01DTACQ06:sample_time",
             "SR14ID01DTACQ07:sample_time",
@@ -85,35 +86,40 @@ class SXR_NEXAFS(parserBase):
             "SR14ID01DTACQ06:ch4_v2f_ave_rbv",
             "SR14ID01DTACQ07:ch3_v2f_ave_rbv",
             "Drain Current VF",
-        ): "Drain Current",  # Previously labelled with a VF
+            "Drain Current",
+        ): dtype.TEY,  # Previously labelled with a VF
         (
             "SR14ID01IOC68:scaler1.S3",
             "SR14ID01IOC68:scaler1.S18",
             "SR14ID01DTACQ06:ch3_v2f_ave_rbv",  # Izero-VF
             "SR14ID01DTACQ07:ch2_v2f_ave_rbv",
             "I0 VF",
-        ): "I0",
+            "I0",
+        ): dtype.I0,
         (
             "SR14ID01IOC68:scaler1.S4",
             "SR14ID01IOC68:scaler1.S19",
             "SR14ID01DTACQ06:ch2_v2f_ave_rbv",
             "SR14ID01DTACQ07:ch1_v2f_ave_rbv",
             "Ref Foil VF",
-        ): "Ref Foil",
+            "Ref Foil",
+        ): dtype.REF,
         (
             "SR14ID01IOC68:scaler1.S6",
             "SR14ID01IOC68:scaler1.S22",
             "SR14ID01DTACQ06:ch1_counts_rbv",
             "SR14ID01DTACQ07:ch2_counts_rbv",
             "MCP (TFY)",
-        ): "Micro Channel Plate (TFY)",
+            "Micro Channel Plate (TFY)",
+        ): dtype.TFY,
         (
             "SR14ID01IOC68:scaler1.S8",
             "SR14ID01IOC68:scaler1.S17",
             "SR14ID01DTACQ06:ch5_v2f_ave_rbv",
             "SR14ID01DTACQ07:ch4_v2f_ave_rbv",
             "Direct PHD VF",
-        ): "Direct PHD",
+            "Direct PHD",
+        ): dtype.PHD,
         (
             "SR14ID01IOC68:scaler1.S9",
             "SR14ID01DTACQ06:ch1_v2f_ave_rbv",
@@ -122,11 +128,12 @@ class SXR_NEXAFS(parserBase):
         (
             "SR14ID01IOC68:scaler1.S10",
             "SR14ID01DTACQ07:ch1_counts_rbv",
-        ): "Channeltron Front (PEY)",
-        (
             "SR14ID01IOC68:scaler1.S21",
             "SR14ID01DTACQ06:ch2_counts_rbv",
-        ): "Channeltron",
+            "Channeltron Front (PEY)",
+        ): dtype.PEY,
+        # (
+        # ): "Channeltron",
         (
             "SR14ID01IOC68:scaler1.S11",
             "TFT PHD VF",
@@ -135,7 +142,8 @@ class SXR_NEXAFS(parserBase):
             "SR14ID01IOC68:scaler1.S23",
             "SR14ID01DTACQ07:ch3_counts_rbv",
             "Hemispherical Analyser AEY",
-        ): "Hemispherical Analyser (AEY)",
+            "Hemispherical Analyser (AEY)",
+        ): dtype.AEY,
         "SR14ID01AMP01:CURR_MONITOR": "Drain Current - Keithley1",
         "SR14ID01AMP02:CURR_MONITOR": "BL PHD - Keithley2",
         "SR14ID01AMP03:CURR_MONITOR": "I0 - Keithley3",
