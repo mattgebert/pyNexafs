@@ -1,6 +1,8 @@
 """ "Tests the base parser classes and their methods"""
 
+import tempfile
 import pytest
+import numpy as np
 
 # Test the creation of a new parser class.
 from pyNexafs.parsers._base import parserMeta, parserBase
@@ -497,6 +499,10 @@ class TestParserBase:
                     {("a", "b"): "c", ("b", "e"): "f"},
                     r"Duplicate - key 'b' from tuple '('b', 'e')' is a duplicate key entry in `ParserRelabelOverlap.RELABELS` dictionary.",
                 ),
+                (
+                    {("a", dtype.PEY): "c", dtype.PEY: "f"},
+                    r"Duplicate - dtype key 'Partial Electron Yield' in class `ParserRelabelOverlap.RELABELS` dictionary with value 'f'.",
+                ),
             ],
         )
         def test_RELABEL_overlap(self, relabels, assertion):
@@ -523,4 +529,61 @@ class TestParserBase:
             print(substr)
             assert assertion in substr
 
-    # Generate some basic implementation of the parserBase class.
+    class TestGetItem:
+        """Tests the `__getitem__` method of the parserBase class."""
+
+        class ParserGetitem(parserBase):
+            ALLOWED_EXTENSIONS = [".txt"]
+            COLUMN_ASSIGNMENTS = {"x": "a", "y": ["b", dtype.TEY]}
+            RELABELS = {
+                "a": "b",
+                "c": dtype.E,
+                "d": "e",
+                "DrainCurrent": dtype.TEY,
+            }
+
+            @classmethod
+            def parse_txt(cls, file):
+                fake_data = np.random.rand(10, 4)  # 10 rows, 4 channels
+                labels = [
+                    "a",
+                    "c",
+                    "f",
+                    "DrainCurrent",
+                ]  # Original labels for the channels
+                units = ["", "", "", ""]  # Units for the channels
+                params = {"filename": file}  # Example parameters
+                return fake_data, labels, units, params
+
+        @pytest.mark.parametrize(
+            "key,err",
+            [
+                ("a", None),
+                ("b", None),
+                ("g", KeyError),
+                ("c", None),
+                (dtype.E, None),
+                (dtype.PFY, KeyError),
+            ],
+        )
+        def test_getitem(self, key, err):
+            """Tests the `__getitem__` method of the parserBase class,
+            which should return a 1D channel, using relabels if necessary."""
+
+            # Create a temp file
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".txt", delete=False
+            ) as f:
+                f.write("Fake data for testing.")
+                obj = self.ParserGetitem(f)
+
+                # Test the getitem method
+                if err:
+                    with pytest.raises(err):
+                        _ = obj[key]
+                else:
+                    channel = obj[key]
+                    assert isinstance(channel, np.ndarray), (
+                        "Returned channel is not a numpy array."
+                    )
+                    assert channel.ndim == 1, "Returned channel is not 1D."
