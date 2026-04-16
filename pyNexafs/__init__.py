@@ -12,7 +12,7 @@ from importlib.metadata import version as get_version
 
 __version__ = get_version(__package__)
 
-from pyNexafs import parsers, nexafs, gui, utils, resources, types
+from pyNexafs import parsers, nexafs, gui, utils, types
 from pyNexafs.types import dtype
 
 
@@ -22,7 +22,6 @@ __all__ = [
     "nexafs",
     "gui",
     "utils",
-    "resources",
     "types",
     # Classes
     "dtype",
