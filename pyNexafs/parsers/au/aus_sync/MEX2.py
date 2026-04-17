@@ -13,6 +13,7 @@ from pyNexafs.parsers.au.aus_sync.MEX_detectors import (
     Xpress3Fluorescence,
 )
 from pyNexafs.nexafs import scanBase
+from pyNexafs.types import dtype
 
 # Standard
 import typing
@@ -210,9 +211,13 @@ class MEX2_NEXAFS(parserBase):
                             )
 
                         # Take properties from 1D and 2D arrays:
-                        energies = (
-                            data[0][:, 0] * 1000
-                        )  # Convert keV to eV for MEX beamline
+                        try:
+                            energies = self[dtype.E]
+                        except KeyError:
+                            # Assume the first column is energy if not labelled.
+                            energies = (
+                                data[0][:, 0] * 1000
+                            )  # Convert keV to eV for MEX beamline
                         interest_bins = detector.INTERESTING_BIN_IDX
                         bin_slice = (
                             slice(interest_bins[0], interest_bins[1])

@@ -63,7 +63,7 @@ class DanteFluorescence(FlourescenceDetector):
         "MEX2ES01DPP01:ch4:W:ArrayData",
     ]
     BIN_ENERGY_DELTA = 11.935
-    BIN_ENERGY_OFFSET = 96 * 11.935 - 1146.7
+    BIN_ENERGY_OFFSET = -1146.7  # Bin 96 corresponds to -0.94 eV.
     TOTAL_BINS = 4096
     TOTAL_BIN_ENERGIES = np.linspace(
         start=BIN_ENERGY_OFFSET,
@@ -87,7 +87,7 @@ class Xpress3Fluorescence(FlourescenceDetector):
     TOTAL_BINS = 4096
     TOTAL_BIN_ENERGIES = np.linspace(
         start=BIN_ENERGY_OFFSET,
-        stop=TOTAL_BINS * BIN_ENERGY_DELTA,
+        stop=BIN_ENERGY_OFFSET + TOTAL_BINS * BIN_ENERGY_DELTA,
         num=TOTAL_BINS,
     )
     INTERESTING_BIN_IDX = (0, 800)
