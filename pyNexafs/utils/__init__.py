@@ -5,7 +5,7 @@ Includes reduction, decorators, importing functions, and other utilities.
 """
 
 # Importing modules:
-from pyNexafs.utils import mda, sizes, decorators, reduction, resources
+from pyNexafs.utils import mda, sizes, decorators, reduction, resources, functions
 
 __all__ = [
     # Modules
@@ -14,4 +14,5 @@ __all__ = [
     "reduction",
     "sizes",
     "resources",
+    "functions",
 ]

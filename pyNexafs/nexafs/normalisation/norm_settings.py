@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod, ABCMeta
 from io import TextIOWrapper
 import yaml
 import os
+from pyNexafs.types import dtype
 
 
 class configMeta(ABCMeta):
@@ -72,12 +73,31 @@ class configMeta(ABCMeta):
 
 class configBase(ABC, metaclass=configMeta):
     """
+    Base abstract class that represents the normalisation settings for a scan.
+    """
+
+    @property
+    @abstractmethod
+    def is_valid(self) -> bool:
+        """
+        Check if the normalisation settings are valid, i.e. data paths exist.
+
+        Requires implementation in subclasses.
+
+        Returns
+        -------
+        bool
+            True if the settings are valid, False otherwise.
+        """
+        pass
+
+
+class configYBase(configBase, metaclass=configMeta):
+    """
     Base abstract class that represents the normalisation/background settings for a scan.
 
     Parameters
     ----------
-    scan : scan_base
-        The scan number to apply the normalisation settings to.
     apply_to : list[str | int] | None, optional
         The list of scan channel names or scan channel indices to apply the normalisation to.
         If None, apply to all channels (default).
@@ -189,7 +209,42 @@ class extSelection(Enum):
     FIXED_SCAN = 4
 
 
-class configChannel(configBase):
+class configX(configBase):
+    # TODO: Do we need to create a peak fitting configuration for this class?
+    # The idea is to have a reproducible configuration for energy calibration,
+    # which can be applied ot any scan.
+    """
+    A configuration where the x-axis of the scan is translated for calibration.
+
+    Parameters
+    ----------
+    offset : float, optional
+        The offset to apply to the x-axis of the scan for calibration. By default 0.0.
+    reference_value : float | None, optional
+        The absolute x-value calibrated to (where the calibration feature is located).
+        By default None.
+    """
+
+    def __init__(
+        self, offset: float = 0.0, reference_value: float | None = None
+    ) -> None:
+        self._offset = offset
+        self._reference_value = reference_value
+
+    @property
+    def is_valid(self) -> bool:
+        """
+        Check if the normalisation settings are valid, i.e.
+
+        Returns
+        -------
+        bool
+            True if the settings are valid, False otherwise.
+        """
+        return isinstance(self._offset, (int, float))
+
+
+class configChannel(configYBase):
     """
     Configurations where a particular channel is required to perform the normalisation.
 
@@ -218,7 +273,7 @@ class configChannel(configBase):
         # Initialise the internal variables
         self._norm_method: configChannel.normMethod = norm_method
         """The normalisation method choice."""
-        self._channel_name: str | None = channel_name
+        self._norm_channel_name: str | dtype | None = channel_name
         """The normalisation channel name choice."""
 
     @property
@@ -254,7 +309,7 @@ class configChannel(configBase):
             self._path = None
 
     @property
-    def channel(self) -> str | None:
+    def norm_channel(self) -> str | None:
         """
         The normalisation channel name.
 
@@ -268,17 +323,17 @@ class configChannel(configBase):
         str | None
             The normalisation channel name.
         """
-        return self._channel_name
+        return self._norm_channel_name
 
-    @channel.setter
-    def channel(self, channel_name: str | None):
-        self._channel_name = channel_name
+    @norm_channel.setter
+    def norm_channel(self, channel_name: str | None):
+        self._norm_channel_name = channel_name
 
-    @channel.deleter
-    def channel(self) -> None:
-        self._channel_name = None
+    @norm_channel.deleter
+    def norm_channel(self) -> None:
+        self._norm_channel_name = None
 
-    @configBase.is_valid.getter
+    @configYBase.is_valid.getter
     def is_valid(self) -> bool:
         """
         Check if the normalisation settings are valid, i.e. data paths exist.
@@ -288,10 +343,12 @@ class configChannel(configBase):
         bool
             True if the settings are valid, False otherwise.
         """
-        return self._channel_name is not None or self.method is self.normMethod.NONE
+        return (
+            self._norm_channel_name is not None or self.method is self.normMethod.NONE
+        )
 
 
-class configExternal(configBase, ABC):
+class configExternal(configYBase, ABC):
     """
     Abstract class for external data normalisation settings.
 
@@ -404,7 +461,7 @@ class configExternalChannel(configChannel, configExternal):
             self, channel_selection, keyword, path, apply_to=apply_to
         )
 
-    @configBase.is_valid.getter
+    @configYBase.is_valid.getter
     def is_valid(self) -> bool:
         """
         Check if the normalisation settings are valid, i.e. data paths exist.
@@ -433,7 +490,7 @@ class configExternalChannel(configChannel, configExternal):
                 return False
 
 
-class configDouble(configBase):
+class configDouble(configYBase):
     def __init__(self, apply_to: list[str] | None = None) -> None:
         super().__init__(apply_to)
 
@@ -638,7 +695,7 @@ class edgeNormPost(Enum):
     CONSTANT = 1
 
 
-class configEdges(configBase):
+class configEdges(configYBase):
     """
     A class to handle settings for edge normalisation.
 
@@ -714,7 +771,7 @@ class configEdges(configBase):
             self.post_edge_level = post_edge_level
 
     # Validation
-    @configBase.is_valid.getter
+    @configYBase.is_valid.getter
     def is_valid(self) -> bool:
         """
         Check if the normalisation settings are valid.
@@ -981,9 +1038,9 @@ class configSeries(metaclass=configMeta):
         The sequential list of normalisation configurations.
     """
 
-    def __init__(self, configs: list[configBase] | None = None) -> None:
+    def __init__(self, configs: list[configYBase] | None = None) -> None:
         if configs is None:
-            self._configs: list[configBase] = []
+            self._configs: list[configYBase] = []
         else:
             self._configs = configs
 
@@ -998,7 +1055,7 @@ class configSeries(metaclass=configMeta):
         """
         return self._configs.__len__()
 
-    def __getitem__(self, index: int) -> configBase:
+    def __getitem__(self, index: int) -> configYBase:
         """
         Get the normalisation settings at the specified index.
 
@@ -1014,7 +1071,7 @@ class configSeries(metaclass=configMeta):
         """
         return self._configs[index]
 
-    def __setitem__(self, index: int, value: configBase) -> None:
+    def __setitem__(self, index: int, value: configYBase) -> None:
         """
         Set the normalisation settings at the specified index.
 
@@ -1079,7 +1136,9 @@ class configSeries(metaclass=configMeta):
             The loaded series of normalisation settings.
         """
         # Get list of normConfig class + subclasses
-        config_clss: list[type[configBase]] = [configBase] + configBase.__subclasses__()
+        config_clss: list[type[configYBase]] = [
+            configYBase
+        ] + configYBase.__subclasses__()
         # Get list of class attributes for settings
         attr_clss: list[type] = [
             val
@@ -1129,7 +1188,7 @@ class configSeries(metaclass=configMeta):
 
         # Add the constructor to the yaml loader
         yaml.SafeLoader.add_multi_constructor("", default_ctor)
-        data: list[configBase] = yaml.load(stream, Loader=yaml.SafeLoader)
+        data: list[configYBase] = yaml.load(stream, Loader=yaml.SafeLoader)
         return configSeries(data)
 
     @staticmethod
