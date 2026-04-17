@@ -283,6 +283,20 @@ jobs:
           no_operation_mode: ${{ inputs.noop || 'false' }}
           verbosity: 2
 
+  log-deploy-conditions:
+    name: Log | Deploy Conditions for PyPI
+    runs-on: ubuntu-latest
+    needs: [py-sem-rel-version, py-sem-rel-publish]
+    steps:
+      - name: Log | Deploy Conditions
+        run: |
+          echo "Deploy Conditions for PyPI:"
+          echo "PSR Version Result: ${{ needs.py-sem-rel-version.result }}"
+          echo "PSR Version Released: ${{ needs.py-sem-rel-version.outputs.released }}"
+          echo "PSR Publish Result: ${{ needs.py-sem-rel-publish.result }}"
+          echo "Repository Owner: ${{ github.repository_owner }}"
+          echo "No-op Mode: ${{ inputs.noop }}"
+
   pypi-deploy-pyNexafs:
     # 1. Separate out the deploy step from the publish step to run each step at
     #    the least amount of token privilege
@@ -298,8 +312,8 @@ jobs:
       needs.py-sem-rel-version.result == 'success' &&
       needs.py-sem-rel-version.outputs.released == 'true' &&
       needs.py-sem-rel-publish.result == 'success' &&
-      !inputs.noop &&
-      (github.repository_owner == 'xraysoftmat')
+      (github.repository_owner == 'xraysoftmat') &&
+      (!inputs.noop)
     # Only run this job on the master account, only publish to PyPI on tag pushes
     permissions:
       contents: read
