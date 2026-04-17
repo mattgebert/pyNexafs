@@ -631,6 +631,7 @@ class parserMeta(abc.ABCMeta):
             )
             for key, value in namespace["_RELABELS"].items():
                 # Process the key/value for dtype channels.
+                key_match = False
                 if isinstance(key, dtype):
                     if key in _dtype_channels:
                         raise ValueError(
@@ -639,6 +640,7 @@ class parserMeta(abc.ABCMeta):
                         )
                     else:
                         _dtype_channels.append(key)
+                        key_match = True
                 elif isinstance(key, tuple):
                     for k in key:
                         if isinstance(k, dtype):
@@ -649,7 +651,9 @@ class parserMeta(abc.ABCMeta):
                                 )
                             else:
                                 _dtype_channels.append(k)
-                elif isinstance(value, dtype):
+                                key_match = True
+
+                if not key_match and isinstance(value, dtype):
                     if value in _dtype_channels:
                         raise ValueError(
                             rf"Duplicate - dtype value '{value}' in class `{name}.RELABELS` dictionary with key '{key}'."
@@ -709,7 +713,8 @@ class parserMeta(abc.ABCMeta):
             # Convert _RELABELS to a relabels_dict
             namespace["_RELABELS"] = parserMeta.relabels_dict(namespace["_RELABELS"])
 
-        # Add the _dtype_channels to the namespace:
+            # Add the _dtype_channels to the namespace:
+            namespace["_dtype_channels"] = _dtype_channels
 
         return super().__new__(mcls, name, bases, namespace, **kwargs)
 
@@ -1569,9 +1574,11 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         (NEXAFS energy, ..., <other setting / indepedent variables>, ..., channel #).
         """
 
-        self._labels: list[str | None] | tuple[list[str | None] | None, ...] | None = (
-            None
-        )
+        self._labels: (
+            list[str | dtype | None]
+            | tuple[list[str | dtype | None] | str | dtype, ...]
+            | None
+        ) = None
         """
         Channel Labels loaded through the `parser.load()` function.
         If a tuple should match the length of data
@@ -1728,8 +1735,36 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         fp = self._filepath
         return os.path.basename(fp) if fp is not None else ""
 
+    # TODO: Implement a generic method for relabelling. Should be testable.
+    # @staticmethod
+    # def _apply_relabels(
+    #     labels: list[str | dtype | None] | tuple[list[str | dtype | None] | str | dtype] | str | dtype,
+    #     relabels: dict[str | dtype | tuple[str | dtype, ...], str | dtype],
+    # ) -> list[str | dtype | None] | tuple[list[str | dtype | None] | str | dtype]:
+    #     """
+    #     Apply relabelling to a list of labels.
+
+    #     Parameters
+    #     ----------
+    #     labels : list[str | dtype | None] | tuple[list[str | dtype | None] | str | dtype] | str | dtype
+    #         The labels to relabel. Can be a single label, a list of labels, or a tuple of lists of labels.
+    #     relabels : dict[str | dtype | tuple[str | dtype, ...], str | dtype]
+    #         The relabels dictionary to apply.
+
+    #     Returns
+    #     -------
+    #     list[str | dtype | None] | tuple[list[str | dtype | None] | str | dtype]
+    #         The relabelled labels, in the same format as the input.
+    #     """
+
     @property
-    def labels(self) -> list[str | None] | tuple[list[str | None] | None, ...] | None:
+    def labels(
+        self,
+    ) -> (
+        list[str | dtype | None]
+        | tuple[list[str | dtype | None] | str | dtype | None, ...]
+        | None
+    ):
         """
         The labels of the data channels.
 
@@ -1738,7 +1773,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
 
         Returns
         -------
-        list[str | None] | tuple[list[str | None] | None] | None
+        list[str | dtype | None] | tuple[list[str | dtype | None] | str | dtype | None, ...] | None
             Labels of the data columns. Can be None if not provided.
             If multiple dimensions of data, returns a tuple of lists.
             If None, no label data exists or has been loaded.
@@ -2946,7 +2981,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
             raise KeyError(f"Key {key} must be a string label or a dtype.")
 
     @classmethod
-    def _relabel_channels(cls) -> list[dtype]:
+    def _get_dtype_relabel_channels(cls) -> list[dtype]:
         """
         Collect a list dtype enumerate that are available in the RELABELS dictionary.
 
@@ -2956,7 +2991,11 @@ class parserBase(abc.ABC, metaclass=parserMeta):
             A list of dtype that are present in the RELABELS dictionary, either as keys or
             values.
         """
-        if hasattr(cls, "_dtype_channels") and cls._dtype_channels is not None:
+        if (
+            hasattr(cls, "_dtype_channels")
+            and cls._dtype_channels is not None
+            and len(cls._dtype_channels) > 0
+        ):
             return cls._dtype_channels
         else:
             # Collect the dtype channels present.
@@ -2985,7 +3024,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         scan : scanBase
             The scan object to add the channel attributes to.
         """
-        channels = cls._relabel_channels()
+        channels = cls._get_dtype_relabel_channels()
         available_channels = []
         for channel in channels:
             # Check if the channel is indexable in the labels:
@@ -3008,6 +3047,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                 available_channels.append(channel)
             except ValueError:
                 pass
+
         # Add the available channels as an attribute of the scan class.
         scan._available_channels = available_channels
 
