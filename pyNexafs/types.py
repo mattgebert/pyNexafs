@@ -39,13 +39,39 @@ class dtype(StrEnum):
     # Normalisation channels:
     I0 = "I0"  # Incident X-ray intensity
     """I0, where the incident X-ray intensity is measured typically via a mesh current, often used for normalisation."""
+    PHD = "Photodiode"  # Photodiode scan without sample
+    """
+    Photodiode, where the X-ray intensity is measured by a photodiode without the sample, often used for normalisation at the carbon edge.
 
-    PhD = "Photodiode"  # Photodiode scan without sample
-    """Photodiode, where the X-ray intensity is measured by a photodiode without the sample, often used for normalisation at the carbon edge."""
+    For general absorption/transmission through a film, use dtype.A or dtype.T.
+    """
+    REF = "Reference Foil"
+    """A measurement of a reference foil, used for normalizing the energy spectrum."""
 
     # Energy channels:
     E = "Energy"
-    """Energy, the x-ray photon energy."""
+    """
+    Energy, the measured x-ray photon energy in eV.
+    """
+    E_SET = "Energy Setpoint"
+    """
+    Energy, the setpoint of the x-ray photon energy in eV
+    """
+
+
+# Additionally add aliases for the datatypes that are commonly used in NEXAFS
+T = dtype.T
+A = dtype.A
+TEY = dtype.TEY
+PEY = dtype.PEY
+AEY = dtype.AEY
+TFY = dtype.TFY
+PFY = dtype.PFY
+E = dtype.E
+E_SET = dtype.E_SET
+PHD = dtype.PHD
+REF = dtype.REF
+I0 = dtype.I0
 
 
 # Define the column assignments dictionary typing key-value pairs
@@ -110,6 +136,3 @@ A tuple that is comprised of:
 - units: list[str | None] | None
     The units of the reduced data array, or None if no data is returned.
 """
-
-if __name__ == "__main__":
-    print("Done")

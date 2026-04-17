@@ -13,6 +13,7 @@ from pyNexafs.nexafs.normalisation.norm_settings import (
     configChannel,
     configExternalChannel,
     configEdges,
+    configX,
 )
 
 # Config Enumerates
@@ -27,6 +28,7 @@ from pyNexafs.nexafs.normalisation.scan_normalised import (
     scanNormExt,
     scanDoubleNorm,
     scanNormEdges,
+    scanEnergyNorm,
 )
 
 # from pyNexafs.nexafs.normalisation.scan_normalised import (
@@ -40,6 +42,7 @@ __all__ = [
     # Config Classes
     "configBase",
     "configSeries",
+    "configX",
     "configChannel",
     "configExternalChannel",
     "configEdges",
@@ -51,4 +54,5 @@ __all__ = [
     "scanNormExt",
     "scanDoubleNorm",
     "scanNormEdges",
+    "scanEnergyNorm",
 ]

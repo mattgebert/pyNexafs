@@ -30,6 +30,7 @@ import io
 import types
 import warnings
 import typing
+import tempfile
 from typing import Self, Callable, Iterable, Any, override, IO, TextIO
 from _collections_abc import dict_items, dict_keys
 from collections.abc import KeysView, ItemsView
@@ -540,10 +541,8 @@ class parserMeta(abc.ABCMeta):
     synonymous names (i.e. equipment replacement with a new channel name)."""
     _RELABELS_REVERSE: dict[str, str | tuple[str, ...]] = {}
     """Internal dictionary of label equivalence in reverse."""
-    _CHANNEL_MAP: dict[str, dtype]
-    """Internal dictionary mapping common channel names to NEXAFS dtypes."""
-    _CHANNEL_MAP_REVERSE: dict[dtype, str]
-    """Internal dictionary mapping NEXAFS dtypes to common channel names."""
+    _dtype_channels: list[dtype] = []
+    """A list of mapped datatype channels `dtype` found in RELABELS. These add dynamic accessor methods at runtime."""
     _relabel = True
     """Internal class boolean for relabels, by default True."""
 
@@ -596,8 +595,6 @@ class parserMeta(abc.ABCMeta):
                 namespace["SUMMARY_PARAM_RAW_NAMES"] = []
             if "RELABELS" not in namespace:
                 namespace["RELABELS"] = {}
-            if "CHANNEL_MAP" not in namespace:
-                namespace["CHANNEL_MAP"] = {}
 
             # Raise error if necessary variables are not defined.
             for prop in ["ALLOWED_EXTENSIONS", "COLUMN_ASSIGNMENTS"]:
@@ -610,7 +607,6 @@ class parserMeta(abc.ABCMeta):
                 "COLUMN_ASSIGNMENTS",
                 "SUMMARY_PARAM_RAW_NAMES",
                 "RELABELS",
-                "CHANNEL_MAP",
             ]:
                 namespace[f"_{prop}"] = namespace[
                     prop
@@ -620,6 +616,13 @@ class parserMeta(abc.ABCMeta):
             # Validate column assignments, and assign defaults if not provided.
             parserMeta.__validate_assignments(namespace["_COLUMN_ASSIGNMENTS"])
 
+            if "_dtype_channels" in namespace:
+                raise AttributeError(
+                    f"`{name}._dtype_channels` is reserved for a list of `dtype` that are found in `{name}.RELABELS`."
+                )
+            _dtype_channels: list[dtype] = []
+            """A list of `dtype` """
+
             # Check no overlapping duplicate values & create a copy of the RELABELS dictionary in reverse.
             reverse_dict = {}
             generic_msg = (
@@ -627,6 +630,38 @@ class parserMeta(abc.ABCMeta):
                 + r"\nI.e. {'old_name': 'new_name', ('old_name_2', 'old_name_3'): 'new_name_2'}"
             )
             for key, value in namespace["_RELABELS"].items():
+                # Process the key/value for dtype channels.
+                key_match = False
+                if isinstance(key, dtype):
+                    if key in _dtype_channels:
+                        raise ValueError(
+                            rf"Duplicate - dtype key '{key}' in class `{name}.RELABELS` dictionary with value '{namespace['_RELABELS'][key]}'."
+                            + generic_msg
+                        )
+                    else:
+                        _dtype_channels.append(key)
+                        key_match = True
+                elif isinstance(key, tuple):
+                    for k in key:
+                        if isinstance(k, dtype):
+                            if k in _dtype_channels:
+                                raise ValueError(
+                                    rf"Duplicate - dtype key '{k}' in class `{name}.RELABELS` dictionary with value '{namespace['_RELABELS'][key]}'."
+                                    + generic_msg
+                                )
+                            else:
+                                _dtype_channels.append(k)
+                                key_match = True
+
+                if not key_match and isinstance(value, dtype):
+                    if value in _dtype_channels:
+                        raise ValueError(
+                            rf"Duplicate - dtype value '{value}' in class `{name}.RELABELS` dictionary with key '{key}'."
+                            + generic_msg
+                        )
+                    else:
+                        _dtype_channels.append(value)
+
                 # The value item has already been registered
                 if value in reverse_dict:
                     raise ValueError(
@@ -678,25 +713,8 @@ class parserMeta(abc.ABCMeta):
             # Convert _RELABELS to a relabels_dict
             namespace["_RELABELS"] = parserMeta.relabels_dict(namespace["_RELABELS"])
 
-            # Validate the channel map
-            reverse_channel_map = {}
-            for key, value in namespace["_CHANNEL_MAP"].items():
-                if not isinstance(key, str):
-                    raise ValueError(
-                        f"Key '{key}' in `{name}.CHANNEL_MAP` is not a string (Channel map will use RELABELS)."
-                    )
-                if not isinstance(value, dtype):
-                    raise ValueError(
-                        f"Value '{value}' in CHANNEL_MAP is not a NEXAFS dtype."
-                    )
-                if value in reverse_channel_map:
-                    raise ValueError(
-                        f"Datatype `{value.name}` has already been assigned to `{reverse_channel_map[value]}`. \
-                            Each dtype can only be assigned to one channel name."
-                    )
-                else:
-                    reverse_channel_map[value] = key
-            namespace["_REVERSE_CHANNEL_MAP"] = reverse_channel_map
+            # Add the _dtype_channels to the namespace:
+            namespace["_dtype_channels"] = _dtype_channels
 
         return super().__new__(mcls, name, bases, namespace, **kwargs)
 
@@ -1117,20 +1135,6 @@ class parserMeta(abc.ABCMeta):
         return cls._RELABELS_REVERSE
 
     @property
-    def CHANNEL_MAP(cls) -> dict[str, dtype]:
-        """
-        The NEXAFS datatype channel map, created at runtime.
-
-        Enables the access of dtypes on the parser and the scan class.
-
-        Returns
-        -------
-        dict[str, dtype]
-            The NEXAFS datatype channel map, created at runtime.
-        """
-        return cls._CHANNEL_MAP
-
-    @property
     def relabel(cls) -> bool:
         """
         A property to enable relabelling `params` and `labels` defined in cls.RELABELS.
@@ -1166,8 +1170,8 @@ class parserBase(abc.ABC, metaclass=parserMeta):
 
     Parameters
     ----------
-    filepath : str | None, optional
-        The filepath of the data file, by default None.
+    file : str | FileIO | None, optional
+        An FileIO object or str path of the data file, by default None.
     header_only : bool, optional
         If True, then only the header of the file loaded, by default False.
     relabel : bool, optional
@@ -1211,7 +1215,6 @@ class parserBase(abc.ABC, metaclass=parserMeta):
     SUMMARY_PARAM_RAW_NAMES = parserMeta.SUMMARY_PARAM_RAW_NAMES
     RELABELS = parserMeta.RELABELS
     RELABELS_REVERSE = parserMeta.RELABELS_REVERSE
-    CHANNEL_MAP = parserMeta.CHANNEL_MAP
     # These methods are not class methods copies, but rather return names existing on the object instance.
     # summary_param_names_with_units = parserMeta.summary_param_names_with_units
     # summary_param_names = parserMeta.summary_param_names
@@ -1535,7 +1538,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
 
     def __init__(
         self,
-        filepath: str | None,
+        file: str | typing.IO | None,
         header_only: bool = False,
         relabel: bool | None = None,
         **kwargs,
@@ -1547,7 +1550,21 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         super().__init__()
 
         # Initialise variables
-        self._filepath: str | None = filepath  # filepath of the data file
+        self._filepath: str | None
+        if isinstance(file, str):
+            if os.path.isfile(file):
+                self._filepath = file
+            else:
+                raise FileNotFoundError(f"Filepath '{file}' does not exist.")
+        elif isinstance(file, (typing.IO, io.FileIO)):
+            fname = file.name
+            if os.path.isfile(fname):
+                self._filepath = fname
+            else:
+                raise FileNotFoundError(f"Filepath '{fname}' does not exist.")
+        else:
+            self._filepath = None
+
         """The file path of the data"""
         self.data: npt.NDArray | tuple[npt.NDArray | None, ...] | None = None
         """
@@ -1557,9 +1574,11 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         (NEXAFS energy, ..., <other setting / indepedent variables>, ..., channel #).
         """
 
-        self._labels: list[str | None] | tuple[list[str | None] | None, ...] | None = (
-            None
-        )
+        self._labels: (
+            list[str | dtype | None]
+            | tuple[list[str | dtype | None] | str | dtype, ...]
+            | None
+        ) = None
         """
         Channel Labels loaded through the `parser.load()` function.
         If a tuple should match the length of data
@@ -1593,15 +1612,20 @@ class parserBase(abc.ABC, metaclass=parserMeta):
             units or parameters. Use `obj._parser_fn.__name__` to get the method name."""
 
         # Parse data?
-        if filepath is None:
+        if file is None:
             return
-        elif type(filepath) is str:
-            if os.path.isfile(filepath):
+        elif isinstance(file, str):
+            if os.path.isfile(file):
                 self.load(header_only=header_only, **kwargs)  # Load data
             else:
-                raise FileNotFoundError(f"Filepath '{filepath}' does not exist.")
+                raise FileNotFoundError(f"Filepath '{file}' does not exist.")
         else:
-            raise TypeError(f"Filepath is {type(filepath)}, not str.")
+            if isinstance(
+                file, (IO, typing.IO, io.FileIO, tempfile._TemporaryFileWrapper)
+            ):
+                self.load(file=file, header_only=header_only, **kwargs)  # Load data
+            else:
+                raise TypeError(f"Filepath is {type(file)}, not str.")
 
     @property
     def is_loaded(self) -> bool:
@@ -1711,8 +1735,36 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         fp = self._filepath
         return os.path.basename(fp) if fp is not None else ""
 
+    # TODO: Implement a generic method for relabelling. Should be testable.
+    # @staticmethod
+    # def _apply_relabels(
+    #     labels: list[str | dtype | None] | tuple[list[str | dtype | None] | str | dtype] | str | dtype,
+    #     relabels: dict[str | dtype | tuple[str | dtype, ...], str | dtype],
+    # ) -> list[str | dtype | None] | tuple[list[str | dtype | None] | str | dtype]:
+    #     """
+    #     Apply relabelling to a list of labels.
+
+    #     Parameters
+    #     ----------
+    #     labels : list[str | dtype | None] | tuple[list[str | dtype | None] | str | dtype] | str | dtype
+    #         The labels to relabel. Can be a single label, a list of labels, or a tuple of lists of labels.
+    #     relabels : dict[str | dtype | tuple[str | dtype, ...], str | dtype]
+    #         The relabels dictionary to apply.
+
+    #     Returns
+    #     -------
+    #     list[str | dtype | None] | tuple[list[str | dtype | None] | str | dtype]
+    #         The relabelled labels, in the same format as the input.
+    #     """
+
     @property
-    def labels(self) -> list[str | None] | tuple[list[str | None] | None, ...] | None:
+    def labels(
+        self,
+    ) -> (
+        list[str | dtype | None]
+        | tuple[list[str | dtype | None] | str | dtype | None, ...]
+        | None
+    ):
         """
         The labels of the data channels.
 
@@ -1721,7 +1773,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
 
         Returns
         -------
-        list[str | None] | tuple[list[str | None] | None] | None
+        list[str | dtype | None] | tuple[list[str | dtype | None] | str | dtype | None, ...] | None
             Labels of the data columns. Can be None if not provided.
             If multiple dimensions of data, returns a tuple of lists.
             If None, no label data exists or has been loaded.
@@ -1989,6 +2041,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
 
         # Add the parser map back to the scan object.
         scan._parser = self
+        scan._parser_class = self.__class__
 
         # Get assignments from parser object.
         assignments = self.COLUMN_ASSIGNMENTS  # Validated column assignments.
@@ -2098,6 +2151,8 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                 y_units.append(None)
         scan._y_units = y_units if len(y_units) > 0 else None
 
+        # Add attributes to scan for pre-defined channel names.
+        self._add_channel_attr_to_scan(scan)
         return scan
 
     @classmethod
@@ -2184,7 +2239,12 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                                 : parse_fn.__code__.co_argcount
                             ]
                         )
-                        default_args = arg_names.copy()[-len(parse_fn.__defaults__) :]
+                        def_len = (
+                            len(parse_fn.__defaults__)
+                            if parse_fn.__defaults__ is not None
+                            else 0
+                        )
+                        default_args = arg_names.copy()[-def_len:]
 
                         # Remove the file_parser arguments from the list.
                         for name in ["cls", "file"]:  # Non-optionals
@@ -2320,7 +2380,9 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         load_filepath = self._filepath  # Might be None
         try:
             # Check if file parameter is provided:
-            if isinstance(file, IO):
+            if isinstance(
+                file, (IO, typing.IO, io.FileIO, tempfile._TemporaryFileWrapper)
+            ):
                 if isinstance(file.name, str) and os.path.exists(file.name):
                     load_filepath = file.name
                     if file.closed:
@@ -2678,31 +2740,36 @@ class parserBase(abc.ABC, metaclass=parserMeta):
             self.data, columns=self._labels if len(self._labels) > 0 else None
         )
 
-    def label_index(
-        self,
+    @classmethod
+    def _label_index(
+        cls,
+        labels: list[str | None] | tuple[list[str | None] | None, ...] | None,
         search: str | tuple[str, ...] | list[str | tuple[str, ...]],
         search_relabels: bool = True,
-        reduced_labels: list[str | None] | None = None,
     ) -> int:
         """
-        Find the index of the label in the labels list.
+        A class method to find the index of the label in the labels list.
 
-        Searches for raw labels first, then checks and searches for any RELABELS match (if `search_relabels`, but default `True`).
+        Searches for raw labels first, then checks and searches for any `RELABELS` match
+        (if `search_relabels`, but default `True`).
+
+        Only returns indexes for 1D data channels. If the label is found in a higher dimensionality list,
+        then a ValueError is raised, as this method is only intended for searching for 1D channel labels.
 
         Parameters
         ----------
+        labels : list[str | None] | tuple[list[str | None] | None, ...] | None,
+            Labels to search for in the labels list. Either None, a list of strings or None, or a tuple of the latter lists.
         search : str | tuple[str, ...] | list[str | tuple[str, ...]]
             String labels to search for in the labels list. Also allows tuples of synonymous strings, and lists of the former.
             Returns the index of the first search query that is successful.
         search_relabels : bool, optional
             To additionally search check the RELABELS dictionary for the label and subsequently search. By default True.
-        reduced_labels : list[str | None] | None = None
-            Replaces use of default `parser.labels`, particularly useful when using reduced data.
 
         Returns
         -------
         int
-            Index of the label in the labels list.
+            The index of the label in the labels list.
 
         Raises
         ------
@@ -2710,8 +2777,6 @@ class parserBase(abc.ABC, metaclass=parserMeta):
             If `search` is not a string, tuple of strings, or list of the previous two types.
         ValueError
             If the label is not found in the labels list
-        ValueError
-            If the (1D channels) labels list is None.
         ValueError
             If the label is found in higher dimensionality lists rather than the 1D list.
         """
@@ -2730,12 +2795,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
             raise ValueError(
                 f"Search parameter {search} is not a string, tuple of strings or list of the previous."
             )
-        # Check if labels is a tuple (i.e. multiple channel dimensions)
-        labels = self._labels if reduced_labels is None else reduced_labels
-        if labels is None:
-            raise AttributeError(
-                f"The labels attribute of {self} is `None`. Cannot search for {search}."
-            )
+        # Collect 1D labels first.
         if isinstance(labels, tuple):
             labels_1D = labels[0]
             if labels_1D is None:
@@ -2753,10 +2813,10 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                 # Also check relabel if search_relabel is True.
                 if search_relabels:
                     # Search keys
-                    if query in self.RELABELS:
+                    if query in cls.RELABELS:
                         try:
                             return labels_1D.index(
-                                self.RELABELS[query]
+                                cls.RELABELS[query]
                             )  # throws value error if not found
                         except ValueError:
                             pass
@@ -2764,8 +2824,8 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                         # Search values instead to reverse for key
                         k = None
                         v = None
-                        for k, v in self.RELABELS.items():
-                            if v == self.RELABELS[query]:
+                        for k, v in cls.RELABELS.items():
+                            if v == cls.RELABELS[query]:
                                 break
 
                         if isinstance(k, str):
@@ -2806,24 +2866,24 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                         # Also check relabel if search_relabel is True.
                         if search_relabels:
                             # Search keys
-                            if query in self.RELABELS:
+                            if query in cls.RELABELS:
                                 raise ValueError(
-                                    f"The label `{query}` matched to `{self.RELABELS[query]}` was found \
+                                    f"The label `{query}` matched to `{cls.RELABELS[query]}` was found \
                                     in the index #{i + 1} dimensional data, but only 1D channels (0th index) are considered. \
                                     Perhaps use `reduce_labels` parameter after reduction?"
                                 )
 
                             # Search values instead to reverse for key
-                            relabel_vals = list(self.RELABELS.values())
+                            relabel_vals = list(cls.RELABELS.values())
                             if query in relabel_vals:
-                                relabel_keys = list(self.RELABELS.keys())
+                                relabel_keys = list(cls.RELABELS.keys())
                                 # Check for multiple matching values (opposed to unique keys).
                                 warn = True if relabel_vals.count(query) > 1 else False
                                 # Find value in RELABELS
                                 i = relabel_vals.index(query)
                                 if warn:
                                     warnings.warn(
-                                        f"Multiple labels matched `{query}` in {type(self)}.RELABELS. Using key '{relabel_keys[i]}' as the label."
+                                        f"Multiple labels matched `{query}` in {cls.__name__}.RELABELS. Using key '{relabel_keys[i]}' as the label."
                                     )
                                 # If labels found, return index of key.
                                 key = relabel_keys[i]
@@ -2835,6 +2895,161 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                                     )
         # Finally
         raise ValueError(f"Label(s) '{search}' not found in labels {labels_1D}.")
+
+    def label_index(
+        self,
+        search: str | tuple[str, ...] | list[str | tuple[str, ...]],
+        search_relabels: bool = True,
+        reduced_labels: list[str | None] | None = None,
+    ) -> int:
+        """
+        Find the index of the label in the labels list.
+
+        Searches for raw labels first, then checks and searches for any RELABELS match (if `search_relabels`, but default `True`).
+
+        Parameters
+        ----------
+        search : str | tuple[str, ...] | list[str | tuple[str, ...]]
+            String labels to search for in the labels list. Also allows tuples of synonymous strings, and lists of the former.
+            Returns the index of the first search query that is successful.
+        search_relabels : bool, optional
+            To additionally search check the RELABELS dictionary for the label and subsequently search. By default True.
+        reduced_labels : list[str | None] | None = None
+            Replaces use of default `parser.labels`, particularly useful when using reduced data.
+
+        Returns
+        -------
+        int
+            Index of the label in the labels list.
+
+        Raises
+        ------
+        ValueError
+            If the (1D channels) labels list is None.
+        """
+        # Check if labels is a tuple (i.e. multiple channel dimensions)
+        labels = self._labels if reduced_labels is None else reduced_labels
+        if labels is None:
+            raise AttributeError(
+                f"The labels attribute of {self} is `None`. Cannot search for {search}."
+            )
+        return self._label_index(labels, search, search_relabels)
+
+    def __getitem__(self, key: str | dtype) -> npt.NDArray:
+        """
+        Get the data for the specified key.
+
+        Parameters
+        ----------
+        key : str | dtype
+            The key to get the data for. Can be a string label or a dtype.
+
+        Returns
+        -------
+        npt.NDArray
+            The data for the specified key.
+
+        Raises
+        ------
+        KeyError
+            If the key is not found in the labels or channel map.
+        ValueError
+            If the data or labels are not loaded.
+        """
+        data = self.data
+        labels = self._labels
+        if data is None or labels is None:
+            raise ValueError("Data or labels are not loaded.")
+        if isinstance(key, (str, dtype)):
+            try:
+                index = self.label_index(key)
+                if isinstance(data, tuple):
+                    for d in data:
+                        if d is not None and len(d.shape) == 2:
+                            data = d
+                            break
+                if isinstance(data, tuple):
+                    raise ValueError("No set of 1D data channels found.")
+                return data[:, index]
+            except ValueError as e:
+                # Check the value error text matches the following:
+                if str(e).startswith("Label(s) ") and " not found in labels " in str(e):
+                    raise KeyError(f"Key {key} not found in labels.")
+                else:
+                    raise e
+        else:
+            raise KeyError(f"Key {key} must be a string label or a dtype.")
+
+    @classmethod
+    def _get_dtype_relabel_channels(cls) -> list[dtype]:
+        """
+        Collect a list dtype enumerate that are available in the RELABELS dictionary.
+
+        Returns
+        -------
+        list[dtype]
+            A list of dtype that are present in the RELABELS dictionary, either as keys or
+            values.
+        """
+        if (
+            hasattr(cls, "_dtype_channels")
+            and cls._dtype_channels is not None
+            and len(cls._dtype_channels) > 0
+        ):
+            return cls._dtype_channels
+        else:
+            # Collect the dtype channels present.
+            dtypes: list[dtype] = []
+            for key, val in cls.RELABELS.items():
+                if isinstance(val, dtype):
+                    dtypes.append(val)
+                elif isinstance(key, tuple):
+                    for k in key:
+                        if isinstance(k, dtype):
+                            dtypes.append(k)
+                elif isinstance(key, dtype):
+                    dtypes.append(key)
+            return dtypes
+
+    @classmethod
+    def _add_channel_attr_to_scan(cls, scan: scanBase) -> None:
+        """
+        Add attribute accessors for the channels defined in the RELABELS dictionary.
+
+        For example, if a channel has a RELABELS key or value with dtype.PHD, then an attribute `scan.PHD`
+        is added to the scan object that returns the data for that channel.
+
+        Parameters
+        ----------
+        scan : scanBase
+            The scan object to add the channel attributes to.
+        """
+        channels = cls._get_dtype_relabel_channels()
+        available_channels = []
+        for channel in channels:
+            # Check if the channel is indexable in the labels:
+            try:
+                _ = cls._label_index([scan.x_label] + scan.y_labels, channel)
+
+                @property
+                def get_dtype_data(self):
+                    if (channel == self.x_label) or (
+                        (channel in cls.RELABELS and self.x_label in cls.RELABELS)
+                        and (cls.RELABELS[channel] == cls.RELABELS[self.x_label])
+                    ):
+                        return self.x
+                    else:
+                        idx = cls._label_index(self.y_labels, channel)
+                        return self.y[:, idx]
+
+                setattr(scan, channel.name, get_dtype_data)
+
+                available_channels.append(channel)
+            except ValueError:
+                pass
+
+        # Add the available channels as an attribute of the scan class.
+        scan._available_channels = available_channels
 
     @property
     def summary_params(self) -> dict[str, Any]:

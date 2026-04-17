@@ -7,12 +7,13 @@ from pyNexafs.parsers import parserBase
 from pyNexafs.utils.mda import MDAFileReader
 from pyNexafs.utils.reduction import reducer
 from pyNexafs.parsers.au.aus_sync.MEX2_relabels import RELABELS
-from pyNexafs.types import dtype, parse_fn_ret_type, reduction_type
+from pyNexafs.types import parse_fn_ret_type, reduction_type
 from pyNexafs.parsers.au.aus_sync.MEX_detectors import (
     DanteFluorescence,
     Xpress3Fluorescence,
 )
 from pyNexafs.nexafs import scanBase
+from pyNexafs.types import dtype
 
 # Standard
 import typing
@@ -129,14 +130,6 @@ class MEX2_NEXAFS(parserBase):
     # See MEX2_relabels.py for the relabels dictionary.
     RELABELS = RELABELS
 
-    # Mappings
-    CHANNEL_MAP = {
-        "MEX2ES01ZEB01:CALC_ENERGY_EV": dtype.E,  # measured energy
-        "MEX2ES01DAQ01:ch2:S:MeanValue_RBV": dtype.I0,
-        "MEX2ES01DAQ01:ch3:S:MeanValue_RBV": dtype.TEY,
-        "ifluor": dtype.PFY,
-    }
-
     def __init__(
         self,
         filepath: str | None,
@@ -218,9 +211,13 @@ class MEX2_NEXAFS(parserBase):
                             )
 
                         # Take properties from 1D and 2D arrays:
-                        energies = (
-                            data[0][:, 0] * 1000
-                        )  # Convert keV to eV for MEX beamline
+                        try:
+                            energies = self[dtype.E]
+                        except KeyError:
+                            # Assume the first column is energy if not labelled.
+                            energies = (
+                                data[0][:, 0] * 1000
+                            )  # Convert keV to eV for MEX beamline
                         interest_bins = detector.INTERESTING_BIN_IDX
                         bin_slice = (
                             slice(interest_bins[0], interest_bins[1])

@@ -2,14 +2,16 @@
 Dedicated file for MEX2 NEXAFS Relabels dictionary, due to large number of possible parameters.
 """
 
+from pyNexafs.types import dtype
+
 CHANNEL_MAP = {}
 
 RELABELS = {
     ##################################
     ######################### MDA File
     ##################################
-    "MEX2DCM01:ENERGY": "Energy Setpoint",
-    "MEX2ES01ZEB01:CALC_ENERGY_EV": "Energy",
+    ("MEX2DCM01:ENERGY", "Energy Setpoint"): dtype.E_SET,
+    ("MEX2ES01ZEB01:CALC_ENERGY_EV", "Energy"): dtype.E,
     (
         "MEX2ES01ZEB01:GATE_TIME_SET",
         "Count Time",
@@ -20,8 +22,14 @@ RELABELS = {
     "MEX2ES01ZEB01:BRAGG_WITH_OFFSET": "Bragg",
     "SR11BCM01:CURRENT_MONITOR": "Current Monitor",  # What is this? I0?
     "MEX2ES01DAQ01:ch1:S:MeanValue_RBV": "Beam Intensity Monitor",  # Beam Intensity Monitor
-    "MEX2ES01DAQ01:ch2:S:MeanValue_RBV": "I0",
-    "MEX2ES01DAQ01:ch3:S:MeanValue_RBV": "SampleDrain",
+    ("MEX2ES01DAQ01:ch2:S:MeanValue_RBV", "I0"): dtype.I0,
+    ("MEX2ES01DAQ01:ch3:S:MeanValue_RBV", "SampleDrain"): dtype.TEY,
+    (
+        "ifluor",
+        "Fluorescence Sum",
+        "Fluorescence Sum (Reduced)",
+        "Fluorescence",
+    ): dtype.PFY,
     # 'MEX2ES01DAQ01:ch4:S:MeanValue_RBV',
     ("MEX2ES01DPP01:dppAVG:InputCountRate", "ICR_AVG"): "Input Average Count Rate",
     ("MEX2ES01DPP01:dppAVG:OutputCountRate", "OCR_AVG"): "Output Average Count Rate",
@@ -298,11 +306,6 @@ RELABELS = {
     # "SampleDrain": "Sample Drain",
     #### XDI Names ####
     "ROI_AD_AVG": "ROI Average",
-    (
-        "ifluor",
-        "Fluorescence Sum",
-        "Fluorescence Sum (Reduced)",
-    ): "Fluorescence",
     "ROI.start_bin": "Fluorescence Start Bin",
     "ROI.end_bin": "Fluorescence End Bin",
     "Element.symbol": "Element",
