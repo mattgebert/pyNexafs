@@ -7,6 +7,47 @@ CHANGELOG
 ..
     version list
 
+.. _changelog-v0.2.0:
+
+v0.2.0 (2026-04-17)
+===================
+
+Bug Fixes
+---------
+
+* **_base.py**: Fix _dtype_channels collection in parserMeta (`b5f87a9`_)
+
+* **MEX2**: Fix old Dante detector energy scale reduction (`8235163`_)
+
+Documentation
+-------------
+
+* **docs/index.rst**: Redirect release and pypi pointers (`157bc48`_)
+
+* **functions.py**: Add proper docstrings for utility functions (`62e847a`_)
+
+* **README.rst**: Add zenodo reference (`01a7693`_)
+
+* **README.rst**: Update PyTest badge link (`17f259d`_)
+
+Features
+--------
+
+* **_base.py,-scan.py**: Add dtype integration (`cbf5dfe`_)
+
+* **nexafs**: Multiple features including x-calibration and **getitem** on scanAbstractNorm
+  (`6acc9c6`_)
+
+.. _01a7693: https://github.com/xraysoftmat/pyNexafs/commit/01a7693a00f698ab92387ed58afd157be5ee2473
+.. _157bc48: https://github.com/xraysoftmat/pyNexafs/commit/157bc48804fb010371ece7ab27a29cb914c5cca7
+.. _17f259d: https://github.com/xraysoftmat/pyNexafs/commit/17f259d72269557415439e6dcd2d49db76a37f0f
+.. _62e847a: https://github.com/xraysoftmat/pyNexafs/commit/62e847a3ebc7140b4b1121512f98dd24d9ed32c2
+.. _6acc9c6: https://github.com/xraysoftmat/pyNexafs/commit/6acc9c65ab33d6546f3706e19124a6ded43935fe
+.. _8235163: https://github.com/xraysoftmat/pyNexafs/commit/82351636b6f7f92fc769afc3b1fbe25990bfd69b
+.. _b5f87a9: https://github.com/xraysoftmat/pyNexafs/commit/b5f87a99ce4e5db40ce7302ad4a0a0c90e7736dd
+.. _cbf5dfe: https://github.com/xraysoftmat/pyNexafs/commit/cbf5dfe92c3a12dbde4143d54a488668b8be545b
+
+
 .. _changelog-v0.1.0:
 
 v0.1.0 (2026-03-18)

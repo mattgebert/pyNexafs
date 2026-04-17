@@ -16,7 +16,7 @@ build-backend = "hatchling.build" # using hatchling which provides better suppor
 [project]
 # Project information
 name = "pyNexafs"
-version = "0.1.0"
+version = "0.2.0"
 description = "A package for processing and analysing NEXAFS data."
 readme = "README.rst"
 license = {file = "LICENSE"}
