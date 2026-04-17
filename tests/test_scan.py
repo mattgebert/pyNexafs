@@ -92,7 +92,7 @@ class TestScanBase:
     @pytest.mark.parametrize(
         "dt",
         [
-            *TestParserBase.TestGetItem.ParserGetitem._relabel_channels(),
+            *TestParserBase.TestGetItem.ParserGetitem._get_dtype_relabel_channels(),
             # Try another method not in the relabels to test that it raises an error.
             dtype.PFY,
         ],
@@ -112,8 +112,12 @@ class TestScanBase:
                 with pytest.raises(AttributeError):
                     _ = getattr(scan, dt.name)
             else:
-                data = getattr(scan, dt.name)
+                data = getattr(scan, dt.name)  # Gets the property object
+                # Perform the fget to get the data
+                data = data.fget(scan)
                 assert isinstance(data, np.ndarray), (
-                    f"Returned data for dtype {dt} is not a numpy array."
+                    f"Returned data for dtype {dt} is not a numpy array but `{type(data).__name__}`."
                 )
-                assert data.ndim == 1, f"Returned data for dtype {dt} is not 1D."
+                assert data.ndim == 1, (
+                    f"Returned data for dtype {dt} is not 1D, but {data.ndim}."
+                )
