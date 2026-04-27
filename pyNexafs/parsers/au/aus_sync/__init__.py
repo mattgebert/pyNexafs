@@ -1,9 +1,9 @@
 """
 Parser classes for the Australian Synchrotron.
 
-Current beamlines supported include are:
-- SXR_NEXAFS : Australian Synchrotron Soft X-ray NEXAFS parser.
-- MEX2_NEXAFS : Australian Synchrotron Medium Energy X-ray NEXAFS parser.
+Current beamlines supported include are SXR (Soft X-ray) and MEX2
+(Medium Energy X-ray). MEX1 and XAS beamlines are not currently supported,
+but are planned to be added in the future.
 """
 
 from pyNexafs.parsers.au.aus_sync.SXR import SXR_NEXAFS

@@ -186,7 +186,7 @@ class MEX2_NEXAFS(parserBase):
                     return None, None, None
                 else:
                     if isinstance(data, tuple):
-                        # Reduce the Flourescence data!
+                        # Reduce the Fluorescence data!
                         flour_data = data[1]
                         assert flour_data.ndim == 3, (
                             f"Fluorescence data should be indexed with energy, binning and channel but has rank {data.ndim}."

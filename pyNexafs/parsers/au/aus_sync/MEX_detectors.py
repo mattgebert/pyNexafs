@@ -1,16 +1,23 @@
+"""
+A module for defining detector specifications for the MEX 1 & 2 beamlines.
+
+Defines classes for fluorescence detectors, which are implemented
+with multi-channel analysers (MCA) that bin the fluorescence signal into energy bins.
+"""
+
 import numpy as np
 from numpy.typing import NDArray
 
 
-class FlourescenceDetector:
+class FluorescenceDetector:
     """
-    An abstract class to reduce energy-binned flourescence.
+    An abstract class to reduce energy-binned fluorescence.
 
-    Reduces multi-channel analyser (MCA) binned flourescence data.
+    Reduces multi-channel analyser (MCA) binned fluorescence data.
     """
 
     FLUOR_NAMES: list[str]
-    """The string names of the 2D flourescence binned channels (length N)."""
+    """The string names of the 2D fluorescence binned channels (length N)."""
     BIN_ENERGY_DELTA: float
     """The energy difference (eV) between each bin"""
     TOTAL_BINS: int
@@ -53,7 +60,7 @@ class FlourescenceDetector:
             )
 
 
-class DanteFluorescence(FlourescenceDetector):
+class DanteFluorescence(FluorescenceDetector):
     """Configuration for interpreting the Dante MCA Fluorescence data."""
 
     FLUOR_NAMES: list[str] = [
@@ -73,7 +80,7 @@ class DanteFluorescence(FlourescenceDetector):
     INTERESTING_BIN_IDX = (80, 900)
 
 
-class Xpress3Fluorescence(FlourescenceDetector):
+class Xpress3Fluorescence(FluorescenceDetector):
     """Configuration for interpreting the Xpress3 MCA Fluorescence data."""
 
     FLUOR_NAMES = [

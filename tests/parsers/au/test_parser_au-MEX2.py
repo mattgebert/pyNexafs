@@ -95,7 +95,7 @@ class TestMEX2:
                 for key in params:
                     assert np.all(parser.params[key] == params[key])
 
-        # Test scan conversion for reduction of multi-dimensional flourescence data
+        # Test scan conversion for reduction of multi-dimensional fluorescence data
         @pytest.mark.parametrize(
             "header_only, energy_bin_domain", [(True, None), (False, (2200, 2600))]
         )
@@ -136,7 +136,7 @@ class TestMEX2:
             scan = parser.to_scan(
                 energy_bin_domain=energy_bin_domain, load_all_columns=True
             )
-            # Add flourescence channels
+            # Add fluorescence channels
             assert scan.y is not None
             assert (
                 scan.y.shape[-1] == data1D.shape[-1] + data2D.shape[-1] + 1 - 1
@@ -185,7 +185,7 @@ class TestMEX2:
             scan = parser.to_scan(
                 energy_bin_domain=energy_bin_domain, load_all_columns=True
             )
-            # Add flourescence channels
+            # Add fluorescence channels
             assert scan.y is not None
             assert (
                 scan.y.shape[-1] == data1D.shape[-1] + data2D.shape[-1] + 1 - 1
