@@ -6,8 +6,10 @@ from enum import StrEnum
 from typing import Any, TypedDict
 from typing_extensions import NotRequired
 import numpy.typing as npt
+from pyNexafs.utils.decorators import enum_member_doc
 
 
+@enum_member_doc
 class dtype(StrEnum):
     """
     An enumerate for the different NEXAFS data sources.
@@ -16,14 +18,18 @@ class dtype(StrEnum):
     ## The direct absorption of X-ray intensity:
     T = "Transmission"  # Equivalent to absorption.
     """Transmission, where the intensity of X-rays transmitted through the sample is measured."""
+
     A = "Absorption"  # Equivalent to transmission.
     """Absorption, where the absorption of X-rays by the sample is measured."""
+
     ## Partial photo-electron yield
     PEY = "Partial Electron Yield"
     """Partial Electron Yield, where electrons are collected within a partial energy/momentum window."""
+
     # The current from a sample drain:
     TEY = "Total Electron Yield"
     """Total Electron Yield, where the total current from the sample drain is measured."""
+
     # Auger electron yield:
     AEY = "Auger Electron Yield"
     """Auger Electron Yield, where Auger electrons are collected."""
@@ -39,39 +45,69 @@ class dtype(StrEnum):
     # Normalisation channels:
     I0 = "I0"  # Incident X-ray intensity
     """I0, where the incident X-ray intensity is measured typically via a mesh current, often used for normalisation."""
-    PHD = "Photodiode"  # Photodiode scan without sample
+
+    # Photodiode scan without sample
+    PHD = "Photodiode"
     """
-    Photodiode, where the X-ray intensity is measured by a photodiode without the sample, often used for normalisation at the carbon edge.
+    Photodiode, where the X-ray intensity is measured by a photodiode without the sample,
+    often used for normalisation at the carbon edge.
 
     For general absorption/transmission through a film, use dtype.A or dtype.T.
     """
+
+    # Reference foil scan
     REF = "Reference Foil"
-    """A measurement of a reference foil, used for normalizing the energy spectrum."""
+    """A measurement of a reference foil, used for calibrating the energy axis."""
 
     # Energy channels:
     E = "Energy"
-    """
-    Energy, the measured x-ray photon energy in eV.
-    """
+    """Energy, the measured x-ray photon energy in eV."""
+
     E_SET = "Energy Setpoint"
-    """
-    Energy, the setpoint of the x-ray photon energy in eV
-    """
+    """Energy, the setpoint of the x-ray photon energy in eV."""
 
 
 # Additionally add aliases for the datatypes that are commonly used in NEXAFS
 T = dtype.T
+"""Alias of :attr:`dtype.T` (Transmission)."""
+
 A = dtype.A
+"""Alias of :attr:`dtype.A` (Absorption)."""
+
 TEY = dtype.TEY
+"""Alias of :attr:`dtype.TEY` (Total Electron Yield)."""
+
 PEY = dtype.PEY
+"""Alias of :attr:`dtype.PEY` (Partial Electron Yield)."""
+
 AEY = dtype.AEY
+"""Alias of :attr:`dtype.AEY` (Auger Electron Yield)."""
+
 TFY = dtype.TFY
+"""Alias of :attr:`dtype.TFY` (Total Fluorescence Yield)."""
+
 PFY = dtype.PFY
+"""Alias of :attr:`dtype.PFY` (Partial Fluorescence Yield)."""
+
 E = dtype.E
+"""Alias of :attr:`dtype.E` (Energy)."""
+
 E_SET = dtype.E_SET
+"""Alias of :attr:`dtype.E_SET` (Energy Setpoint)."""
+
 PHD = dtype.PHD
+"""Alias of :attr:`dtype.PHD` (Photodiode)."""
+
 REF = dtype.REF
+"""Alias of :attr:`dtype.REF` (Reference Foil)."""
+
 I0 = dtype.I0
+"""Alias of :attr:`dtype.I0` (Incident X-ray intensity)."""
+
+ALL_DTYPE_MEMBERS: list[dtype] = [T, A, TEY, PEY, AEY, TFY, PFY, E, E_SET, PHD, REF, I0]
+"""
+A list of all the available dtype members, for easy reference and validation.
+"""
 
 
 # Define the column assignments dictionary typing key-value pairs

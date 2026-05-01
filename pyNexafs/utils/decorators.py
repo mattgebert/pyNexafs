@@ -1,9 +1,145 @@
 import abc
-from typing import Callable, Any, TypeAlias, ParamSpec, TypeVar
+import ast
+import inspect
+import textwrap
+from enum import EnumMeta
+from typing import (
+    Annotated,
+    Callable,
+    Any,
+    TypeAlias,
+    ParamSpec,
+    TypeVar,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 P = ParamSpec("P")
 T = TypeVar("T")
+EnumType = TypeVar("EnumType", bound=EnumMeta)
 WrappedFunctionDecorator: TypeAlias = Callable[[Callable[P, T]], Callable[P, T]]
+
+
+def enum_member_doc(cls: EnumType) -> EnumType:
+    """
+    Class decorator that assigns docstrings to enum members.
+
+    Ensures each documented member has an ``Annotated[T, "docstring"]``
+    type annotation.
+
+    Docstrings are sourced from (in priority order):
+
+    1. **``Annotated`` metadata** — ``Annotated[T, "docstring", ...]`` on the
+       member annotation; the first ``str`` metadata argument is used.
+    2. **Trailing string literals** — a string literal immediately following a
+       plain member assignment.
+
+    After processing, ``cls.__annotations__`` is updated so every documented
+    member carries ``Annotated[type(member), "docstring"]``, meaning
+    ``typing.get_type_hints(cls, include_extras=True)`` will always reflect the
+    docstring regardless of which source was used.
+
+    Parameters
+    ----------
+    cls : EnumMeta
+        The enum class to process.
+
+    Returns
+    -------
+    EnumMeta
+        The same enum class with ``__doc__`` and ``__annotations__`` updated on
+        each qualifying member.
+
+    Examples
+    --------
+    Trailing string literal:
+
+    >>> from enum import StrEnum
+    >>> @enum_member_doc
+    ... class Color(StrEnum):
+    ...     RED = "red"
+    ...     \"\"\"The colour red.\"\"\"
+    >>> Color.RED.__doc__
+    'The colour red.'
+    >>> import typing; typing.get_type_hints(Color, include_extras=True)['RED']
+    typing.Annotated[str, 'The colour red.']
+
+    ``Annotated`` metadata:
+
+    >>> from typing import Annotated
+    >>> @enum_member_doc
+    ... class Color(StrEnum):
+    ...     RED: Annotated[str, "The colour red."] = "red"
+    >>> Color.RED.__doc__
+    'The colour red.'
+    """
+    # Collect docs: start with trailing string literals via AST
+    member_docs: dict[str, str] = {}
+
+    try:
+        source = textwrap.dedent(inspect.getsource(cls))
+    except OSError:
+        source = None
+
+    if source is not None:
+        tree = ast.parse(source)
+        class_def = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef))
+        body = class_def.body
+        for i, node in enumerate(body):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            if i + 1 >= len(body):
+                continue
+            next_node = body[i + 1]
+            if (
+                isinstance(next_node, ast.Expr)
+                and isinstance(next_node.value, ast.Constant)
+                and isinstance(next_node.value.value, str)
+            ):
+                targets = (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+                for target in targets:
+                    if isinstance(target, ast.Name) and target.id in cls.__members__:
+                        member_docs[target.id] = next_node.value.value
+
+    # Annotated[T, "docstring"] metadata overrides trailing literals
+    try:
+        hints = get_type_hints(cls, include_extras=True)
+    except Exception:
+        hints = {}
+    for name, hint in hints.items():
+        if name not in cls.__members__:
+            continue
+        if get_origin(hint) is not Annotated:
+            continue
+        for meta in get_args(hint)[1:]:
+            if isinstance(meta, str):
+                member_docs[name] = meta
+                break
+
+    # Apply docs and ensure Annotated annotations exist for all documented members
+    annotations = cls.__annotations__ if hasattr(cls, "__annotations__") else {}
+    for name, doc in member_docs.items():
+        cls.__members__[name].__doc__ = doc
+        existing = annotations.get(name)
+        # Wrap in Annotated if not already, or replace the doc string in existing Annotated
+        if existing is not None and get_origin(existing) is Annotated:
+            args = get_args(existing)
+            base_type = args[0]
+            other_meta = [m for m in args[1:] if not isinstance(m, str)]
+            annotations[name] = (
+                Annotated[base_type, doc, *other_meta]
+                if other_meta
+                else Annotated[base_type, doc]
+            )
+        else:
+            base_type = type(cls.__members__[name])
+            annotations[name] = Annotated[base_type, doc]
+    cls.__annotations__ = annotations
+
+    return cls
 
 
 # Decorator for copying docstrings
