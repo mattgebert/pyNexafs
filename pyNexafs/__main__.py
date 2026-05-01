@@ -14,16 +14,6 @@ import os
 from importlib.metadata import version
 import traceback
 
-# Internal Imports
-hasQT: bool
-try:
-    import PyQt6  # noqa: F401
-    from PyQt6 import QtWidgets  # noqa: F401
-
-    hasQT = True
-except ImportError:
-    hasQT = False
-
 
 def main(dir_arg: str | None = None):
     dir_exists = os.path.isdir(dir_arg) if dir_arg else False
@@ -53,6 +43,8 @@ def main_with_traceback(dir_arg: str | None = None):
     try:
         main(dir_arg)
     except Exception as e:
+        from PyQt6 import QtWidgets
+
         # Create a QT window to display the error
         app = QtWidgets.QApplication([])
         app.setApplicationName("kkcalc: Kramers-Kronig Calculator (Error)")
