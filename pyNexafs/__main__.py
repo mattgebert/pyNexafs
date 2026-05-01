@@ -2,20 +2,32 @@
 Main entry point for the pyNexafs package.
 
 Runs the GUI for the package if the dependencies are met.
-Can be run from the command line with the command `python -m pyNexafs`.
-Allowed arguments:
-- `--help`: Show help message and exit.
-- `[directory]`: Specify a directory to load NEXAFS files from.
-- If no arguments are provided, the GUI will open pointed at the user folder '~'.
+Can be run from the command line with: `python -m pyNexafs`
+
+Arguments:
+    directory: Optional path to a directory containing NEXAFS data files (defaults to home directory).
+    --help: Show help message and exit.
+    --version: Show the version of pyNexafs and exit.
+    --traceback: Show detailed traceback if an error occurs.
 """
 
-import sys
 import os
 from importlib.metadata import version
 import traceback
+import argparse
 
 
 def main(dir_arg: str | None = None):
+    """
+    The main function to run the pyNexafs GUI.
+
+    Parameters
+    ----------
+    dir_arg : str | None, optional
+        A directory path to load NEXAFS files from.
+        If None, defaults to the user home directory.
+    """
+
     dir_exists = os.path.isdir(dir_arg) if dir_arg else False
     # Check if the dependencies are met
     try:
@@ -40,6 +52,15 @@ def main(dir_arg: str | None = None):
 
 
 def main_with_traceback(dir_arg: str | None = None):
+    """
+    A wrapper for the main function that shows a detailed traceback on errors.
+
+    Parameters
+    ----------
+    dir_arg : str | None, optional
+        A directory path to load NEXAFS files from.
+        If None, defaults to the user home directory.
+    """
     try:
         main(dir_arg)
     except Exception as e:
@@ -66,21 +87,35 @@ def main_with_traceback(dir_arg: str | None = None):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]  # Get command line arguments, excluding the script name
-    # Check if the script is run with the `--help` argument
-    if "--help" in args:
-        print(
-            "pyNexafs: A Python package for analyzing NEXAFS data.\n"
-            "Usage:\n"
-            "\tpython -m pyNexafs [--help]\n"
-            "\tpython -m pyNexafs [directory]\n"
-            "Options:\n"
-            "\t--help\tShow this help message and exit."
-        )
-        exit()
+    argument_parser = argparse.ArgumentParser(
+        prog="pyNexafs",
+        description="A Python package for analyzing NEXAFS data.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    """The argument parser for the pyNexafs command line interface."""
 
-    if len(args) > 1:
-        print("Error: Too many arguments. Use --help for usage information.")
-        exit()
+    argument_parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {version('pyNexafs')}",
+    )
 
-    dir_arg = args[0] if len(args) == 1 else None
+    argument_parser.add_argument(
+        "--traceback",
+        action="store_true",
+        help="Show detailed traceback on errors.",
+    )
+
+    argument_parser.add_argument(
+        "directory",
+        nargs="?",
+        default=None,
+        help="Directory to load NEXAFS files from (defaults to home directory).",
+    )
+
+    args = argument_parser.parse_args()
+
+    if args.traceback:
+        main_with_traceback(args.directory)
+    else:
+        main(args.directory)
