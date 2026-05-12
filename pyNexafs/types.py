@@ -49,9 +49,9 @@ class dtype(StrEnum):
     # Photodiode scan without sample
     PHD = "Photodiode"
     """
-    Photodiode, where the X-ray intensity is measured by a photodiode without the sample,
-    often used for normalisation at the carbon edge.
+    Photodiode, x-ray beam intensity measured by a photodiode without a sample.
 
+    Often used for normalisation at the carbon edge.
     For general absorption/transmission through a film, use dtype.A or dtype.T.
     """
 
@@ -65,6 +65,10 @@ class dtype(StrEnum):
 
     E_SET = "Energy Setpoint"
     """Energy, the setpoint of the x-ray photon energy in eV."""
+
+    # Acquisition Time:
+    TIME = "Time"
+    """Time, the acquisition (or gate) time of the scan datapoints in seconds."""
 
 
 # Additionally add aliases for the datatypes that are commonly used in NEXAFS
@@ -104,7 +108,24 @@ REF = dtype.REF
 I0 = dtype.I0
 """Alias of :attr:`dtype.I0` (Incident X-ray intensity)."""
 
-ALL_DTYPE_MEMBERS: list[dtype] = [T, A, TEY, PEY, AEY, TFY, PFY, E, E_SET, PHD, REF, I0]
+TIME = dtype.TIME
+"""Alias of :attr:`dtype.TIME` (Acquisition Time)."""
+
+ALL_DTYPE_MEMBERS: list[dtype] = [
+    T,
+    A,
+    TEY,
+    PEY,
+    AEY,
+    TFY,
+    PFY,
+    E,
+    E_SET,
+    PHD,
+    REF,
+    I0,
+    TIME,
+]
 """
 A list of all the available dtype members, for easy reference and validation.
 """
