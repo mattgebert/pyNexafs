@@ -8,6 +8,7 @@ from io import TextIOWrapper
 import yaml
 import os
 from pyNexafs.types import dtype
+import numpy.typing as npt
 
 
 class configMeta(ABCMeta):
@@ -241,10 +242,122 @@ class configX(configBase):
         bool
             True if the settings are valid, False otherwise.
         """
-        return isinstance(self._offset, (int, float))
+        return (isinstance(self._offset, (int, float))) and configBase.is_valid.fget(
+            self
+        )
 
 
-class configChannel(configYBase):
+class configMethod(configYBase, metaclass=ABCMeta):
+    """
+    An abstract class that allows some configuration with a normalisation method choice.
+
+    Parameters
+    ----------
+    norm_method : normMethod, optional
+        The method of normalisation, by default normMethod.NONE.
+    apply_to : list[str] | None, optional
+        The list of scan channel names to apply the normalisation to, by default None.
+    """
+
+    # Add the normMethod Enum as a class attribute
+    normMethod = normMethod
+
+    def __init__(
+        self,
+        norm_method: normMethod = normMethod.NONE,
+        apply_to: list[str | int] | None = None,
+    ) -> None:
+        self._norm_method: configMethod.normMethod = norm_method
+        """The normalisation method choice."""
+        super().__init__(apply_to)
+
+    @property
+    def method(self) -> normMethod:
+        """
+        The normalisation method used for the selected channel.
+
+        Parameters
+        ----------
+        method : normMethod
+            The normalisation method.
+
+        Returns
+        -------
+        normMethod
+            The normalisation method.
+
+        See Also
+        --------
+        normMethod : The enumerate of normalisation methods available.
+        """
+        return self._norm_method
+
+    @method.setter
+    def method(self, method: normMethod):
+        self._norm_method = method
+        if method is self.normMethod.NONE:
+            self._keyword = None
+            self._path = None
+
+    @configYBase.is_valid.getter
+    def is_valid(self) -> bool:
+        """
+        Check if the normalisation settings are valid, i.e. data paths exist.
+
+        Returns
+        -------
+        bool
+            True if the settings are valid, False otherwise.
+        """
+        return (
+            self._norm_method is self.normMethod.NONE
+            or self._norm_method in self.normMethod
+        ) and configYBase.is_valid.fget(self)
+
+
+class configConstant(configMethod):
+    """
+    A configuration where a constant value/array is used for normalisation.
+
+    Parameters
+    ----------
+    norm_method : normMethod, optional
+        The method of normalisation, by default normMethod.NONE.
+    value : float | npt.NDArray, optional
+        The constant value to use for normalisation, by default 1.0.
+    apply_to : list[str] | None, optional
+        The list of scan channel names to apply the normalisation to, by default None.
+    """
+
+    def __init__(
+        self,
+        norm_method: normMethod = normMethod.NONE,
+        value: float | npt.NDArray = 1.0,
+        apply_to: list[str | int] | None = None,
+    ) -> None:
+        self._norm_data = value
+        """The constant value or array to use for normalisation."""
+        super().__init__(norm_method, apply_to)
+
+    @configMethod.is_valid.getter
+    def is_valid(self) -> bool:
+        """
+        Check if the normalisation settings are valid.
+
+        For a constant normalisation, the value must be a number.
+
+        Returns
+        -------
+        bool
+            True if the settings are valid, False otherwise.
+        """
+        return (
+            isinstance(self._norm_data, (int, float))
+            or (isinstance(self._norm_data, npt.NDArray))
+        ) and configMethod.is_valid.fget(self)
+
+
+class configChannel(configMethod):
     """
     Configurations where a particular channel is required to perform the normalisation.
 
@@ -258,9 +371,6 @@ class configChannel(configYBase):
         The list of scan channel names to apply the normalisation to, by default None.
     """
 
-    # Add the normMethod Enum as a class attribute
-    normMethod = normMethod
-
     def __init__(
         self,
         norm_method: normMethod = normMethod.NONE,
@@ -268,45 +378,11 @@ class configChannel(configYBase):
         apply_to: list[str | int] | None = None,
     ) -> None:
         # Initialise the normConfig class
-        super().__init__(apply_to)
+        super().__init__(norm_method, apply_to)
 
         # Initialise the internal variables
-        self._norm_method: configChannel.normMethod = norm_method
-        """The normalisation method choice."""
         self._norm_channel_name: str | dtype | None = channel_name
         """The normalisation channel name choice."""
-
-    @property
-    def method(self) -> normMethod:
-        """
-        Property to get/set  the normalisation method.
-
-        Can be one of the following:
-        - norm_method.NONE
-            No normalisation of the scan channel by the background channel.
-        - norm_method.BACKGROUND
-            Subtract the background channel from the scan channel.
-        - norm_method.FLUX
-            Divide the scan channel by the normalized (maximum value=1) background channel amplitude.
-
-        Parameters
-        ----------
-        method : normMethod
-            The normalisation method.
-
-        Returns
-        -------
-        normMethod
-            The normalisation method.
-        """
-        return self._norm_method
-
-    @method.setter
-    def method(self, method: normMethod):
-        self._norm_method = method
-        if method is self.normMethod.NONE:
-            self._keyword = None
-            self._path = None
 
     @property
     def norm_channel(self) -> str | None:
@@ -345,7 +421,7 @@ class configChannel(configYBase):
         """
         return (
             self._norm_channel_name is not None or self.method is self.normMethod.NONE
-        )
+        ) and configMethod.is_valid.fget(self)
 
 
 class configExternal(configYBase, ABC):
@@ -733,13 +809,13 @@ class configEdges(configYBase):
     """The post-edge normalisation type enumerate."""
 
     DEFAULT_PRE_EDGE_LEVEL_CONSTANT = 0.0
-    """The constant offset for the pre-edge normalisation. I.e. Pre-edge at 0.0"""
+    """The constant offset for the pre-edge normalisation. I.e. Pre-edge at 0.0."""
     DEFAULT_PRE_EDGE_LEVEL_LINEAR = 0.0
-    """The constant gradient for the pre-edge normalisation. I.e. Linear gradient at 0.0"""
+    """The constant gradient for the pre-edge normalisation. I.e. Linear gradient at 0.0."""
     DEFAULT_PRE_EDGE_LEVEL_EXP = 0.0
-    """The constant exponential level for the pre-edge normalisation. I.e. Exponential level at 0.0"""
+    """The constant exponential level for the pre-edge normalisation. I.e. Exponential level at 0.0."""
     DEFAULT_POST_EDGE_LEVEL_CONSTANT = 1.0
-    """The constant offset for the post-edge normalisation. I.e. Post-edge at 1.0"""
+    """The constant offset for the post-edge normalisation. I.e. Post-edge at 1.0."""
 
     def __init__(
         self,

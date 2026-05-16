@@ -681,8 +681,15 @@ class parsedScanAbstract(scanAbstract):
         self._ctime = parser.ctime if parser is not None else None
 
         self._available_channels: list[dtype] = []
-        """A list of available dtype channels that have been loaded from the parser.
-        Populated when loading data from the parser. See `_base.parserBase.to_scan()` for more details."""
+        """
+        A list of available dtype channels that have been loaded from the parser.
+
+        Populated when loading data from the parser.
+
+        See Also
+        --------
+        pyNexafs.parsers.base.parserBase.to_scan: Method to load data from the parser into a scan object, which populates this list.
+        """
         return
 
     @override

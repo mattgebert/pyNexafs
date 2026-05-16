@@ -16,6 +16,7 @@ from pyNexafs.nexafs.normalisation.norm_settings import (
     edgeNormPost,
     # Config Classes
     configBase,
+    configConstant,
     configChannel,
     configExternalChannel,
     configEdges,
@@ -984,7 +985,274 @@ scanXNorm = (
 )
 
 
-class scanNorm(scanAbstractYNorm):
+class scanNormConstant(scanAbstractYNorm):
+    """
+    Normalising a scan_base to a constant value/array.
+
+    Useful for scaling to a particular value, such as the pre-edge intensity in NEXAFS spectra.
+
+    Parameters
+    ----------
+    scan : scanAbstract
+        The initial scan object to collect and normalise.
+    norm_data : float | npt.NDArray
+        The constant value or array to normalise the y data to.
+    norm_method : normMethod, optional
+        The normalisation method to apply to the normalisation data. See `configChannel.normMethod` for options.
+        By default, uses normMethod.MULT, which scales the data by the normalisation data.
+    apply_to : Sequence[str | int | dtype] | None, optional
+        The list of y-channel labels to apply the normalisation to.
+    conv_indexes : bool, optional
+        Whether to convert integer indexes in `apply_to` to string labels if available.
+    """
+
+    normMethod = normMethod
+
+    @override
+    def __init__(
+        self,
+        scan: scanAbstract,
+        norm_data: float | npt.NDArray,
+        norm_method: normMethod = configChannel.normMethod.MULT,
+        apply_to: Sequence[str | int | dtype] | None = None,
+        conv_indexes: bool = True,
+    ) -> None:
+        super().__init__(scan, apply_to=apply_to, conv_indexes=conv_indexes)
+        self._norm_data: float | npt.NDArray
+        """The constant value or array to normalise the y data to."""
+        if isinstance(norm_data, (int, float)):
+            self._norm_data = float(norm_data)
+        else:
+            nd = np.asarray(norm_data)
+            if nd.shape != self.x.shape:
+                raise ValueError(
+                    f"Shape of norm_data ({nd.shape}) does not match shape of x data ({self.x.shape})."
+                )
+            self._norm_data = nd
+
+        self._norm_method: normMethod = norm_method
+        """The normalisation method to apply to the normalisation data. See `configChannel.normMethod` for options.
+        By default, uses normMethod.MULT, which scales the data by the normalisation data. """
+
+    @override
+    def _config_class(self) -> type[configBase]:
+        """
+        Return the settings class for the normalisation configuration.
+
+        Required to allows loading from a settings object.
+
+        Returns
+        -------
+        type[configChannel]
+            The configuration class for the normalisation settings.
+        """
+        return configConstant
+
+    @scanAbstractNorm.settings.getter
+    @override
+    def settings(self) -> configChannel:
+        """
+        A settings object capturing the settings for the normalisation channel.
+
+        Returns
+        -------
+        configChannel
+            The normalisation settings object, containing the channel and method.
+        """
+        return self._config
+
+    @override
+    @staticmethod
+    def from_config(scan: scanAbstract, config: configChannel) -> scanNorm:  # type: ignore # TODO: implement fix for subtype override.
+        """
+        Load the normalisation settings from a configuration object.
+
+        Parameters
+        ----------
+        scan : scan_abstract
+            The original scan object to apply the normalisation to.
+        config : configChannel
+            The normalisation configuration object.
+
+        Returns
+        -------
+        scanNorm
+            A new instance of scanNorm initialised with the provided configuration.
+        """
+        return scanNorm(
+            scan=scan, norm_channel=config.norm_channel, norm_method=config.method
+        )
+
+    @property
+    def method(self) -> normMethod:
+        """
+        The normalisation method used for the normalisation channel.
+
+        Parameters
+        ----------
+        method : normMethod
+            The new normalisation method enumerate. Can be
+            - 0: `normMethod.NONE` for no normalisation.
+            - 1: `normMethod.SUB` for background subtraction.
+            - 2: `normMethod.DIV` for normalisation by amplitude variation.
+
+        Returns
+        -------
+        normMethod
+            The normalisation method.
+        """
+        return self._config.method
+
+    @method.setter
+    def method(self, method: normMethod) -> None:
+        self._config.method = method
+
+    @override
+    def _apply_normalisation(self) -> None:
+        """
+        Perform the selected normalisation.
+
+        `self.method` determines the method to apply to the provided y normalisation data.
+        """
+        match self.method:
+            case self.normMethod.NONE:
+                # Do nothing for no normalisation
+                pass
+            case self.normMethod.SUB:
+                # Subtract the normalisation data from the y data.
+                self._normalisation_subtract()
+            case self.normMethod.DIV:
+                # Scale the y data by the normalisation data.
+                self._normalisation_divide()
+            case self.normMethod.MULT:
+                self._normalisation_multiply()
+            case _:
+                raise ValueError("Normalisation method not defined.")
+        return
+
+    def _normalisation_multiply(self) -> None:
+        # Multiply the y data by the normalisation data.
+        ylabels = self.y_labels
+        at = self._apply_to
+        if (
+            ylabels is None
+            and at is not None
+            and not all(isinstance(i, int) for i in at)
+        ):
+            raise ValueError(
+                "Y labels are not defined in the scan object. Cannot match string labels in `apply_to`."
+            )
+        y = self._y
+        if y is None:
+            raise ValueError("Y data is not defined.")
+
+        if at is None:
+            for i in range(y.shape[1]):
+                label = ylabels[i] if ylabels is not None else None
+                if hasattr(self, "_norm_idx") and i == self._norm_idx:
+                    # Skip normalisation channel
+                    continue
+                # Apply to all channels except the normalisation channel.
+                y[:, i] *= self._norm_data
+        else:
+            for label in at:
+                if isinstance(label, int):
+                    i = label
+                else:
+                    i = self.label_index(label)
+                if hasattr(self, "_norm_idx") and i == self._norm_idx:
+                    raise ValueError(
+                        f"Cannot apply normalisation to the normalisation channel itself (index {i}, label '{label}')."
+                    )
+                else:
+                    y[:, i] *= self._norm_data
+
+    def _normalisation_divide(self) -> None:
+        """
+        Scale the y data by the normalisation data.
+
+        Applies the amplitude normalisation to `apply_to` channels, otherwise to all channels.
+        """
+        # Scale the y data, only in the apply_to channels.
+        ylabels = self.y_labels
+        at = self._apply_to
+        if (
+            ylabels is None
+            and at is not None
+            and not all(isinstance(i, int) for i in at)
+        ):
+            raise ValueError(
+                "Y labels are not defined in the scan object. Cannot match string labels in `apply_to`."
+            )
+        y = self._y
+        if y is None:
+            raise ValueError("Y data is not defined.")
+
+        if at is None:
+            for i in range(y.shape[1]):
+                label = ylabels[i] if ylabels is not None else None
+                if hasattr(self, "_norm_idx") and i == self._norm_idx:
+                    # Skip normalisation channel
+                    continue
+                # Apply to all channels except the normalisation channel.
+                y[:, i] /= self._norm_data
+        else:
+            for label in at:
+                if isinstance(label, int):
+                    i = label
+                else:
+                    i = self.label_index(label)
+                if hasattr(self, "_norm_idx") and i == self._norm_idx:
+                    raise ValueError(
+                        f"Cannot apply normalisation to the normalisation channel itself (index {i}, label '{label}')."
+                    )
+                else:
+                    y[:, i] /= self._norm_data
+
+    def _normalisation_subtract(self) -> None:
+        """
+        Subtract the background from the selected y data.
+
+        Applies the background subtraction to `apply_to` channels, otherwise to all channels.
+        """
+        # Subtract the normalisation data from the y data.
+        ylabels = self.y_labels
+        at = self._apply_to
+        if (
+            ylabels is None
+            and at is not None
+            and not all(isinstance(i, int) for i in at)
+        ):
+            raise ValueError(
+                "Y labels are not defined in the scan object. Cannot match string labels in `apply_to`."
+            )
+        y = self._y
+        if y is None:
+            raise ValueError("Y data is not defined.")
+
+        if at is None:
+            for i in range(y.shape[1]):
+                label = ylabels[i] if ylabels is not None else None
+                if hasattr(self, "_norm_idx") and i == self._norm_idx:
+                    # Skip normalisation channel
+                    continue
+                # Apply to all channels except the normalisation channel.
+                y[:, i] -= self._norm_data
+        else:
+            for label in at:
+                if isinstance(label, int):
+                    i = label
+                else:
+                    i = self.label_index(label)
+                if hasattr(self, "_norm_idx") and i == self._norm_idx:
+                    raise ValueError(
+                        f"Cannot apply normalisation to the normalisation channel itself (index {i}, label '{label}')."
+                    )
+                else:
+                    y[:, i] -= self._norm_data
+
+
+class scanNorm(scanNormConstant):
     """
     General class for a normalisation of a scanAbstract.
 
@@ -1001,6 +1269,13 @@ class scanNorm(scanAbstractYNorm):
         Can provide a string name or an integer index, but will be stored as a string.
     norm_method : normMethod, optional
         The normalisation method to apply to the normalisation channel. See `configChannel.normMethod` for options.
+    norm_ref_amplitude : bool, optional
+        To scale the normalisation channel used close to 1, by dividing by it's own amplitude.
+        By default, uses the maximum value of the normalisation channel as the amplitude.
+        If `norm_ref_amplitude_idx` is provided, uses the value at that index instead.
+    norm_ref_amplitude_idx : int, optional
+        The index to use for the normalisation channel amplitude reference when `norm_ref_amplitude` is True.
+        By default None, which uses the maximum value of the normalisation channel.
     apply_to : Sequence[str | dtype | int] | None, optional
         The list of y-channel indexes to apply the normalisation to.
     conv_indexes : bool, optional
@@ -1027,14 +1302,27 @@ class scanNorm(scanAbstractYNorm):
         scan: scanAbstract,
         norm_channel: str | int | dtype,
         norm_method: normMethod = configChannel.normMethod.DIV,
+        norm_ref_amplitude: bool = False,
+        norm_ref_amplitude_idx: int | None = None,
         apply_to: Sequence[str | int | dtype] | None = None,
         conv_indexes: bool = True,
     ) -> None:
         # Set reference for original scan object
-        super().__init__(scan, apply_to=apply_to, conv_indexes=conv_indexes)
+        scanAbstractYNorm.__init__(
+            self, scan, apply_to=apply_to, conv_indexes=conv_indexes
+        )
+        # Do not call scanNormConstant init, as we are not using norm_data directly,
+        # but instead loading it from the norm_channel.
 
         self._norm_idx: int
-        """The index of the normalisation channel in the origin scan"""
+        """The index of the normalisation channel in the origin scan."""
+
+        self._norm_ref_amp: bool = norm_ref_amplitude
+        """Whether to scale the normalisation channel used close to 1, by dividing by it's own amplitude."""
+
+        self._norm_ref_amp_idx: int | None = norm_ref_amplitude_idx
+        """The index to use for the normalisation channel amplitude reference when `norm_ref_amplitude`.
+        is True. By default None, which uses the maximum value of the normalisation channel."""
 
         # Store initial information.
         ylabels = self._origin.y_labels
@@ -1112,30 +1400,6 @@ class scanNorm(scanAbstractYNorm):
         )
 
     @property
-    def method(self) -> normMethod:
-        """
-        The normalisation method used for the normalisation channel.
-
-        Parameters
-        ----------
-        method : normMethod
-            The new normalisation method enumerate. Can be
-            - 0: `normMethod.NONE` for no normalisation.
-            - 1: `normMethod.SUB` for background subtraction.
-            - 2: `normMethod.DIV` for normalisation by amplitude variation.
-
-        Returns
-        -------
-        normMethod
-            The normalisation method.
-        """
-        return self._config.method
-
-    @method.setter
-    def method(self, method: normMethod) -> None:
-        self._config.method = method
-
-    @property
     def norm_channel(self) -> str | None:
         """
         The normalisation channel name.
@@ -1194,221 +1458,23 @@ class scanNorm(scanAbstractYNorm):
             origin.y_errs[:, ind] if origin.y_errs is not None else None
         )
 
+        # Apply normalisation if requested.
+        if self._norm_ref_amp:
+            if self._norm_ref_amp_idx is not None:
+                ref_amp = self._norm_data[self._norm_ref_amp_idx]
+            else:
+                ref_amp = np.max(np.abs(self._norm_data))
+            if ref_amp != 0:
+                self._norm_data = self._norm_data.copy() / ref_amp
+                if self._norm_data_errs is not None:
+                    self._norm_data_errs = self._norm_data_errs.copy() / ref_amp
+            else:
+                warnings.warn(
+                    "Reference amplitude for normalisation is zero. Cannot scale normalisation data."
+                )
+
         # Load x and y data regularly.
         super()._load_from_origin()
-
-    @override
-    def _apply_normalisation(self) -> None:
-        """
-        Perform the selected normalisation.
-
-        `self.method` determines the method to apply to the provided y normalisation data.
-        """
-        match self.method:
-            case self.normMethod.NONE:
-                # Do nothing for no normalisation
-                pass
-            case self.normMethod.SUB:
-                # Subtract the normalisation data from the y data.
-                self._normalisation_subtract()
-            case self.normMethod.DIV:
-                # Scale the y data by the normalisation data.
-                self._normalisation_divide()
-            case self.normMethod.MULT:
-                self._normalisation_multiply()
-            case _:
-                raise ValueError("Normalisation method not defined.")
-        return
-
-    def _normalisation_multiply(self) -> None:
-        # Multiply the y data by the normalisation data.
-        ylabels = self.y_labels
-        at = self._apply_to
-        if (
-            ylabels is None
-            and at is not None
-            and not all(isinstance(i, int) for i in at)
-        ):
-            raise ValueError(
-                "Y labels are not defined in the scan object. Cannot match string labels in `apply_to`."
-            )
-        y = self._y
-        if y is None:
-            raise ValueError("Y data is not defined.")
-
-        if at is None:
-            for i in range(y.shape[1]):
-                label = ylabels[i] if ylabels is not None else None
-                if i == self._norm_idx:
-                    # Skip normalisation channel
-                    continue
-                # Apply to all channels except the normalisation channel.
-                y[:, i] *= self._norm_data
-        else:
-            for label in at:
-                if isinstance(label, int):
-                    i = label
-                else:
-                    i = self.label_index(label)
-                if i == self._norm_idx:
-                    raise ValueError(
-                        f"Cannot apply normalisation to the normalisation channel itself (index {i}, label '{label}')."
-                    )
-                else:
-                    y[:, i] *= self._norm_data
-
-    def _normalisation_divide(self) -> None:
-        """
-        Scale the y data by the normalisation data.
-
-        Applies the amplitude normalisation to `apply_to` channels, otherwise to all channels.
-        """
-        # Scale the y data, only in the apply_to channels.
-        ylabels = self.y_labels
-        at = self._apply_to
-        if (
-            ylabels is None
-            and at is not None
-            and not all(isinstance(i, int) for i in at)
-        ):
-            raise ValueError(
-                "Y labels are not defined in the scan object. Cannot match string labels in `apply_to`."
-            )
-        y = self._y
-        if y is None:
-            raise ValueError("Y data is not defined.")
-
-        if at is None:
-            for i in range(y.shape[1]):
-                label = ylabels[i] if ylabels is not None else None
-                if i == self._norm_idx:
-                    # Skip normalisation channel
-                    continue
-                # Apply to all channels except the normalisation channel.
-                y[:, i] /= self._norm_data
-        else:
-            for label in at:
-                if isinstance(label, int):
-                    i = label
-                else:
-                    i = self.label_index(label)
-                if i == self._norm_idx:
-                    raise ValueError(
-                        f"Cannot apply normalisation to the normalisation channel itself (index {i}, label '{label}')."
-                    )
-                else:
-                    y[:, i] /= self._norm_data
-
-    def _normalisation_subtract(self) -> None:
-        """
-        Subtract the background from the selected y data.
-
-        Applies the background subtraction to `apply_to` channels, otherwise to all channels.
-        """
-        # Subtract the normalisation data from the y data.
-        ylabels = self.y_labels
-        at = self._apply_to
-        if (
-            ylabels is None
-            and at is not None
-            and not all(isinstance(i, int) for i in at)
-        ):
-            raise ValueError(
-                "Y labels are not defined in the scan object. Cannot match string labels in `apply_to`."
-            )
-        y = self._y
-        if y is None:
-            raise ValueError("Y data is not defined.")
-
-        if at is None:
-            for i in range(y.shape[1]):
-                label = ylabels[i] if ylabels is not None else None
-                if i == self._norm_idx:
-                    # Skip normalisation channel
-                    continue
-                # Apply to all channels except the normalisation channel.
-                y[:, i] -= self._norm_data
-        else:
-            for label in at:
-                if isinstance(label, int):
-                    i = label
-                else:
-                    i = self.label_index(label)
-                if i == self._norm_idx:
-                    raise ValueError(
-                        f"Cannot apply normalisation to the normalisation channel itself (index {i}, label '{label}')."
-                    )
-                else:
-                    y[:, i] -= self._norm_data
-
-    @scanAbstractNorm.y_labels.getter
-    def y_labels(self) -> list[str | None] | None:
-        """
-        Property for the y-axis labels, from the origin scan object.
-
-        Parameters
-        ----------
-        labels : list[str] | None
-            The new y-axis labels.
-
-        Returns
-        -------
-        list[str]
-            The y-axis labels.
-        """
-        origin_labels = self._origin.y_labels
-        ## No longer removing the normalisation channel from the labels, as it causes confusion when chaining normalisations.
-        # idx = self._norm_idx
-        # if idx is not None:
-        #     return origin_labels[0:idx] + origin_labels[idx + 1 :]
-        # else:
-        return origin_labels
-
-    @y_labels.setter
-    def y_labels(self, labels: list[str] | None) -> None:
-        idx = self._norm_idx
-        if idx is not None and labels is not None and self.norm_channel is not None:
-            # Include the normalisation channel in the labels when setting.
-            self._origin.y_labels = labels[0:idx] + [self.norm_channel] + labels[idx:]
-        else:
-            # Otherwise set labels normally.
-            self._origin.y_labels = labels
-
-    @scanAbstractNorm.y_units.getter
-    def y_units(self) -> list[str] | None:
-        """
-        Property for the y-axis units, from the origin scan object.
-
-        When the normalisation channel is defined, the units are adjusted to remove the normalisation channel.
-
-        Parameters
-        ----------
-        labels : list[str] | None
-            The new y-axis units.
-
-        Returns
-        -------
-        list[str] | None
-            The y-axis units.
-        """
-        origin_units = self._origin.y_units
-        idx = self._norm_idx
-        if idx is not None and origin_units is not None:
-            return origin_units[0:idx] + origin_units[idx + 1 :]
-        else:
-            return origin_units
-
-    @y_units.setter
-    def y_units(self, units: list[str] | None) -> None:
-        idx = self._norm_idx
-        if idx is not None:
-            if units is not None:
-                # Include the normalisation channel in the units when setting.
-                self._origin.y_units = units[0:idx] + [self.norm_channel] + units[idx:]
-                return
-        # Otherwise, set units normally.
-        self._origin.y_units = units
-        return
 
     def copy(self) -> scanNorm:
         """
