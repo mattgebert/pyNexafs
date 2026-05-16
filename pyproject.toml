@@ -77,16 +77,18 @@ dev = [
 ]
 
 docs = [
+    "sphinx-autoapi", # Automatically generate API documentation instead of using autodoc/autosummary extensions.
     "sphinx",
-    "sphinx_pyproject", # to include conf.py information in pyproject.toml
+    # "sphinx_pyproject", # to include conf.py information in pyproject.toml
     "sphinx-copybutton", # Add a copybutton to code blocks
     "intersphinx-registry", # to reference other projects in sphinx
     # "sphinx-rtd-theme",
     "pydata-sphinx-theme",
     "myst-parser", # For parsing md files in sphinx
     "numpydoc",
-    # "sphinx-autoapi", # Automatically generate API documentation instead of using autodoc/autosummary extensions.
     "matplotlib",
+    "sphinx_design", # For better layout and design of sphinx documentation
+    "graphviz", # For visualizing dependency graphs in documentation, via autoapi.
 ]
 
 gui = [
@@ -139,10 +141,17 @@ line-ending = "auto"
 
     exclude = [
         '^tests*$',
+        '^pyNexafs\.gui(\..*)?$',
+        '^matplotlib(\..*)?$',
+        '^_.*$',
+        '^__new__$',
+        '^format$',
+        '^format_map$',
+        '^PHD$',
     ]
 
     exclude_files = [
-        '^pyNexafs/gui/*',
+        '^pyNexafs/gui/.*$',
     ]
 
     override_SS05 = [
@@ -236,6 +245,23 @@ ignore_merge_commits = true
 [tool.sphinx-pyproject]
 html_theme = "pydata_sphinx_theme"
 
+[tool.sphinx-pyproject.html_sidebars]
+#   "**" = ["sidebar-nav-bs", "sidebar-ethical-ads"]
+  'source/install' = []
+  'TODOLIST' = []
+  'CHANGELOG' = []
+
+[tool.sphinx-pyproject.html_context]
+    default_mode = "light"
+    default_dark_mode = false
+    default_language = "en"
+    default_version = "latest"
+    display_github = true
+    github_user = "xraysoftmat"
+    github_repo = "pyNexafs"
+    github_version = "main"
+    doc_path = "docs"
+
 [tool.sphinx-pyproject.html_theme_options]
     # ...
     navbar_start = ["navbar-logo"]
@@ -262,19 +288,6 @@ html_theme = "pydata_sphinx_theme"
     icon = "fab fa-github-square"
     type = "fontawesome"
 
-[tool.sphinx-pyproject.html_sidebars]
-  "**" = ["sidebar-nav-bs", "sidebar-ethical-ads"]
-
-[tool.sphinx-pyproject.html_context]
-    default_mode = "light"
-    default_dark_mode = false
-    default_language = "en"
-    default_version = "latest"
-    display_github = true
-    github_user = "xraysoftmat"
-    github_repo = "pyNexafs"
-    github_version = "main"
-    doc_path = "docs"
 
 # Esbonio Sphinx extension for VS Code integration - https://docs.esbon.io
 [tool.esbonio.sphinx]

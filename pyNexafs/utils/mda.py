@@ -174,7 +174,8 @@ class MDAPositioner:
     readback_unit : str
         The associated readback unit of the positioner.
     data : npt.NDArray | int | None
-        The data of the positioner. Can be a numpy array, an integer, or None if no data is present.
+        The data of the positioner.
+        Can be a numpy array, an integer, or None if no data is present.
     """
 
     def __init__(
@@ -259,7 +260,8 @@ class MDADetector:
     unit : str
         The unit of the detector.
     data : npt.NDArray | int | None
-        The data of the detector. Can be a numpy array, an integer, or None if no data is present.
+        The data of the detector.
+        Can be a numpy array, an integer, or None if no data is present.
     """
 
     def __init__(

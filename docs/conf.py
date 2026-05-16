@@ -12,27 +12,44 @@ import sys
 from datetime import date
 
 # Sphinx imports
-from sphinx_pyproject import SphinxConfig
+# from sphinx_pyproject import SphinxConfig
 
 # Local imports
 import pyNexafs
+import toml
 
 path = os.path.abspath(os.path.dirname(__file__))
-pyproj = os.path.join(path, "../pyproject.toml")
+pyproj = os.path.abspath(os.path.join(path, "../pyproject.toml"))
 
-config = SphinxConfig(pyproj, globalns=globals())
+# Manually load the pyproject.toml data, for other tools such as numpydoc along with sphinx.
+with open(pyproj, "r") as f:
+    config = toml.load(f)
+
+# Default empty configs.
+sphinx_config = {}
+numpydoc_config = {}
+if "tool" in config:
+    tools_config = config["tool"]
+    if "sphinx-pyproject" in tools_config:
+        sphinx_config = config["tool"]["sphinx-pyproject"]
+    if "numpydoc_validation" in tools_config:
+        numpydoc_config = config["tool"]["numpydoc_validation"]
+
+# config = SphinxConfig(pyproj, globalns=globals())
 # Now, variables like 'project', 'version', 'author' will be available
 # from the loaded pyproject.toml data.
 # You can also access other values through the 'config' object.
 # For example: html_theme = config.html_theme if set in pyproject.toml
 
-# -- Options for HTML output ----------------------------------------------
-html_theme = config["html_theme"]
+# -- Options for PyData HTML output ----------------------------------------------
+html_theme = sphinx_config["html_theme"]
 html_theme_options = (
-    config["html_theme_options"] if "html_theme_options" in config else {}
+    sphinx_config["html_theme_options"] if "html_theme_options" in sphinx_config else {}
 )
-html_sidebars = config["html_sidebars"] if "html_sidebars" in config else {"**": []}
-html_context = config["html_context"] if "html_context" in config else {}
+html_sidebars = (
+    sphinx_config["html_sidebars"] if "html_sidebars" in sphinx_config else {"**": []}
+)
+html_context = sphinx_config["html_context"] if "html_context" in sphinx_config else {}
 html_last_updated_fmt = "%b %d, %Y"
 
 # Add any paths that contain custom static files (such as style sheets) here,
@@ -44,6 +61,75 @@ templates_path = ["source/_templates"]
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = "project-templatedoc"
+
+# -- Options for Autodoc ----------------------------------------------------
+autodoc_signatures = "short"
+
+# -- Options for Sphinx Numpydoc --------------------------------------------
+numpydoc_validation_checks = set(
+    numpydoc_config["checks"]
+    if "checks" in numpydoc_config
+    else {
+        "all",
+        "EX01",
+        "SA01",
+        "ES01",
+    }
+)
+numpydoc_validation_exclude = set(
+    numpydoc_config["exclude"] if "exclude" in numpydoc_config else {}
+)
+numpydoc_validation_exclude_files = set(
+    numpydoc_config["exclude_files"] if "exclude_files" in numpydoc_config else {}
+)
+numpydoc_validation_overrides = {
+    "SS05": (
+        numpydoc_config["override_SS05"] if "override_SS05" in numpydoc_config else []
+    )
+}
+numpydoc_use_plots = True  # Enable rendering of plot directives in docstring examples.
+
+# Run docstring validation as part of build process
+numpydoc_xref_param_type = True
+numpydoc_xref_ignore = {"optional", "type_without_description", "BadException"}
+numpydoc_show_class_members = False
+numpydoc_show_inherited_class_members = False
+numpydoc_class_members_toctree = True
+
+# List of patterns, relative to source directory, that match files and
+# directories to ignore when looking for source files.
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+# -- Options for autoapi -------------------------------------------------------
+autoapi_type = "python"
+# Use absolute path to ensure AutoAPI can find the source code in all environments
+_autoapi_source = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "pyNexafs")
+)
+autoapi_dirs = [_autoapi_source]
+autoapi_keep_files = True
+autoapi_root = "api"
+autoapi_member_order = "bysource"  # "groupwise"
+autoapi_add_toctree_entry = (
+    False  # To remove the index page, providing our own in api.rst
+)
+autoapi_root = "source/_api"
+autoapi_generate_api_docs = True
+autoapi_options = [
+    "members",
+    "undoc-members",
+    "show-inheritance",
+    "show-module-summary",
+    "special-members",
+    # 'imported-members',  # Comment this out or remove it
+]
+
+# Setup the API auto-documentation
+# autosummary_generate = False
+# autosummary_generate_overwrite = True
+# autosummary_imported_members = True
+# autosummary_ignore_module_all = True
+
 
 # -- Path setup --------------------------------------------------------------
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -85,10 +171,12 @@ html_title = f"{project} v{version} Manual"
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    "autoapi.extension",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    "sphinx_design",
     # "sphinx.ext.doctest",
-    # "sphinx.ext.intersphinx",
+    "sphinx.ext.intersphinx",
     # "sphinx.ext.todo",
     "numpydoc",
     # "sphinx.ext.ifconfig",
@@ -105,26 +193,6 @@ extensions = [
 # The root toctree document
 master_doc = "index"  # NOTE: will be changed to `root_doc` in sphinx 4
 root_doc = master_doc
-
-# Setup the API auto-documentation
-autosummary_generate = True
-autosummary_generate_overwrite = True
-# autosummary_imported_members = True
-autosummary_ignore_module_all = True
-
-# autoapi_dirs = ["../pyNexafs"]
-# autoapi_add_toctree_entry = False
-
-
-numpydoc_xref_param_type = True
-numpydoc_xref_ignore = {"optional", "type_without_description", "BadException"}
-# Run docstring validation as part of build process
-numpydoc_validation_checks = {"all", "GL01", "SA04", "RT03"}
-numpydoc_show_class_members = True
-
-# List of patterns, relative to source directory, that match files and
-# directories to ignore when looking for source files.
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "sphinx"
@@ -156,7 +224,15 @@ latex_documents = [
 # -- Intersphinx setup ----------------------------------------------------
 
 # Example configuration for intersphinx: refer to several Python libraries.
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "matplotlib": ("https://matplotlib.org/stable/", None),
+}
+
 # intersphinx_mapping = get_intersphinx_mapping(packages={
 #     # "python",
 #     "numpy",
 # })
+
+intersphinx_disabled_reftypes = ["*"]
