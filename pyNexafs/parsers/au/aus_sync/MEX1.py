@@ -3,7 +3,7 @@ Parser classes for the Medium Energy X-ray 2 (MEX1) beamline at the Australian S
 """
 
 # Internal
-from pyNexafs.parsers import parserBase, parserMeta
+from pyNexafs.parsers.base import parserBase, parserMeta
 from pyNexafs.utils.mda import MDAFileReader
 from pyNexafs.utils.reduction import reducer
 from pyNexafs.parsers.au.aus_sync.MEX1_relabels import RELABELS

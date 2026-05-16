@@ -5,7 +5,7 @@ import pytest
 import numpy as np
 
 # Test the creation of a new parser class.
-from pyNexafs.parsers._base import parserMeta, parserBase
+from pyNexafs.parsers.base import parserMeta, parserBase
 from pyNexafs.types import dtype
 
 ##############################################################################

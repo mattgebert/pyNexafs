@@ -5,21 +5,20 @@ The base parser classes for loading and parsing data files.
 A metaclass allows for the dynamic creation of classes, and the modification of class attributes and methods.
 This is used to redefine and share class properties and attributes relating to "name relabelling".
 The `parserMeta` also collects `parse_<filetype>` methods from the parser classes and stores them for loading.
-The following important attributes become re-defined as hidden properties:
-- `ALLOWED_EXTENSIONS`, a list of strings that define the valid file extensions for the parser,
-- `COLUMN_ASSIGNMENTS`, a dictionary that assigns data columns (i.e. 'x', 'y', 'y_err') to scan object parameters,
-- `SUMMARY_PARAM_RAW_NAMES`, a list of parameter strings that provide a summary of the parser properties. Tuples of synonymous strings are also allowed in the list,
-- `RELABELS`, a dictionary describing a unique one-to-one mapping between the original column/parameter name(s) and a more useful name.
 
 `parserBase` is the base class for all parser classes, adding individual parser attributes and default methods for file loading.
 The `parserBase` class is an abstract class, and cannot be instantiated. Classes that inherit from `parserBase` must implement the following attributes:
+
 - `ALLOWED_EXTENSIONS`, a list of strings that define the valid file extensions for the parser,
-- `COLUMN_ASSIGNMENTS`, a dictionary that assigns the labels 'x', 'y' (and optionally 'x_errs', 'y_errs') to the data column name(s) in the file. The
-    'x' (and 'x_errs') must map to a single string, and 'y' (and 'y_errs') can map to a list of strings or a single string.
+- `COLUMN_ASSIGNMENTS`, a dictionary that assigns the labels 'x', 'y' (and optionally 'x_errs', 'y_errs') to the data column name(s) in the file. The 'x' (and 'x_errs') must map to a single string, and 'y' (and 'y_errs') can map to a list of strings or a single string.
+
 The following attributes are optional:
+
 - `SUMMARY_PARAM_RAW_NAMES`, a list of parameter strings that provide a summary of the parser properties. Tuples of synonymous strings are also allowed in the list.
 - `RELABELS`, a dictionary describing a unique mapping between the original column/parameter names and more useful name(s).
+
 The following methods are also optional to implement, and will otherwise return a NotImplementedError:
+
 - `summary_param_names_with_units`
 """
 
@@ -537,8 +536,11 @@ class parserMeta(abc.ABCMeta):
     _SUMMARY_PARAM_RAW_NAMES: summary_param_list
     """Internal list of important parameter strings for displaying file summary information."""
     _RELABELS: relabels_dict = relabels_dict()
-    """Internal dictionary of data label equivalence. Allowed to use lists for original labels, due to
-    synonymous names (i.e. equipment replacement with a new channel name)."""
+    """Internal dictionary of data label equivalence.
+
+    Allowed to use lists for original labels, due to synonymous names
+    (i.e. equipment replacement with a new channel name).
+    """
     _RELABELS_REVERSE: dict[str, str | tuple[str, ...]] = {}
     """Internal dictionary of label equivalence in reverse."""
     _dtype_channels: list[dtype] = []
@@ -1356,11 +1358,11 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                                 pass
                         if result is None:
                             raise KeyError(
-                                f"Key {key} not found in the `{self._parent.__class__.__name__}.params` after searching: '[{k_possible}'."
+                                f"Key `{key}` not found in the `{self._parent.__class__.__name__}.params` after searching: '[{k_possible}]'."
                             )
                     else:
                         raise KeyError(
-                            f"Key {key} not found in the `{self._parent.__class__.__name__}params` or `{self._parent.__class__.__name__}.RELABELS` dictionary."
+                            f"Key `{key}` not found in the `{self._parent.__class__.__name__}.params` or `{self._parent.__class__.__name__}.RELABELS` dictionary."
                         )
             # # Check if the result is a RELABELS key, and if so, return the value.
             # if result in self._parent.RELABELS:
@@ -1551,6 +1553,8 @@ class parserBase(abc.ABC, metaclass=parserMeta):
 
         # Initialise variables
         self._filepath: str | None
+        """The file path of the data."""
+
         if isinstance(file, str):
             if os.path.isfile(file):
                 self._filepath = file
@@ -1565,12 +1569,12 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         else:
             self._filepath = None
 
-        """The file path of the data"""
         self.data: npt.NDArray | tuple[npt.NDArray | None, ...] | None = None
         """
-        Data loaded through the `parser.load()` function. Can be a single (2D) array,
-        with indexes (NEXAFS energy, channel #), or a tuple of arrays for
-        multi-dimensional/multi-scan files where the indexes match
+        Data loaded through the `parser.load()` function.
+
+        Can be a single (2D) array, with indexes (NEXAFS energy, channel #),
+        or a tuple of arrays for multi-dimensional/multi-scan files where the indexes match
         (NEXAFS energy, ..., <other setting / indepedent variables>, ..., channel #).
         """
 
@@ -1581,12 +1585,14 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         ) = None
         """
         Channel Labels loaded through the `parser.load()` function.
-        If a tuple should match the length of data
+
+        If a tuple should match the length of data.
         """
 
         self.units: list[str | None] | tuple[list[str | None] | None, ...] | None = None
         """
         Units loaded through the `parser.load()` function.
+
         Should match the shape of the data array.
         """
         self._params: parserBase.param_dict = self.param_dict({}, parent=self)
@@ -1602,11 +1608,13 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         self._relabel: bool = relabel
         """
         Whether to use relables or not.
+
         If None, then the class value is used by default when `obj.relabel` is called.
         """
         # Create a variable to track loading
         self._parsed_data = False
-        """Tracks wether the data has been loaded (True), or only the header (False)"""
+        """Tracks wether the data has been loaded (True), or only the header (False)."""
+
         self._parser_fn: Callable | None = None
         """The most-recent parser function used on the object to load file data, labels,
             units or parameters. Use `obj._parser_fn.__name__` to get the method name."""

@@ -1,7 +1,7 @@
 """
 Parser classes for NEXAFS data, including support for synchrotron specific beamlines.
 
-Parsers are registered in the parser_loaders dictionary, which is used to register parsers
+Parsers are registered in the `parser_registry` dictionary, which is used to register parsers
 in GUI applications.
 """
 
@@ -12,7 +12,7 @@ from pyNexafs.parsers.base import parserBase, parserMeta
 from pyNexafs.parsers import au
 from pyNexafs.parsers.au import SXR_NEXAFS, MEX1_NEXAFS, MEX2_NEXAFS
 
-# Define loaders with string representation.
+# Define registry with string representation.
 parser_registry: dict[str, type[parserBase]] = {
     "au SXR:NEXAFS": au.SXR_NEXAFS,
     "au MEX1:NEXAFS": au.MEX1_NEXAFS,

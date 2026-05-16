@@ -2,7 +2,7 @@
 Parser classes for the Soft X-ray (SXR) beamline at the Australian Synchrotron.
 """
 
-from pyNexafs.parsers import parserBase
+from pyNexafs.parsers.base import parserBase
 from pyNexafs.types import parse_fn_ret_type
 from pyNexafs.utils.mda import MDAFileReader
 from typing import Any

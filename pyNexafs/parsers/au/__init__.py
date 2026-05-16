@@ -1,8 +1,5 @@
 """
 Parser classes for the Australia's beamlines.
-
-Current facilities supported include are exclusively:
-- Australian Synchrotron.
 """
 
 from pyNexafs.parsers.au.aus_sync import (
