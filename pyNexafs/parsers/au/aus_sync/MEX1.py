@@ -101,7 +101,7 @@ class MEX1_NEXAFS(parserBase, metaclass=MEX1_NEXAFS_META):
 
     ALLOWED_EXTENSIONS = [".xdi", ".mda"]
     SUMMARY_PARAMS = [
-        "Sample|Comment 1",
+        "Sample",
         "AngleElement.symbol",
         "Element.edge",
         "E1",
@@ -110,15 +110,15 @@ class MEX1_NEXAFS(parserBase, metaclass=MEX1_NEXAFS_META):
         "E4",
     ]
     COLUMN_ASSIGNMENTS = {
-        "x": "Energy|Energy Setpoint|energy",
+        "x": ("Energy", "Energy Setpoint", "energy"),
         "y": [
-            "Bragg|bragg",
-            "Fluorescence|iflour|Fluorescence Sum",
-            "Count Time|count_time",
-            "I0|i0",
-            "Sample Drain|SampleDrain",
-            "ICR_AVG",
-            "OCR_AVG",
+            ("Bragg", "bragg"),
+            ("Fluorescence", "ifluor", "Fluorescence Sum"),
+            ("Count Time", "count_time"),
+            ("I0", "i0"),
+            ("Sample Drain", "SampleDrain"),
+            ("ICR_AVG",),
+            ("OCR_AVG",),
         ],
         "y_errs": None,
         "x_errs": None,

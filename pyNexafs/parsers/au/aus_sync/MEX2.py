@@ -95,8 +95,8 @@ class MEX2_NEXAFS(parserBase):
     """
 
     ALLOWED_EXTENSIONS: list[str] = [".xdi", ".mda"]
-    SUMMARY_PARAMS: list[str | tuple[str, ...]] = [
-        ("Sample", "Comment 1", "MEX2SSCAN01:saveData_comment1"),
+    SUMMARY_PARAMS: list[str] = [
+        "MEX2SSCAN01:saveData_comment1",
         "Angle",
         "Element.symbol",
         "Element.edge",

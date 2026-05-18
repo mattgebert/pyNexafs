@@ -14,7 +14,7 @@ The `parserBase` class is an abstract class, and cannot be instantiated. Classes
 
 The following attributes are optional:
 
-- `SUMMARY_PARAMS`, a list of parameter strings that provide a summary of the parser properties. Tuples of synonymous strings are also allowed in the list.
+- `SUMMARY_PARAMS`, a list of parameter strings that provide a summary of the parser properties.
 - `RELABELS`, a dictionary describing a unique mapping between the original column/parameter names and more useful name(s).
 
 The following methods are also optional to implement, and will otherwise return a NotImplementedError:
@@ -60,8 +60,7 @@ class parserMeta(abc.ABCMeta):
     - `COLUMN_ASSIGNMENTS`, a dictionary that assigns data columns (i.e. 'x', 'y', 'y_err') to scan object parameters,
 
     The following properties are optional:
-    - `SUMMARY_PARAMS`, a list of parameter strings that provide a summary of the parser properties. Tuples of
-      synonymous strings are also allowed in the list.
+    - `SUMMARY_PARAMS`, a list of parameter strings that provide a summary of the parser properties.
     - `RELABELS`, a dictionary describing a unique mapping between the original column/parameter names and more useful name(s).
 
     The metaclass also checks for class methods beginning with `parser_` and adds them to the `parse_functions` list.
@@ -615,6 +614,18 @@ class parserMeta(abc.ABCMeta):
                 ]  # Adjust assignments to an internal variable i.e. _ALLOWED_EXTENSIONS
                 del namespace[prop]  # Remove old assignment
 
+            # Ensure summary params is only a list of strings.
+            summary_params = namespace["_SUMMARY_PARAMS"]
+            assert isinstance(summary_params, list), (
+                f"{name}.SUMMARY_PARAMS must be a list of strings."
+            )
+            for i in range(len(summary_params)):
+                if not isinstance(summary_params[i], str):
+                    raise ValueError(
+                        f"Invalid type for item {i} in SUMMARY_PARAMS list of class {name}. "
+                        + "Items must be of type str."
+                    )
+
             # Validate column assignments, and assign defaults if not provided.
             parserMeta.__validate_assignments(namespace["_COLUMN_ASSIGNMENTS"])
 
@@ -989,14 +1000,14 @@ class parserMeta(abc.ABCMeta):
 
         Parameters
         ----------
-        summary_params : list[str | tuple[str, ...]]
-            List of important parameter strings or tuple of synonymous strings,
-            matching keys that exist in 'parserBase.params'.
+        summary_params : list[str]
+            List of important parameter strings matching keys that exist in
+            'parserBase.params'.
 
         Returns
         -------
-        list[str | tuple[str, ...]]
-            List of important parameter strings or tuple of (synonymous) strings,
+        list[str]
+            List of important parameter strings,
             matching keys in 'parserBase.params'.
         """
         return cls._SUMMARY_PARAMS

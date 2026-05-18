@@ -297,6 +297,56 @@ class TestParserMeta:
 
         assert "Class Test_Parser does not define COLUMN_ASSIGNMENTS." in str(e)
 
+    @pytest.mark.parametrize(
+        "summary_params, should_fail, error_msg",
+        [
+            # Valid cases - only strings allowed
+            (["a", "b", "c"], False, None),
+            (["param1"], False, None),
+            ([], False, None),  # Empty list is valid
+            (["x", "y", "z"], False, None),
+            # Invalid cases - non-string items
+            ([1, 2, 3], True, "Invalid type for item 0 in SUMMARY_PARAMS"),
+            (["a", 1, "c"], True, "Invalid type for item 1 in SUMMARY_PARAMS"),
+            (["a", ["b", "c"], "d"], True, "Invalid type for item 1 in SUMMARY_PARAMS"),
+            (
+                ["a", ("b", "c"), "d"],
+                True,
+                "Invalid type for item 1 in SUMMARY_PARAMS",
+            ),  # Tuples not allowed
+            (["a", None, "c"], True, "Invalid type for item 1 in SUMMARY_PARAMS"),
+            (["a", 3.14, "c"], True, "Invalid type for item 1 in SUMMARY_PARAMS"),
+        ],
+    )
+    def test_SUMMARY_PARAMS_validation(self, summary_params, should_fail, error_msg):
+        """Tests that SUMMARY_PARAMS is required to be a list of strings only."""
+        if should_fail:
+            with pytest.raises(ValueError) as e:
+
+                def parse_fn(file):
+                    return file
+
+                class Test_Parser(parserBase):
+                    ALLOWED_EXTENSIONS = [".txt"]
+                    COLUMN_ASSIGNMENTS = {"x": "a", "y": "b"}
+                    SUMMARY_PARAMS = summary_params
+                    parse_test = parse_fn
+
+            assert error_msg in str(e.value)
+        else:
+            # Should succeed without raising an exception
+            def parse_fn(file):
+                return file
+
+            class Test_Parser(parserBase):
+                ALLOWED_EXTENSIONS = [".txt"]
+                COLUMN_ASSIGNMENTS = {"x": "a", "y": "b"}
+                SUMMARY_PARAMS = summary_params
+                parse_test = parse_fn
+
+            # Verify the parser class was created successfully
+            assert hasattr(Test_Parser, "SUMMARY_PARAMS")
+
 
 ##############################################################################
 #################### Test the inner classes of parserBase ###################
