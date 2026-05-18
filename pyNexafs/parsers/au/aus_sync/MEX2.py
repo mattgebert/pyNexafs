@@ -85,7 +85,7 @@ class MEX2_NEXAFS(parserBase):
     Attributes
     ----------
     ALLOWED_EXTENSIONS
-    SUMMARY_PARAM_RAW_NAMES
+    SUMMARY_PARAMS
     COLUMN_ASSIGNMENTS
     RELABELS
 
@@ -95,7 +95,7 @@ class MEX2_NEXAFS(parserBase):
     """
 
     ALLOWED_EXTENSIONS: list[str] = [".xdi", ".mda"]
-    SUMMARY_PARAM_RAW_NAMES: list[str | tuple[str, ...]] = [
+    SUMMARY_PARAMS: list[str | tuple[str, ...]] = [
         ("Sample", "Comment 1", "MEX2SSCAN01:saveData_comment1"),
         "Angle",
         "Element.symbol",
@@ -857,7 +857,7 @@ class MEX2_NEXAFS(parserBase):
                 and len(self.params[param]) == 3
                 else self.params[param][0]
             )
-            for param in self.SUMMARY_PARAM_RAW_NAMES
+            for param in self.SUMMARY_PARAMS
             if param in self.params
         ]
 

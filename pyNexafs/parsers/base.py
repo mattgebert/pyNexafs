@@ -14,7 +14,7 @@ The `parserBase` class is an abstract class, and cannot be instantiated. Classes
 
 The following attributes are optional:
 
-- `SUMMARY_PARAM_RAW_NAMES`, a list of parameter strings that provide a summary of the parser properties. Tuples of synonymous strings are also allowed in the list.
+- `SUMMARY_PARAMS`, a list of parameter strings that provide a summary of the parser properties. Tuples of synonymous strings are also allowed in the list.
 - `RELABELS`, a dictionary describing a unique mapping between the original column/parameter names and more useful name(s).
 
 The following methods are also optional to implement, and will otherwise return a NotImplementedError:
@@ -60,7 +60,7 @@ class parserMeta(abc.ABCMeta):
     - `COLUMN_ASSIGNMENTS`, a dictionary that assigns data columns (i.e. 'x', 'y', 'y_err') to scan object parameters,
 
     The following properties are optional:
-    - `SUMMARY_PARAM_RAW_NAMES`, a list of parameter strings that provide a summary of the parser properties. Tuples of
+    - `SUMMARY_PARAMS`, a list of parameter strings that provide a summary of the parser properties. Tuples of
       synonymous strings are also allowed in the list.
     - `RELABELS`, a dictionary describing a unique mapping between the original column/parameter names and more useful name(s).
 
@@ -309,7 +309,7 @@ class parserMeta(abc.ABCMeta):
 
     class summary_param_list(list):
         """
-        A re-implemented list for the `SUMMARY_PARAM_RAW_NAMES` property.
+        A re-implemented list for the `SUMMARY_PARAMS` property.
 
         Allows tuples of multiple unique parameters in addition to `relabels` class functionality.
         This handles the case where multiple pieces of unique equipment have been interchanged
@@ -533,7 +533,7 @@ class parserMeta(abc.ABCMeta):
     """Internal dictionary of x,y,x_err,y_err column assignments."""
     _ALLOWED_EXTENSIONS: list[str] = []
     """Internal list of allowed file extensions for the parser."""
-    _SUMMARY_PARAM_RAW_NAMES: summary_param_list
+    _SUMMARY_PARAMS: summary_param_list
     """Internal list of important parameter strings for displaying file summary information."""
     _RELABELS: relabels_dict = relabels_dict()
     """Internal dictionary of data label equivalence.
@@ -561,7 +561,7 @@ class parserMeta(abc.ABCMeta):
         Functionally checks and verifies the user defined properties of the parser class, including
         - `ALLOWED_EXTENSIONS`,
         - `COLUMN_ASSIGNMENTS`,
-        - `SUMMARY_PARAM_RAW_NAMES`, and
+        - `SUMMARY_PARAMS`, and
         - `RELABELS`,
         and reassigns their values to hidden properties, i.e. `cls._ALLOWED_EXTENSIONS` that enables
         property dynamic functionality.
@@ -593,8 +593,8 @@ class parserMeta(abc.ABCMeta):
         # Perform checks on parsers that implement parserBase.
         if name != "parserBase":
             # If class does not define the important parameters, then set to empty list.
-            if "SUMMARY_PARAM_RAW_NAMES" not in namespace:
-                namespace["SUMMARY_PARAM_RAW_NAMES"] = []
+            if "SUMMARY_PARAMS" not in namespace:
+                namespace["SUMMARY_PARAMS"] = []
             if "RELABELS" not in namespace:
                 namespace["RELABELS"] = {}
 
@@ -607,7 +607,7 @@ class parserMeta(abc.ABCMeta):
             for prop in [
                 "ALLOWED_EXTENSIONS",
                 "COLUMN_ASSIGNMENTS",
-                "SUMMARY_PARAM_RAW_NAMES",
+                "SUMMARY_PARAMS",
                 "RELABELS",
             ]:
                 namespace[f"_{prop}"] = namespace[
@@ -750,8 +750,8 @@ class parserMeta(abc.ABCMeta):
 
         # Convert the list to a `summary_param_list`, linked to the parser class.
         if cls.__name__ != "parserBase":
-            cls.SUMMARY_PARAM_RAW_NAMES = parserMeta.summary_param_list(
-                cls.SUMMARY_PARAM_RAW_NAMES, parent=cls
+            cls.SUMMARY_PARAMS = parserMeta.summary_param_list(
+                cls.SUMMARY_PARAMS, parent=cls
             )
 
         # Check for parser methods in the class and add to the parse_functions list.
@@ -981,7 +981,7 @@ class parserMeta(abc.ABCMeta):
         cls._COLUMN_ASSIGNMENTS = assignments
 
     @property
-    def SUMMARY_PARAM_RAW_NAMES(cls) -> summary_param_list:
+    def SUMMARY_PARAMS(cls) -> summary_param_list:
         """
         A list of important parameters, for displaying file summary information.
 
@@ -999,19 +999,19 @@ class parserMeta(abc.ABCMeta):
             List of important parameter strings or tuple of (synonymous) strings,
             matching keys in 'parserBase.params'.
         """
-        return cls._SUMMARY_PARAM_RAW_NAMES
+        return cls._SUMMARY_PARAMS
 
-    @SUMMARY_PARAM_RAW_NAMES.setter
-    def SUMMARY_PARAM_RAW_NAMES(
+    @SUMMARY_PARAMS.setter
+    def SUMMARY_PARAMS(
         cls,
         summary_params: (
             Iterable[str | tuple[str, ...]] | "parserMeta.summary_param_list"
         ),
     ) -> None:
         if isinstance(summary_params, cls.summary_param_list):
-            cls._SUMMARY_PARAM_RAW_NAMES = summary_params
+            cls._SUMMARY_PARAMS = summary_params
         else:
-            cls._SUMMARY_PARAM_RAW_NAMES = parserMeta.summary_param_list(
+            cls._SUMMARY_PARAMS = parserMeta.summary_param_list(
                 summary_params, parent=cls
             )
 
@@ -1020,7 +1020,7 @@ class parserMeta(abc.ABCMeta):
         """
         A list of important parameter names of the data file.
 
-        Sources from `cls.SUMMARY_PARAM_RAW_NAMES`.
+        Sources from `cls.SUMMARY_PARAMS`.
         Returns singular values if summary parameter is a tuple.
 
         If `cls.relabels` and names are defined in cls.RELABELS,
@@ -1043,7 +1043,7 @@ class parserMeta(abc.ABCMeta):
         """
         if cls.relabel:
             names: list[str] = []
-            for name in cls.SUMMARY_PARAM_RAW_NAMES:
+            for name in cls.SUMMARY_PARAMS:
                 # If the summary name is a tuple, check each sub-name for a relabel and use the first one.
                 if isinstance(name, tuple):
                     found = False
@@ -1065,7 +1065,7 @@ class parserMeta(abc.ABCMeta):
         else:
             # Generate a list of names from the summary_param_list.
             names: list[str] = []
-            for name in cls.SUMMARY_PARAM_RAW_NAMES:
+            for name in cls.SUMMARY_PARAMS:
                 if isinstance(name, tuple):
                     names.append(name[0])
                 elif isinstance(name, str):
@@ -1198,7 +1198,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         (class attribute) Allowable extensions for the parser.
     COLUMN_ASSIGNMENTS : dict[str, str | list[str] | None]
         (class attribute) Assignments of scan input variables to column names.
-    SUMMARY_PARAM_RAW_NAMES : list[str]
+    SUMMARY_PARAMS : list[str]
         (class attribute) A list of important parameters, for displaying file summary information.
     RELABELS : dict[str, str]
         (class attribute) Renames labels to more useful names (optional property) when calling to_scan().
@@ -1214,7 +1214,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
     # Set attributes to class properties. Necessary for calling class properties on the instance.
     ALLOWED_EXTENSIONS = parserMeta.ALLOWED_EXTENSIONS
     COLUMN_ASSIGNMENTS = parserMeta.COLUMN_ASSIGNMENTS
-    SUMMARY_PARAM_RAW_NAMES = parserMeta.SUMMARY_PARAM_RAW_NAMES
+    SUMMARY_PARAMS = parserMeta.SUMMARY_PARAMS
     RELABELS = parserMeta.RELABELS
     RELABELS_REVERSE = parserMeta.RELABELS_REVERSE
     # These methods are not class methods copies, but rather return names existing on the object instance.
@@ -3074,7 +3074,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         """
         # TODO: Implement tests
         summary_params = {}
-        for key in self.SUMMARY_PARAM_RAW_NAMES:
+        for key in self.SUMMARY_PARAMS:
             if isinstance(key, tuple):
                 keys = key
             elif isinstance(key, str):
@@ -3112,7 +3112,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         """
         A list of important parameter names of the data file.
 
-        Sources names from cls.SUMMARY_PARAM_RAW_NAMES list.
+        Sources names from cls.SUMMARY_PARAMS list.
         Returns summary names that are found in params.
         If names are defined in cls.RELABELS, then the relabelled names are returned.
 
@@ -3123,7 +3123,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         """
         # TODO: Implement Tests
         names: list[str] = []
-        for keystr in self.__class__.SUMMARY_PARAM_RAW_NAMES:
+        for keystr in self.__class__.SUMMARY_PARAMS:
             keys = keystr if isinstance(keystr, tuple) else [keystr]
             key1 = keys[0]  # Take first name if multiple names are provided.
             for key in keys:

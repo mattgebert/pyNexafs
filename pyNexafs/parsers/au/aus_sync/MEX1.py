@@ -90,7 +90,7 @@ class MEX1_NEXAFS(parserBase, metaclass=MEX1_NEXAFS_META):
     Attributes
     ----------
     ALLOWED_EXTENSIONS
-    SUMMARY_PARAM_RAW_NAMES
+    SUMMARY_PARAMS
     COLUMN_ASSIGNMENTS
     RELABELS
 
@@ -100,7 +100,7 @@ class MEX1_NEXAFS(parserBase, metaclass=MEX1_NEXAFS_META):
     """
 
     ALLOWED_EXTENSIONS = [".xdi", ".mda"]
-    SUMMARY_PARAM_RAW_NAMES = [
+    SUMMARY_PARAMS = [
         "Sample|Comment 1",
         "AngleElement.symbol",
         "Element.edge",

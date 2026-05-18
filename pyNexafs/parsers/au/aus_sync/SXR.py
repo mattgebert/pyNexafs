@@ -25,7 +25,7 @@ class SXR_NEXAFS(parserBase):
     ----------
     ALLOWED_EXTENSIONS
     COLUMN_ASSIGNMENTS
-    SUMMARY_PARAM_RAW_NAMES
+    SUMMARY_PARAMS
     RELABELS
 
     Notes
@@ -59,7 +59,7 @@ class SXR_NEXAFS(parserBase):
         "x_errs": None,
     }
 
-    SUMMARY_PARAM_RAW_NAMES = [
+    SUMMARY_PARAMS = [
         "SR14ID01NEXSCAN:saveData_comment1",
         "SR14ID01NEXSCAN:saveData_comment2",
         "SR14ID01NEX01:R_MTR.RBV",
@@ -645,7 +645,7 @@ class SXR_NEXAFS(parserBase):
             List of important parameter values.
         """
         # Get second element which is the parameter number.
-        return [self.params[key][1] for key in self.SUMMARY_PARAM_RAW_NAMES]
+        return [self.params[key][1] for key in self.SUMMARY_PARAMS]
 
     @property
     @override
@@ -661,7 +661,7 @@ class SXR_NEXAFS(parserBase):
         list
             List of important parameter names with units.
         """
-        pNames = self.SUMMARY_PARAM_RAW_NAMES
+        pNames = self.SUMMARY_PARAMS
         pUnits = [
             (
                 self.params[pName][2]
