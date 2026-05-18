@@ -12,7 +12,7 @@ from importlib.metadata import version as get_version
 
 __version__ = get_version(__package__)
 
-from pyNexafs import parsers, nexafs, gui, utils, types
+from pyNexafs import parsers, nexafs, utils, types
 from pyNexafs.types import dtype
 
 
@@ -20,7 +20,7 @@ __all__ = [
     # Modules
     "parsers",
     "nexafs",
-    "gui",
+    # "gui", # Exclude GUI, as it is a separate subpackage and should be imported as `import pyNexafs.gui`.
     "utils",
     "types",
     # Classes

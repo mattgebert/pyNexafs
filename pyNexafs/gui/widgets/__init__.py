@@ -1,3 +1,3 @@
-# from viewer import nexafsViewer
-
-# from .matplotlib.widgets import NSpanSelector
+"""
+General module for all widgets that can be used for building NEXAFS applications.
+"""
