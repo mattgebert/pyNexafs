@@ -127,8 +127,8 @@ class TestSummaryParamList:
             (["a", "c", "c"], ValueError, "c"),
             (["a", "b", "c"], None, None),
             (["1", "2", "3"], None, None),
-            (["a", ("b", "c"), "d"], None, None),
-            (["a", ("b", "c"), "b"], ValueError, "b"),
+            (["a", "b", "d"], None, None),
+            (["a", "b", "b"], ValueError, "b"),
         ],
     )
     def test_init_valid(self, elements, err, overlapping_param):
@@ -149,10 +149,10 @@ class TestSummaryParamList:
             (["a", "c", "c"], ValueError, "c"),
             (["a", "b", "c"], ValueError, "b"),
             (["1", "2", "3"], None, None),
-            (["a", ("i", "c"), "d"], ValueError, "d"),
-            (["a", ("b", "c"), "b"], ValueError, "('b', 'c')"),
-            (["0", ("b", "c"), "b"], ValueError, "b"),
-            (["a", "d", ("b", "c")], ValueError, "('b', 'c')"),
+            (["e", "f"], None, None),
+            (["a", "d", "b"], ValueError, "b"),
+            (["0", "b", "b"], ValueError, "b"),
+            (["a", "d", "c"], ValueError, "c"),
         ],
     )
     def test_init_valid_relabelled(self, elements, err, overlapping_param):
@@ -171,8 +171,7 @@ class TestSummaryParamList:
         [
             (["a", "b", "c"], "a", True),
             (["1", "2", "3"], "1", True),
-            (["a", ("b", "c"), "d"], "b", True),
-            (["a", ("b", "c"), "d"], ("b", "c"), True),
+            (["a", "b", "d"], "b", True),
             (["a", "b", "c"], "d", False),
         ],
     )
@@ -193,11 +192,9 @@ class TestSummaryParamList:
             (["a", "c"], "b", True),
             (["a", "c"], "e", False),
             (["1", "2", "3"], "1", True),
-            ([("b", "c"), "e"], "b", True),
-            ([("b", "c"), "e"], "d", True),
-            (["f", ("b", "c"), "o"], ("b", "c"), True),
-            (["f", ("b", "c"), "o"], ("b", "d"), False),
-            (["f", ("b", "c"), "o"], ("b", "e"), False),
+            (["e", "o"], "g", True),
+            (["f", "o"], "g", True),
+            (["f", "o"], "h", False),
         ],
     )
     def test_contains_relabelled(self, elements, query, relabelled_contains):
@@ -214,14 +211,14 @@ class TestSummaryParamList:
         [
             (["a", "b", "c"], "a", 0),
             (["1", "2", "3"], "1", 0),
-            (["a", ("b", "c"), "d"], "b", 1),
-            (["a", ("b", "c"), "d"], "d", 2),
-            (["a", ("b", "c"), "d"], ("b", "c"), 1),
+            (["a", "b", "d"], "b", 1),
+            (["a", "b", "d"], "d", 2),
+            (["a", "b", "d"], "a", 0),
             (["a", "b", "c"], "e", ValueError),
         ],
     )
-    def test_index_tuples(self, elements, query, index_or_exception):
-        """Tests the summary parameters list can be indexed, and tuples behave as individual elements also."""
+    def test_index(self, elements, query, index_or_exception):
+        """Tests the summary parameters list can be indexed for string-only entries."""
         # Create the summary parameters list.
         summary_params = parserMeta.summary_param_list(
             elements, parent=self.ParserNoRelabels
@@ -232,7 +229,7 @@ class TestSummaryParamList:
         ):
             with pytest.raises(
                 index_or_exception,
-                match=f"{query} is not in the list, or within a tuple element.",
+                match=f"{query} is not in the list.",
             ):
                 summary_params.index(query)
         elif isinstance(index_or_exception, int):
@@ -246,15 +243,15 @@ class TestSummaryParamList:
             (["a", "c"], "a", 0),
             (["a", "c"], "b", 0),
             (["1", "2", "3"], "3", 2),
-            (["0", ("b", "c"), "e"], "b", 1),
-            (["0", ("b", "c"), "e"], "d", 1),
-            (["0", ("b", "c"), "e"], ("b", "c"), 1),
-            (["0", ("b", "c"), "e"], ("b", "d"), 1),
+            (["0", "b", "e"], "b", 1),
+            (["0", "c", "e"], "d", 1),
+            (["e", "o"], "g", 0),
+            (["f", "o"], "g", 0),
             (["a", "0", "c"], "e", ValueError),
         ],
     )
     def test_index_relabelled(self, elements, query, index_or_exception):
-        """Tests the summary parameters list can be indexed, tuples behave as individual elements and relabels apply."""
+        """Tests the summary parameters list can be indexed and relabels apply for string-only entries."""
         # Create the summary parameters list.
         summary_params = parserMeta.summary_param_list(
             elements, parent=self.ParserRelabels
@@ -265,7 +262,7 @@ class TestSummaryParamList:
         ):
             with pytest.raises(
                 index_or_exception,
-                match=f"{query} is not in the list, or within a tuple element.",
+                match=f"{query} is not in the list.",
             ):
                 summary_params.index(query)
 
@@ -296,6 +293,56 @@ class TestParserMeta:
                 pass
 
         assert "Class Test_Parser does not define COLUMN_ASSIGNMENTS." in str(e)
+
+    @pytest.mark.parametrize(
+        "summary_params, should_fail, error_msg",
+        [
+            # Valid cases - only strings allowed
+            (["a", "b", "c"], False, None),
+            (["param1"], False, None),
+            ([], False, None),  # Empty list is valid
+            (["x", "y", "z"], False, None),
+            # Invalid cases - non-string items
+            ([1, 2, 3], True, "Invalid type for item 0 in SUMMARY_PARAMS"),
+            (["a", 1, "c"], True, "Invalid type for item 1 in SUMMARY_PARAMS"),
+            (["a", ["b", "c"], "d"], True, "Invalid type for item 1 in SUMMARY_PARAMS"),
+            (
+                ["a", ("b", "c"), "d"],
+                True,
+                "Invalid type for item 1 in SUMMARY_PARAMS",
+            ),  # Tuples not allowed
+            (["a", None, "c"], True, "Invalid type for item 1 in SUMMARY_PARAMS"),
+            (["a", 3.14, "c"], True, "Invalid type for item 1 in SUMMARY_PARAMS"),
+        ],
+    )
+    def test_SUMMARY_PARAMS_validation(self, summary_params, should_fail, error_msg):
+        """Tests that SUMMARY_PARAMS is required to be a list of strings only."""
+        if should_fail:
+            with pytest.raises(ValueError) as e:
+
+                def parse_fn(file):
+                    return file
+
+                class Test_Parser(parserBase):
+                    ALLOWED_EXTENSIONS = [".txt"]
+                    COLUMN_ASSIGNMENTS = {"x": "a", "y": "b"}
+                    SUMMARY_PARAMS = summary_params
+                    parse_test = parse_fn
+
+            assert error_msg in str(e.value)
+        else:
+            # Should succeed without raising an exception
+            def parse_fn(file):
+                return file
+
+            class Test_Parser(parserBase):
+                ALLOWED_EXTENSIONS = [".txt"]
+                COLUMN_ASSIGNMENTS = {"x": "a", "y": "b"}
+                SUMMARY_PARAMS = summary_params
+                parse_test = parse_fn
+
+            # Verify the parser class was created successfully
+            assert hasattr(Test_Parser, "SUMMARY_PARAMS")
 
 
 ##############################################################################

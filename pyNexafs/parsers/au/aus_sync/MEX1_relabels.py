@@ -128,4 +128,10 @@ RELABELS = {
     "S3_mufluor - S3_ifluor / i0": "S3_mufluor",
     "S4_mufluor - S4_ifluor / i0": "S4_mufluor",
     "avg_mufluor - ifluor_avg_corr / i0 -- deadtime correction and time normalisation per sensor, normalised by i0": "mufluor_avg_corr",
+    # Parameters
+    (
+        "Name",
+        "Comment 1",
+        "Sample",
+    ): "Sample Name",
 }

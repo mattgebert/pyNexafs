@@ -14,7 +14,7 @@ The `parserBase` class is an abstract class, and cannot be instantiated. Classes
 
 The following attributes are optional:
 
-- `SUMMARY_PARAMS`, a list of parameter strings that provide a summary of the parser properties. Tuples of synonymous strings are also allowed in the list.
+- `SUMMARY_PARAMS`, a list of parameter strings that provide a summary of the parser properties.
 - `RELABELS`, a dictionary describing a unique mapping between the original column/parameter names and more useful name(s).
 
 The following methods are also optional to implement, and will otherwise return a NotImplementedError:
@@ -60,8 +60,7 @@ class parserMeta(abc.ABCMeta):
     - `COLUMN_ASSIGNMENTS`, a dictionary that assigns data columns (i.e. 'x', 'y', 'y_err') to scan object parameters,
 
     The following properties are optional:
-    - `SUMMARY_PARAMS`, a list of parameter strings that provide a summary of the parser properties. Tuples of
-      synonymous strings are also allowed in the list.
+    - `SUMMARY_PARAMS`, a list of parameter strings that provide a summary of the parser properties.
     - `RELABELS`, a dictionary describing a unique mapping between the original column/parameter names and more useful name(s).
 
     The metaclass also checks for class methods beginning with `parser_` and adds them to the `parse_functions` list.
@@ -311,30 +310,26 @@ class parserMeta(abc.ABCMeta):
         """
         A re-implemented list for the `SUMMARY_PARAMS` property.
 
-        Allows tuples of multiple unique parameters in addition to `relabels` class functionality.
-        This handles the case where multiple pieces of unique equipment have been interchanged
-        for the same parameter.
+        Allows `relabels` class functionality.
+        This handles the case where multiple pieces of unique equipment have been interchanged for the same parameter.
 
         `parent` is a required keyword argument to access the `relabel` and `RELABELS` properties.
 
-        A `__getitem__` or `__contains__` request will succeed for a key found in a tuple.
-        If `parser.relabel` is `True`, the request will also succeed for any synonymous keys or the
-        corresponding value.
+        If `parser.relabel` is `True`, a `__getitem__` or `__contains__` request request
+        will succeed for any synonymous keys or the corresponding value.
 
         Modifies the `contains` and `index` method.
 
         Parameters
         ----------
-        args : Iterable[str | tuple[str, ...]]
+        args : Iterable[str]
             The parameters to initialise the list with.
         parent : type[parserBase]
             The parent parser class, used to access the `relabel`/`RELABELS` properties.
         """
 
         @override
-        def __init__(
-            self, args: Iterable[str | tuple[str, ...]], *, parent: type["parserBase"]
-        ) -> None:
+        def __init__(self, args: Iterable[str], *, parent: type["parserBase"]) -> None:
             super().__init__(args)
             self._parent = parent
             self.__check_valid()
@@ -363,48 +358,18 @@ class parserMeta(abc.ABCMeta):
                         + f"value `{collected_keys[item] if collected_keys[item] else item}`."
                     )
 
-                # Check if the item is a tuple
-                if isinstance(item, tuple):
-                    matches = []
-                    for sub_item in item:
-                        # Check if sub-item in relabels
-                        if sub_item in self._parent.RELABELS:
-                            relabel_val = self._parent.RELABELS[sub_item]
-                            if relabel_val in collected_keys:
-                                # Check if the collected key has a non-None value
-                                raise ValueError(
-                                    f"Summary Parameter `{item}` already found in the summary parameter list"
-                                    + f" with value `{collected_keys[relabel_val] if collected_keys[relabel_val] else relabel_val}`."
-                                )
-                            else:
-                                matches.append(relabel_val)
-                        else:
-                            # No relabel, see if in collected keys
-                            if sub_item in collected_keys:
-                                raise ValueError(
-                                    f"Summary Parameter `{item}` already found in the summary parameter list"
-                                    + f" with value `{collected_keys[sub_item] if collected_keys[sub_item] else sub_item}`."
-                                )
-                            else:
-                                matches.append(sub_item)
-                    # Add the set values to the collected keys
-                    for match in set(matches):
-                        collected_keys[match] = item
+                # Check if relabel
+                if item in self._parent.RELABELS:
+                    relabel_val = self._parent.RELABELS[item]
                 else:
-                    # Check if relabel
-                    if item in self._parent.RELABELS:
-                        relabel_val = self._parent.RELABELS[item]
-                    else:
-                        relabel_val = item
-                    if relabel_val in collected_keys:
-                        raise ValueError(
-                            f"Summary Parameter `{item}` already found in the summary parameter list"
-                            + f" with value `{collected_keys[relabel_val] if collected_keys[relabel_val] else relabel_val}`."
-                        )
-                    else:
-                        collected_keys[relabel_val] = (
-                            item if item != relabel_val else None
-                        )
+                    relabel_val = item
+                if relabel_val in collected_keys:
+                    raise ValueError(
+                        f"Summary Parameter `{item}` already found in the summary parameter list"
+                        + f" with value `{collected_keys[relabel_val] if collected_keys[relabel_val] else relabel_val}`."
+                    )
+                else:
+                    collected_keys[relabel_val] = item if item != relabel_val else None
             return
 
         @override
@@ -432,11 +397,8 @@ class parserMeta(abc.ABCMeta):
             TypeError
                 If the key is not a string.
             """
-            # Check for an exact tuple match if querying a tuple.
-            if isinstance(key, tuple):
-                return super().__contains__(key)
             # Check for a string match
-            elif not isinstance(key, str):
+            if not isinstance(key, str):
                 raise TypeError(f"Key {key} is not a string.")
 
             # Check for non-relabel match
@@ -444,11 +406,6 @@ class parserMeta(abc.ABCMeta):
                 # Check for direct match
                 if self[i] == key:
                     return True
-                # Check for tuple sub-item match
-                elif isinstance(self[i], tuple):
-                    for k in self[i]:
-                        if k == key:
-                            return True
 
             # Check for relabel match
             if self._parent.relabel:
@@ -459,36 +416,32 @@ class parserMeta(abc.ABCMeta):
                 for i in range(self.__len__()):
                     # Iterate over all item/subitems in the summary_param_list
                     item = self[i]
-                    if not isinstance(item, tuple):
-                        item = (item,)
-                    for sub_item in item:
-                        # Check for relabel synonymous match
-                        if (
-                            key in self._parent.RELABELS_REVERSE
-                        ):  # Key is a relabel value
-                            rev_val: str | tuple[str, ...] = (
-                                self._parent.RELABELS_REVERSE[key]
-                            )
-                            if (
-                                rev_val == sub_item
-                            ):  # one to one relabel:item match, covers strings.
-                                return True
-                            elif isinstance(rev_val, tuple):
-                                for k in rev_val:
-                                    if k == sub_item:
-                                        return True
 
-                        # Check for key in each relabel key/tuple
-                        if key in self._parent.RELABELS:
-                            value = self._parent.RELABELS[key]
-                            if value == sub_item:
-                                return True
+                    # Check for relabel synonymous match
+                    if key in self._parent.RELABELS_REVERSE:  # Key is a relabel value
+                        rev_val: str | tuple[str, ...] = self._parent.RELABELS_REVERSE[
+                            key
+                        ]
+                        if (
+                            rev_val == item
+                        ):  # one to one relabel:item match, covers strings.
+                            return True
+                        elif isinstance(rev_val, tuple):
+                            for k in rev_val:
+                                if k == item:
+                                    return True
+
+                    # Check for key in each relabel key/tuple
+                    if key in self._parent.RELABELS:
+                        value = self._parent.RELABELS[key]
+                        if value == item:
+                            return True
             return False
 
         @override
         def index(
             self,
-            value: str | tuple[str, ...],
+            value: str,
             start: typing.SupportsIndex = 0,
             stop: typing.SupportsIndex = sys.maxsize,
         ) -> int:
@@ -500,8 +453,8 @@ class parserMeta(abc.ABCMeta):
 
             Parameters
             ----------
-            value : str | tuple[str, ...]
-                The value or equivalent tuple of values to find.
+            value : str
+                The value to find.
             start : typing.SupportsIndex, optional
                 The starting index to search from, by default 0.
             stop : typing.SupportsIndex, optional
@@ -524,10 +477,28 @@ class parserMeta(abc.ABCMeta):
                 # Direct match
                 if element == value:
                     return i
-                # Tuple match
-                elif isinstance(element, tuple) and value in element:
-                    return i
-            raise ValueError(f"{value} is not in the list, or within a tuple element.")
+                # Otherwise check relabel matches if relabel is True.
+                if self._parent.relabel:
+                    # Check for relabel synonymous match
+                    if value in self._parent.RELABELS:
+                        # Get the relabelled value
+                        relabel_val = self._parent.RELABELS[value]
+
+                        # When the element matches the relabelled value
+                        if relabel_val == element:
+                            return i
+                        # When the relabelled value is a tuple, check for each
+                        # item in the tuple matching the element.
+                        elif relabel_val == value:
+                            key = self._parent.RELABELS_REVERSE[value]
+                            # Element match within a tuple
+                            if isinstance(key, tuple):
+                                if element in key:
+                                    return i
+                            # Element is the key
+                            elif key == element:
+                                return i
+            raise ValueError(f"{value} is not in the list.")
 
     _COLUMN_ASSIGNMENTS: assignments_type
     """Internal dictionary of x,y,x_err,y_err column assignments."""
@@ -614,6 +585,18 @@ class parserMeta(abc.ABCMeta):
                     prop
                 ]  # Adjust assignments to an internal variable i.e. _ALLOWED_EXTENSIONS
                 del namespace[prop]  # Remove old assignment
+
+            # Ensure summary params is only a list of strings.
+            summary_params = namespace["_SUMMARY_PARAMS"]
+            assert isinstance(summary_params, list), (
+                f"{name}.SUMMARY_PARAMS must be a list of strings."
+            )
+            for i in range(len(summary_params)):
+                if not isinstance(summary_params[i], str):
+                    raise ValueError(
+                        f"Invalid type for item {i} in SUMMARY_PARAMS list of class {name}. "
+                        + "Items must be of type str."
+                    )
 
             # Validate column assignments, and assign defaults if not provided.
             parserMeta.__validate_assignments(namespace["_COLUMN_ASSIGNMENTS"])
@@ -750,8 +733,8 @@ class parserMeta(abc.ABCMeta):
 
         # Convert the list to a `summary_param_list`, linked to the parser class.
         if cls.__name__ != "parserBase":
-            cls.SUMMARY_PARAMS = parserMeta.summary_param_list(
-                cls.SUMMARY_PARAMS, parent=cls
+            cls._SUMMARY_PARAMS = parserMeta.summary_param_list(
+                cls._SUMMARY_PARAMS, parent=cls
             )
 
         # Check for parser methods in the class and add to the parse_functions list.
@@ -989,24 +972,31 @@ class parserMeta(abc.ABCMeta):
 
         Parameters
         ----------
-        summary_params : list[str | tuple[str, ...]]
-            List of important parameter strings or tuple of synonymous strings,
-            matching keys that exist in 'parserBase.params'.
+        summary_params : list[str]
+            List of important parameter strings matching keys that exist in
+            'parserBase.params'.
 
         Returns
         -------
-        list[str | tuple[str, ...]]
-            List of important parameter strings or tuple of (synonymous) strings,
-            matching keys in 'parserBase.params'.
+        summary_param_list
+            List of important parameter strings, matching possible keys in
+            'parserBase.params'. Returns a `summary_param_list` object, which is a custom list that allows for relabelling functionality.
+
+        See Also
+        --------
+        parserMeta.summary_param_list : The custom list class used for the SUMMARY_PARAMS property, which allows for relabelling functionality.
         """
+        if cls.relabel:
+            return parserMeta.summary_param_list(
+                [cls.RELABELS.get(param, param) for param in cls._SUMMARY_PARAMS],
+                parent=cls._SUMMARY_PARAMS._parent,
+            )
         return cls._SUMMARY_PARAMS
 
     @SUMMARY_PARAMS.setter
     def SUMMARY_PARAMS(
         cls,
-        summary_params: (
-            Iterable[str | tuple[str, ...]] | "parserMeta.summary_param_list"
-        ),
+        summary_params: (Iterable[str] | "parserMeta.summary_param_list"),
     ) -> None:
         if isinstance(summary_params, cls.summary_param_list):
             cls._SUMMARY_PARAMS = summary_params

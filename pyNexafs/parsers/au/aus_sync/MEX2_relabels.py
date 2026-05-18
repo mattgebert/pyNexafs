@@ -18,8 +18,6 @@ RELABELS = {
         "count_time",
         "Gate Time Setpoint",
     ): dtype.TIME,
-    ("MEX2SSCAN01:saveData_comment1", "Comment 1", "Sample"): "Sample Name",
-    "MEX2SSCAN01:saveData_comment2": "Comment 2",
     "MEX2ES01ZEB01:BRAGG_WITH_OFFSET": "Bragg",
     "SR11BCM01:CURRENT_MONITOR": "Current Monitor",  # What is this? I0?
     "MEX2ES01DAQ01:ch1:S:MeanValue_RBV": "Beam Intensity Monitor",  # Beam Intensity Monitor
@@ -311,4 +309,7 @@ RELABELS = {
     "ROI.end_bin": "Fluorescence End Bin",
     "Element.symbol": "Element",
     "Element.edge": "Absorption Edge",
+    # Parameters
+    ("MEX2SSCAN01:saveData_comment1", "Comment 1", "Sample", "Name"): "Sample Name",
+    "MEX2SSCAN01:saveData_comment2": "Comment 2",
 }
