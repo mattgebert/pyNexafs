@@ -181,15 +181,15 @@ class SXR_NEXAFS(parserBase):
 
     @classmethod
     def parse_asc_202403(
-        cls, file: typing.TextIO, header_only: bool = False
+        cls, file: typing.TextIO | str, header_only: bool = False
     ) -> parse_fn_ret_type:
         """
         Read Australian Synchrotron SXR NEXAFS `.asc` files.
 
         Parameters
         ----------
-        file : typing.TextIO
-            TextIO of the datafile (i.e. open('file.asc', 'r')).
+        file : typing.TextIO | str
+            TextIO of the datafile (i.e. open('file.asc', 'r')) or the file path as a string.
         header_only : bool, optional
             If True, then only the header of the file is read and NDArray is returned as None, by default False.
 
@@ -206,6 +206,17 @@ class SXR_NEXAFS(parserBase):
         ValueError
             If the file is not a valid .asc file.
         """
+        if isinstance(file, str):
+            # Open the file in text mode
+            with open(file, "r") as f:
+                return cls.parse_asc_202403(f, header_only=header_only)
+        elif isinstance(file, io.FileIO):
+            # Change to text mode
+            return cls.parse_asc_202403(io.TextIOWrapper(file), header_only=header_only)
+        else:
+            assert isinstance(file, (typing.TextIO, io.TextIOWrapper)), (
+                f"File must be a typing.TextIO implementation or file path string. Was '{type(file)}'."
+            )
 
         # Initialise structures
         params = {"filename": file.name}
@@ -218,7 +229,10 @@ class SXR_NEXAFS(parserBase):
 
         ### Read file
         # Check header is correct
-        assert file.readline() == "## mda2ascii 0.3.2 generated output\n"
+        head = file.readline()
+        assert head == "## mda2ascii 0.3.2 generated output\n", (
+            f"Expected header '## mda2ascii 0.3.2 generated output\\n', but got '{head}'"
+        )
 
         # skip 2 lines
         [file.readline() for i in range(2)]
@@ -397,6 +411,14 @@ class SXR_NEXAFS(parserBase):
                 return cls.parse_mda_2024_03(f, header_only=header_only)
         elif isinstance(file, (typing.TextIO, io.TextIOWrapper)):
             return cls.parse_mda_2024_03(file.buffer, header_only=header_only)
+        elif isinstance(file, io.FileIO):
+            # Change to binary mode, and no longer use FileIO if file is in text mode.
+            # Use BufferedReader
+            if not file.closed and "b" not in file.mode:
+                file = io.FileIO(file.fileno(), mode=file.mode + "b")
+            return cls.parse_mda_2024_03(
+                io.BufferedReader(file), header_only=header_only
+            )
         else:
             assert isinstance(file, (typing.BinaryIO, io.BufferedReader, io.BytesIO)), (
                 f"File must be a typing.BinaryIO implementation or file path string. Was '{type(file)}'."

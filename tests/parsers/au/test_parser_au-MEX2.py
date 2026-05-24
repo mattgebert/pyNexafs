@@ -2,8 +2,8 @@
 
 import pytest
 import os
-import numpy as np
 from pyNexafs.parsers.au.aus_sync.MEX2 import MEX2_NEXAFS
+from tests.parsers.test_parser_generic import ParserTests
 
 # Relative directories for the test data.
 LOCAL_DIR = "tests/test_data/au/MEX2/"
@@ -13,88 +13,41 @@ PATH_202503 = os.path.join(
 PATH_202403 = os.path.join(LOCAL_DIR, "2024-03")
 
 
-class TestMEX2:
+class TestParserMEX2(ParserTests):
+    """Tests that the MEX2 parser can be initialized with example files and that the correct parsing method is called."""
+
+    PARSER_CLASS = MEX2_NEXAFS
+    TEST_FILES = [
+        (
+            os.path.join(PATH_202403, file),
+            MEX2_NEXAFS.parse_mda_2024_11
+            if file.endswith(".mda")
+            else MEX2_NEXAFS.parse_xdi,
+            pytest.mark.xfail(reason="5641 is a partial scan. It should fail.")
+            if "5641" in file
+            else None,
+        )
+        for file in os.listdir(PATH_202403)
+        if file.endswith(tuple(MEX2_NEXAFS.ALLOWED_EXTENSIONS))
+    ] + [
+        (
+            os.path.join(PATH_202503, file),
+            MEX2_NEXAFS.parse_mda_2025_02
+            if file.endswith(".mda")
+            else MEX2_NEXAFS.parse_xdi,
+            pytest.mark.xfail(reason="13366 is a partial scan. It should fail.")
+            if "13366" in file
+            else None,
+        )
+        for file in os.listdir(PATH_202503)
+        if file.endswith(tuple(MEX2_NEXAFS.ALLOWED_EXTENSIONS))
+    ]
+
+
+class TestScanMEX2:
     """Tests the loading of example files"""
 
     class Test_MDA_2024_11:
-        @pytest.mark.parametrize("header_only", [True, False])
-        @pytest.mark.parametrize(
-            "filepath",
-            [
-                (
-                    os.path.join(PATH_202403, file)
-                    if "5641" not in file
-                    else pytest.param(
-                        os.path.join(PATH_202403, file), marks=pytest.mark.xfail
-                    )
-                )  # 5641 is a partial scan. It should fail.
-                for file in os.listdir(PATH_202403)
-                if file.endswith(".mda")
-            ],
-        )
-        def test_parser_mda_2024_11(self, filepath, header_only):
-            # Test the class constructor success
-            parser = MEX2_NEXAFS(
-                filepath,
-                header_only=header_only,
-                relabel=False,
-            )
-            # Test the parser method
-            with open(filepath, "r") as f:
-                parser_vals = MEX2_NEXAFS.parse_mda_2024_11(f, header_only=header_only)
-
-            # Check equivalence (i.e. the correct parser method was called)
-            data, labels, units, params = parser_vals
-            pdata, plabels, punits, pparams = (
-                parser.data,
-                parser.labels,
-                parser.units,
-                parser.params,
-            )
-            # Check consistency
-            if isinstance(data, tuple) and isinstance(pdata, tuple):
-                for dat, pdat in zip(data, pdata):
-                    assert (
-                        isinstance(dat, np.ndarray) and isinstance(pdat, np.ndarray)
-                    ) or (dat is None and pdat is None)
-                    if dat is not None:
-                        assert np.all(pdat == dat)
-            else:
-                assert (
-                    isinstance(data, np.ndarray) and isinstance(pdata, np.ndarray)
-                ) or (data is None and pdata is None)
-                if data is not None:
-                    assert np.all(pdata == data)
-            # Check labels, units and params
-            if isinstance(labels, tuple) and isinstance(plabels, tuple):
-                for lab, plab in zip(labels, plabels):
-                    if lab is not None:
-                        assert np.all(plab == lab)
-                    else:
-                        assert plab is None
-            else:
-                if labels is not None and plabels is not None:
-                    assert np.all(plabels == labels)
-                else:
-                    assert labels is None and plabels is None
-            # Check units
-            if isinstance(units, tuple) and isinstance(punits, tuple):
-                for unit, punit in zip(units, punits):
-                    if unit is not None:
-                        assert np.all(punit == unit)
-                    else:
-                        assert punit is None
-            else:
-                if units is not None and punits is not None:
-                    assert np.all(punits == units)
-                else:
-                    assert units is None and punits is None
-
-            # Check params:
-            if isinstance(params, dict) and isinstance(pparams, dict):
-                for key in params:
-                    assert np.all(parser.params[key] == params[key])
-
         # Test scan conversion for reduction of multi-dimensional fluorescence data
         @pytest.mark.parametrize(
             "header_only, energy_bin_domain", [(True, None), (False, (2200, 2600))]
@@ -143,6 +96,7 @@ class TestMEX2:
             )  # +1 for sum fluor, -1 for energy (x).
 
     class Test_MDA_2025_02:
+        # Test scan conversion for reduction of multi-dimensional fluorescence data
         @pytest.mark.parametrize(
             "header_only, energy_bin_domain", [(True, None), (False, (2200, 2600))]
         )
@@ -151,16 +105,16 @@ class TestMEX2:
             [
                 (
                     os.path.join(PATH_202503, file)
-                    if "3366" not in file
+                    if "13366" not in file
                     else pytest.param(
                         os.path.join(PATH_202503, file), marks=pytest.mark.xfail
                     )
-                )  # 3366 is a partial scan. It should fail.
+                )  # 13366 is a partial scan. It should fail.
                 for file in os.listdir(PATH_202503)
                 if file.endswith(".mda")
             ],
         )
-        def test_parser_mda_2025_02(self, filepath, header_only, energy_bin_domain):
+        def test_scan_mda_2025_02(self, filepath, header_only, energy_bin_domain):
             # Test the class constructor success
             parser = MEX2_NEXAFS(
                 filepath,
@@ -168,8 +122,6 @@ class TestMEX2:
                 relabel=False,
             )
 
-            # Depending on `to_scan`, the scan data might or might not include the 2D variables.
-            # Check instead that there has been "some" additional processing.
             data = parser.data
             if header_only:
                 with pytest.raises(
