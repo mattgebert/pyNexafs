@@ -975,6 +975,9 @@ class parserMeta(abc.ABCMeta):
         summary_params : list[str]
             List of important parameter strings matching keys that exist in
             'parserBase.params'.
+        summary_params : list[str]
+            List of important parameter strings matching keys that exist in
+            'parserBase.params'.
 
         Returns
         -------
