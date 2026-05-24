@@ -1619,7 +1619,15 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                 raise FileNotFoundError(f"Filepath '{file}' does not exist.")
         else:
             if isinstance(
-                file, (IO, typing.IO, io.FileIO, tempfile._TemporaryFileWrapper)
+                file,
+                (
+                    IO,
+                    typing.IO,
+                    io.FileIO,
+                    tempfile._TemporaryFileWrapper,
+                    io.BufferedReader,
+                    io.TextIOWrapper,
+                ),
             ):
                 self.load(file=file, header_only=header_only, **kwargs)  # Load data
             else:
@@ -2379,7 +2387,16 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         try:
             # Check if file parameter is provided:
             if isinstance(
-                file, (IO, typing.IO, io.FileIO, tempfile._TemporaryFileWrapper)
+                file,
+                (
+                    IO,
+                    typing.IO,
+                    io.FileIO,
+                    tempfile._TemporaryFileWrapper,
+                    io.BufferedReader,
+                    io.TextIOWrapper,
+                    io.IOBase,
+                ),
             ):
                 if isinstance(file.name, str) and os.path.exists(file.name):
                     load_filepath = file.name

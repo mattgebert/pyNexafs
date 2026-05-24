@@ -391,12 +391,16 @@ class MEX2_NEXAFS(parserBase):
             return cls.parse_xdi(
                 io.TextIOWrapper(file, encoding="utf-8"), header_only=header_only
             )
+        elif isinstance(file, io.FileIO):
+            return cls.parse_xdi(
+                io.TextIOWrapper(file, encoding="utf-8"), header_only=header_only
+            )
         else:
-            assert isinstance(file, typing.TextIO), (
-                "File must be a typing.IO implementation or file path string."
+            assert isinstance(file, (typing.TextIO, io.TextIOWrapper)), (
+                f"File must be an io.TextIOWrapper, typing.IO implementation or file path string. Was a '{type(file)}'."
             )
         # Check read mode
-        if "r" not in file.mode:
+        if hasattr(file, "mode") and "r" not in file.mode:
             raise ValueError(f"File {file.name} is not opened in read mode.")
 
         # Initialise structures
@@ -549,6 +553,10 @@ class MEX2_NEXAFS(parserBase):
                 return cls.parse_mda_2025_02(f, header_only=header_only)
         elif isinstance(file, (typing.TextIO, io.TextIOWrapper)):
             return cls.parse_mda_2025_02(file.buffer, header_only=header_only)
+        elif isinstance(file, io.FileIO):
+            return cls.parse_mda_2025_02(
+                io.BufferedReader(file), header_only=header_only
+            )
         else:
             assert isinstance(file, (typing.BinaryIO, io.BufferedReader, io.BytesIO)), (
                 f"File must be a typing.BinaryIO implementation or file path string. Was '{type(file)}'."
@@ -716,9 +724,14 @@ class MEX2_NEXAFS(parserBase):
         elif isinstance(file, (typing.TextIO, io.TextIOWrapper)):
             # use the underlying binary buffer
             return cls.parse_mda_2024_11(file.buffer, header_only=header_only)
+        elif isinstance(file, io.FileIO):
+            # use the underlying binary buffer
+            return cls.parse_mda_2024_11(
+                io.BufferedReader(file), header_only=header_only
+            )
         else:
             assert isinstance(file, (typing.BinaryIO, io.BufferedReader, io.BytesIO)), (
-                "File must be a typing.BinaryIO implementation or file path string."
+                f"File must be an io.BufferedReader, io.BytesIO, or typing.BinaryIO implementation or file path string. Was a '{type(file)}'."
             )
 
         # Initialise parameter list
