@@ -1,6 +1,6 @@
 """Tests the scan classes and their methods"""
 
-from .test_parser_base import TestParserBase
+from .parsers.test_parser_base import TestParserBase
 from pyNexafs.types import dtype
 import tempfile
 import numpy as np

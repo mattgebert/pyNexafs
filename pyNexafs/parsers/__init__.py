@@ -18,7 +18,11 @@ parser_registry: dict[str, type[parserBase]] = {
     "au MEX1:NEXAFS": au.MEX1_NEXAFS,
     "au MEX2:NEXAFS": au.MEX2_NEXAFS,
 }
-"""A dictionary of parser loaders, which are used to register parsers in GUI applications."""
+"""
+A dictionary of parser loaders, which are used to register parsers.
+
+Parser keys should follow the format `<country_acronym> <parser_class_name>`
+"""
 
 # Check that all parsers are subclasses of the base parser.
 for parser in parser_registry.values():

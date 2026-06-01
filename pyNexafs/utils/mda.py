@@ -764,14 +764,8 @@ class MDAFileReader:
         Returns
         -------
         dict[str, tuple[str, str, str]]
-            A dictionary of pExtra data, ordered by name : tuple.
-            The tuple contains the following data:
-                description : str
-                    The description of the parameter.
-                unit : str
-                    The unit of the parameter.
-                value : str
-                    The value of the parameter.
+            A dictionary of pExtra data: (desc, unit, value).
+            Ordered the same as the binary MDA occurence.
         """
         if self.pointer_pExtra is None:
             self.read_header()

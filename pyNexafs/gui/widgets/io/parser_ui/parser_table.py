@@ -5,7 +5,7 @@ The table model and view for the Parser Loading module.
 from enum import StrEnum
 from typing import overload, override, Any
 from pyNexafs.gui.config import QtCore, QtWidgets, QtGui
-from typing import Sequence, Literal
+from typing import Literal
 from pyNexafs.parsers import parserBase
 from abc import abstractmethod
 import typing
@@ -1013,10 +1013,13 @@ class ParserTableModel(ParserDataModel, QtCore.QAbstractTableModel):
                         return f"{val} bytes"
 
                 # Default behavior for display and tooltip roles.
-                if role == QtCore.Qt.ItemDataRole.ToolTipRole and not isinstance(
-                    val, str
-                ):
-                    return None
+                # convert to string
+                try:
+                    val = str(val)
+                    # print(f"Converted value to string: {val}")
+                except Exception:
+                    # print(f"Error converting to string: {e}")
+                    return ""
                 return val
 
             case _:
@@ -1152,6 +1155,9 @@ class ParserTableView(QtWidgets.QTableView):
         # TODO: Add a custom sort for the load status column.
         self.proxy_model = QtCore.QSortFilterProxyModel()
         self.proxy_model.setSourceModel(self.files_model)
+
+        self._str_filter = None
+        self._filetype_filters = None
 
         # Instance Attributes
         self.verticalHeader().hide()  # remove default row numbers
@@ -1311,30 +1317,28 @@ class ParserTableView(QtWidgets.QTableView):
     @property
     def filters(self) -> tuple[str | None, list[str] | None]:
         """
-        Returns the currently set filters.
+        The filename and filetype filter values.
+
+        Parameters
+        ----------
+        filters : tuple[str | None, list[str] | None]
+            A tuple containing the filename filter and the filetype sequence filter.
 
         Returns
         -------
         tuple[str | None, list[str] | None]
             A tuple containing the filename filter and the filetype filter.
-        """
-        return (self._str_filter, self._filetype_filters)
-
-    @filters.setter
-    def filters(self, filters: tuple[str | None, Sequence[str] | None]):
-        """
-        Set the filters for the directory viewer.
-
-        Parameters
-        ----------
-        filters : tuple[str | None, Sequence[str] | None]
-            A tuple containing the filename filter and the filetype sequence filter.
 
         Raises
         ------
         AttributeError
-            If the filters are not provided as a tuple of (str_filter, filetype_filters), or if the filetype filter is not a sequence of strings, or None.
+            If the filters are not provided as a tuple of (str_filter, filetype_filters),
+            or if the filetype filter is not a sequence of strings, or None.
         """
+        return (self._str_filter, self._filetype_filters)
+
+    @filters.setter
+    def filters(self, filters: tuple[str | None, list[str] | None]):
         if not isinstance(filters, tuple) or len(filters) != 2:
             raise AttributeError(
                 f"Filters must be a tuple of (str_filter, filetype_filters), got {filters}."
@@ -1362,36 +1366,55 @@ class ParserTableView(QtWidgets.QTableView):
             # self.proxy_model.setFilterFixedString(str_filter)
 
         # Pass filetype filter onto the ParserDataModel, which will use it to determine which files to parse and include in the table.
+        old_filetype_filters = self._filetype_filters
+        if filetype_filters != old_filetype_filters:
+            self._filetype_filters = filetype_filters
+            self.files_model.filetype_filters = filetype_filters
 
     @filters.deleter
     def filters(self):
-        """
-        Remove the filters for the directory viewer.
-        """
         self._str_filter, self._filetype_filters = None, None
-        self.update_table()
+        # Reset the proxy model filter to show all entries.
+        self.proxy_model.setFilterRegularExpression(QtCore.QRegularExpression(""))
+        # Reset the filetype filter in the ParserDataModel, which will use it to determine
+        # which files to parse and include in the table.
+        self.files_model.filetype_filters = None
+        # Update internals
+        self._str_filter, self._filetype_filters = None, None
+        return
 
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication([])
     window = QtWidgets.QMainWindow()
-    from pyNexafs.parsers import MEX2_NEXAFS
+    from pyNexafs.parsers import SXR_NEXAFS
 
     # Test we can load each file within the directory
-    path = r"D:\Github\pynexafs\tests\test_data\au\MEX2\2024-03"
+    # path, parser = (r"D:\Github\pynexafs\tests\test_data\au\MEX2\2024-03", MEX2_NEXAFS)
+    path, parser = (r"D:\Github\pynexafs\tests\test_data\au\SXR\2024-03", SXR_NEXAFS)
+
     filelist = os.listdir(path)
     for filename in filelist:
         filepath = os.path.join(path, filename)
         try:
-            parser_instance = MEX2_NEXAFS(filepath, header_only=True)
+            parser_instance = parser(filepath, header_only=True)
             print(f"Successfully parsed {filepath}")
         except Exception as e:
             print(f"Error parsing {filepath}: {e}")
     view = ParserTableView(
         path=path,
         # parser_cls=None,
-        parser_cls=MEX2_NEXAFS,
+        parser_cls=parser,
     )
+
+    # Check if "Sample Name" is available in the parser params
+    parser_instances = view.files_model.parsed
+    xdi_files = [filename for filename in filelist if ".asc" in filename]
+    file = os.path.join(path, xdi_files[0])
+    parser_instance = parser_instances[file][1]
+
+    # Apply filters
+    view.filters = ("Imaging", [".mda"])  # No filters, show all files.
 
     view.show()
     app.exec()

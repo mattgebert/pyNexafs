@@ -8,6 +8,7 @@ import pytest
 from pyNexafs.parsers.base import parserBase
 from typing import Sequence
 from types import MethodType, FunctionType
+from functools import wraps
 import numpy as np
 import os
 
@@ -96,9 +97,15 @@ class ParserTestsMeta(type):
 
             test_fn = getattr(new_cls, "test_parser_initialization", None)
             if test_fn is not None:
+                # Avoid mutating a shared inherited function object with pytest marks.
+                # Create a per-class wrapper so parametrization remains isolated.
+                @wraps(test_fn)
+                def _wrapped_test_fn(self, test_file, parser_fn, header_only):
+                    return test_fn(self, test_file, parser_fn, header_only)
+
                 decorated = pytest.mark.parametrize(
                     "test_file, parser_fn, header_only", params, ids=ids
-                )(test_fn)
+                )(_wrapped_test_fn)
                 setattr(new_cls, "test_parser_initialization", decorated)
 
         return new_cls

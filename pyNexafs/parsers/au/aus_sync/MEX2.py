@@ -3,6 +3,7 @@ Parser classes for the Medium Energy X-ray 2 (MEX2) beamline at the Australian S
 """
 
 # Internal
+
 from pyNexafs.parsers.base import parserBase
 from pyNexafs.utils.mda import MDAFileReader
 from pyNexafs.utils.reduction import reducer
@@ -17,6 +18,7 @@ from pyNexafs.types import dtype
 
 # Standard
 import typing
+from typing import Sequence, override
 import ast
 import warnings
 import datetime
@@ -104,6 +106,9 @@ class MEX2_NEXAFS(parserBase):
         "E2",
         "E3",
         "E4",
+        # "Sample X",
+        "Sample Y",
+        "Phi/Z",
     ]
     COLUMN_ASSIGNMENTS = {
         "x": ("Energy", "Energy Setpoint", "energy"),
@@ -469,14 +474,14 @@ class MEX2_NEXAFS(parserBase):
         # Get samplename from first comment line
         line = file.readline()
         sample_name = line[2:].strip()
-        params["Sample"] = sample_name
-        params["Comment 1"] = sample_name
+        # Match the mda parameter for sample name.
+        params["MEX2SSCAN01:saveData_comment1"] = sample_name
 
         # Read the second comment line:
         line = file.readline()
         if line != "# \n":
             comment2 = line[2:].strip()
-            params["Comment 2"] = comment2
+            params["MEX2SSCAN01:saveData_comment2"] = comment2
 
         # Some xdi conversion have a "default mda2xdi" line.
         line = file.readline()
@@ -852,27 +857,157 @@ class MEX2_NEXAFS(parserBase):
 
         return data, labels, units, params
 
-    # @typing.overrides.typing.overrides # type: ignore[typing.override]
-    @parserBase.summary_param_names_with_units.getter
-    def summary_params_with_units(self) -> list[str]:
+    @override
+    def param_description(self, key: str) -> str:
         """
-        A dictionary of summary parameters with units.
+        Get a description of a parameter by key.
+
+        Parameters
+        ----------
+        key : str
+            The key of the parameter to get the description for.
 
         Returns
         -------
-        list[str]
-            A list of summary parameters, with interpereted units attached.
+        str
+            A description of the parameter, if available.
+
+        Raises
+        ------
+        ValueError
+            If no parser function is set.
+        ValueError
+            If the parameter format is unexpected for the parser function.
+        NotImplementedError
+            If parameter descriptions are not implemented for the particular parser function.
         """
-        return [
-            (
-                f"{self.params[param][2]} ({self.params[param][1]})"
-                if isinstance(self.params[param], tuple)
-                and len(self.params[param]) == 3
-                else self.params[param][0]
+        values = self.params[key]
+        parser_fn = self._parser_fn
+        if parser_fn is None:
+            raise ValueError(
+                "No parser used to load data, cannot get parameter descriptions from file."
             )
-            for param in self.SUMMARY_PARAMS
-            if param in self.params
-        ]
+        match parser_fn:
+            case self.parse_mda_2024_11 | self.parse_mda_2025_02:
+                if isinstance(values, Sequence) and len(values) > 1:
+                    # First MDA value is the description, second is the unit and third is the value.
+                    return values[0]
+                raise ValueError(
+                    f"Unexpected parameter format for {key} in {parser_fn.__name__} parser \
+                    function. Expected a sequence with description as the first element, \
+                    but got {values}."
+                )
+            case _:
+                raise NotImplementedError(
+                    f"Parameter descriptions not implemented for {parser_fn.__name__} \
+                    parser function."
+                )
+
+    @override
+    def param_value(self, key: str) -> str:
+        """
+        Get the value of a parameter by key.
+
+        Parameters
+        ----------
+        key : str
+            The key of the parameter to get the value for.
+
+        Returns
+        -------
+        str
+            The value of the parameter, if available.
+
+        Raises
+        ------
+        ValueError
+            If no parser function is set.
+        ValueError
+            If the parameter format is unexpected for the parser function.
+        NotImplementedError
+            If parameter values are not implemented for the particular parser function.
+        """
+        values = self.params[key]
+        parser_fn = self._parser_fn
+        if parser_fn is None:
+            raise ValueError(
+                "No parser used to load data, cannot get parameter values from file."
+            )
+        match parser_fn:
+            case self.parse_mda_2024_11 | self.parse_mda_2025_02:
+                if isinstance(values, Sequence) and len(values) > 1:
+                    # First MDA value is the description, second is the unit and third is the value.
+                    # Sometimes first is description, and second is value, with no unit.
+                    # So just return the last value.
+                    return values[-1]
+                elif values is not None:
+                    return values  # If there is only one value, return it.
+                raise ValueError(
+                    f"Unexpected parameter format for {key} in {parser_fn.__name__} parser \
+                    function. Expected a sequence with value as the third element, \
+                    but got {values}."
+                )
+            case self.parse_xdi:
+                # For xdi, the value is just the string value.
+                return values
+            case _:
+                raise NotImplementedError(
+                    f"Parameter values not implemented for {parser_fn.__name__} \
+                    parser function."
+                )
+
+    @override
+    def param_unit(self, key: str) -> str:
+        """
+        Get the unit of a parameter by key.
+
+        Parameters
+        ----------
+        key : str
+            The key of the parameter to get the unit for.
+
+        Returns
+        -------
+        str
+            The unit of the parameter, if available.
+
+        Raises
+        ------
+        ValueError
+            If no parser function is set.
+        ValueError
+            If no unit is available (only description and value are provided).
+        ValueError
+            If the parameter format is unexpected for the parser function.
+        NotImplementedError
+            If parameter units are not implemented for the particular parser function.
+        """
+        values = self.params[key]
+        parser_fn = self._parser_fn
+        if parser_fn is None:
+            raise ValueError(
+                "No parser used to load data, cannot get parameter units from file."
+            )
+        if parser_fn in [self.parse_mda_2024_11, self.parse_mda_2025_02]:
+            if isinstance(values, Sequence) and len(values) == 3:
+                # First MDA value is the description, second is the unit and third is the value.
+                # Sometimes first is description, and second is value, with no unit.
+                # So just return the last value.
+                return values[1]
+            if isinstance(values, Sequence) and len(values) == 2:
+                raise ValueError(
+                    f"Parameter {key} from {parser_fn.__name__} has no unit entry, only description and value."
+                )
+            raise ValueError(
+                f"Unexpected parameter format for {key} in {parser_fn.__name__} parser \
+                function. Expected a sequence with unit as the second element, \
+                but got {values}."
+            )
+        else:
+            raise NotImplementedError(
+                f"Parameter units not implemented for {parser_fn.__name__} \
+                parser function."
+            )
 
 
 def MEX2_to_QANT_AUMainAsc(

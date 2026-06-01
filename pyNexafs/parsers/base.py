@@ -30,7 +30,7 @@ import types
 import warnings
 import typing
 import tempfile
-from typing import Self, Callable, Iterable, Any, override, IO, TextIO
+from typing import Self, Callable, Iterable, Any, TypeVar, override, IO, TextIO
 from _collections_abc import dict_items, dict_keys
 from collections.abc import KeysView, ItemsView
 
@@ -49,6 +49,8 @@ try:
     import pandas as pd
 except ImportError:
     pd = None
+
+_T = TypeVar("_T")
 
 
 class parserMeta(abc.ABCMeta):
@@ -148,6 +150,12 @@ class parserMeta(abc.ABCMeta):
                         if key in k:
                             return v
             raise KeyError(f"Key {key} not found in RELABELS dictionary.")
+
+        @override
+        def get(self, key: Any, default: Any = None) -> Any:
+            if key in self:
+                return self[key]
+            return default
 
         @override
         def __contains__(self, key: object) -> bool:
@@ -349,7 +357,9 @@ class parserMeta(abc.ABCMeta):
 
             # Iterate over the list items
             for i in range(self.__len__()):
-                item = self[i]
+                # Use the base list implementation here so validation checks the
+                # original entries, not relabelled __getitem__ values.
+                item = super().__getitem__(i)
 
                 # Check if the item already is collected
                 if item in collected_keys:
@@ -499,6 +509,41 @@ class parserMeta(abc.ABCMeta):
                             elif key == element:
                                 return i
             raise ValueError(f"{value} is not in the list.")
+
+        @override
+        def copy(self) -> Self:
+            """
+            Return a copy of the summary parameter list.
+
+            Returns
+            -------
+            summary_param_list
+                A copy of the summary parameter list.
+            """
+            return self.__class__(self, parent=self._parent)
+
+        # @override
+        # @overload
+        # def __getitem__(self, s: slice) -> list[str]: ...
+        # @override
+        # @overload
+        # def __getitem__(self, s: typing.SupportsIndex) -> str: ...
+
+        @override
+        def __getitem__(self, s: typing.SupportsIndex | slice, /) -> str | list[str]:
+            item = super().__getitem__(s)
+            if isinstance(item, list):
+                item = [
+                    self._parent.RELABELS.get(i, i) if self._parent.relabel else i
+                    for i in item
+                ]
+            else:
+                item = (
+                    self._parent.RELABELS.get(item, item)
+                    if self._parent.relabel
+                    else item
+                )
+            return item
 
     _COLUMN_ASSIGNMENTS: assignments_type
     """Internal dictionary of x,y,x_err,y_err column assignments."""
@@ -1214,7 +1259,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
     # summary_param_names_with_units = parserMeta.summary_param_names_with_units
     # summary_param_names = parserMeta.summary_param_names
 
-    class param_dict(dict):
+    class param_dict(dict[str, Any]):
         """
         A dictionary extension that deals with relabelling of parameters.
 
@@ -1300,7 +1345,7 @@ class parserBase(abc.ABC, metaclass=parserMeta):
                         new_items.append((self._parent.RELABELS[key], value))
                     else:
                         new_items.append((key, value))
-                return ItemsView(new_items)  # type: ignore - handles a list of tuples fine for the mapping.
+                return new_items  # type: ignore - handles a list of tuples fine for the mapping.
             else:
                 return super().items()
 
@@ -3069,111 +3114,66 @@ class parserBase(abc.ABC, metaclass=parserMeta):
         # Add the available channels as an attribute of the scan class.
         scan._available_channels = available_channels
 
-    @property
-    def summary_params(self) -> dict[str, Any]:
+    ##########################################################################
+    ##########################################################################
+    #### Unimplemented methods to process complex parameter values, such as
+    #### those with units and descriptions.
+    ##########################################################################
+    ##########################################################################
+    def param_value_with_unit(self, key: str) -> str:
         """
-        A dictionary of important parameters of the data file.
+        Access a parameter value with its unit as a string.
 
-        Immediately searches
-        Utilises the `parser.RELEBELS` dictionary to identify important parameters.
+        By default uses `param_unit` method to get the unit,
+        and appends it to the value. Can be overridden for more complex formatting.
+
+        Parameters
+        ----------
+        key : str
+            The key of the parameter for which to retrieve the value with units.
 
         Returns
         -------
-        dict
-            Dictionary of important parameters.
+        str
+            The parameter value with its unit as a string.
         """
-        # TODO: Implement tests
-        summary_params = {}
-        for key in self.SUMMARY_PARAMS:
-            if isinstance(key, tuple):
-                keys = key
-            elif isinstance(key, str):
-                keys = [key]
-            else:
-                raise ValueError(
-                    f"Summary parameter key {key} is not a string or list of strings."
-                )
-            key: str | tuple[str]
-            # Take first name if multiple names are provided.
-            summary_key = keys[0]
-            # Use the key string(s) to search for the parameter in the params dictionary:
-            found = False
-            for key in keys:
-                if key in self.params:
-                    summary_params[summary_key] = self.params[key]
-                    found = True
-                    break  # Only use first value found.
+        return f"{self.param_value(key)} {self.param_unit(key)}"
 
-            # If not found see if the key can be found in reverse:
-            if not found and key in self.RELABELS_REVERSE:
-                # Check if the key is a string and exists in the params dictionary.
-                rev_key: str | tuple[str, ...] = self.RELABELS_REVERSE[key]
-                if isinstance(rev_key, str) and rev_key in self.params:
-                    summary_params[summary_key] = self.params[rev_key]
-                elif isinstance(rev_key, tuple):
-                    for k in rev_key:
-                        if k in self.params:
-                            summary_params[summary_key] = self.params[k]
-                            break
-        return summary_params
-
-    @property
-    def summary_param_names(self) -> list[str]:
+    def param_name_with_unit(self, key: str) -> str:
         """
-        A list of important parameter names of the data file.
+        Access a parameter name with its unit as a string.
 
-        Sources names from cls.SUMMARY_PARAMS list.
-        Returns summary names that are found in params.
-        If names are defined in cls.RELABELS, then the relabelled names are returned.
+        By default uses `param_unit` method to get the unit,
+        and appends it to the key. Can be overridden for more complex formatting.
+
+        Parameters
+        ----------
+        key : str
+            The key of the parameter for which to retrieve the name with units.
 
         Returns
         -------
-        list[str]
-            List of important parameter names.
+        str
+            The parameter name with its unit as a string.
         """
-        # TODO: Implement Tests
-        names: list[str] = []
-        for keystr in self.__class__.SUMMARY_PARAMS:
-            keys = keystr if isinstance(keystr, tuple) else [keystr]
-            key1 = keys[0]  # Take first name if multiple names are provided.
-            for key in keys:
-                # Collect summary names that exist in the parser params.
-                if (
-                    key in self.params
-                    or (key in self.RELABELS and self.RELABELS[key] in self.params)
-                    or (
-                        key in self.RELABELS_REVERSE
-                        and self.RELABELS_REVERSE[key] in self.params
-                    )
-                ):
-                    names.append(key1)
-                    break
-        return names
+        unit = self.param_unit(key)
+        if unit is not None and unit != "":
+            return f"{key} ({unit})"
+        return key
 
-    @property
-    def summary_param_values(self) -> list[Any]:
+    def param_value(self, key: str) -> Any:
         """
-        A list of important parameter values of the data file.
+        Access a parameter value.
+
+        Parameters
+        ----------
+        key : str
+            The key of the parameter for which to retrieve the value.
 
         Returns
         -------
-        list
-            List of important parameter values.
-        """
-        # TODO: Implement Tests
-        return list(self.summary_params.values())  # TODO: modify to dict_values?
-
-    @property
-    def summary_param_names_with_units(self) -> list[str]:
-        """
-        A list of important parameter names with units.
-
-        Requires a loaded dataset to return the units of the parameters.
-
-        Returns
-        -------
-        list
-            List of important parameter names with units.
+        Any
+            The parameter value.
 
         Raises
         ------
@@ -3181,5 +3181,51 @@ class parserBase(abc.ABC, metaclass=parserMeta):
             Raised if the method is not implemented for the parser object.
         """
         raise NotImplementedError(
-            f"Method 'summary_param_names_with_units' not implemented for {type(self)}."
+            f"Method 'param_value' not implemented for {type(self)}."
+        )
+
+    def param_unit(self, key: str) -> str:
+        """
+        Access a parameter unit as a string.
+
+        Parameters
+        ----------
+        key : str
+            The key of the parameter for which to retrieve the unit.
+
+        Returns
+        -------
+        str
+            The parameter unit as a string.
+
+        Raises
+        ------
+        NotImplementedError
+            Raised if the method is not implemented for the parser object.
+        """
+        raise NotImplementedError(
+            f"Method 'param_unit' not implemented for {type(self)}."
+        )
+
+    def param_description(self, key: str) -> str:
+        """
+        The description of a parameter value as a string.
+
+        Parameters
+        ----------
+        key : str
+            The key of the parameter for which to retrieve the description.
+
+        Returns
+        -------
+        str
+            The parameter value with its description as a string.
+
+        Raises
+        ------
+        NotImplementedError
+            Raised if the method is not implemented for the parser object.
+        """
+        raise NotImplementedError(
+            f"Method 'param_description' not implemented for {type(self)}."
         )

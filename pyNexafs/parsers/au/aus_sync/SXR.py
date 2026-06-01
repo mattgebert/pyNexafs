@@ -21,6 +21,10 @@ class SXR_NEXAFS(parserBase):
     Parses data formats including '.asc' and '.mda' formats from the SXR
     Near Edge X-ray Absorption Fine Structure (NEXAFS) tool.
 
+    All parameters are stored as in `params` dictionary as a tuple of
+    (description, value, unit) if all three are available, or (description, value) if only
+    value and description are available.
+
     Attributes
     ----------
     ALLOWED_EXTENSIONS
@@ -652,74 +656,125 @@ class SXR_NEXAFS(parserBase):
         assert data.shape[0] != 0, "No data found in QANT .txt file."
         return data, labels, units, params
 
-    @property
     @override
-    def summary_param_values(self) -> list[Any]:
+    def param_description(self, key: str) -> str:
         """
-        Return a list of important parameter values of the data file.
+        The associated description for the given parameter of the SXR beamline.
 
-        Uses the list element corresponding to 'value' for each file.
-        Overrides base method to use the 'value' element of the SXR parameter list.
+        Parameters
+        ----------
+        key : str
+            The parameter key to retrieve the description for.
 
         Returns
         -------
-        list
-            List of important parameter values.
-        """
-        # Get second element which is the parameter number.
-        return [self.params[key][1] for key in self.SUMMARY_PARAMS]
+        str
+            The description associated with the given parameter key.
 
-    @property
+        Raises
+        ------
+        ValueError
+            If the parameter does not define a description.
+        """
+        param_val = self.params[key]
+
+        if isinstance(param_val, (list, tuple)):
+            if len(param_val) == 3:
+                match self.parser_fn:
+                    case self.parse_asc_202403 | self.parse_mda_2024_03:
+                        # In .asc, desc, val, unit
+                        # In .mda, desc, unit, val
+                        return param_val[0]
+                    case _:
+                        raise ValueError(
+                            f"Unknown parser function '{self.parser_fn}' for parameter '{key}'. \
+                            Cannot determine description position."
+                        )
+            elif len(param_val) == 2:
+                # First element is the description, second the value.
+                return param_val[0]
+
+        raise ValueError(f"No description found for parameter '{key}'.")
+
     @override
-    def summary_param_names_with_units(self) -> list[str]:
+    def param_unit(self, key: str) -> str:
         """
-        Return a list of important parameter names with units.
+        The associated unit for the given parameter of the SXR beamline.
 
-        Requires a loaded dataset to return the units of the parameters.
-        Not a pre-defined class method.
+        Parameters
+        ----------
+        key : str
+            The parameter key to retrieve the unit for.
 
         Returns
         -------
-        list
-            List of important parameter names with units.
+        str
+            The unit associated with the given parameter key.
+
+        Raises
+        ------
+        ValueError
+            If the parameter does not define a unit.
         """
-        pNames = self.SUMMARY_PARAMS
-        pUnits = [
-            (
-                self.params[pName][2]
-                if (
-                    self.params is not None  # Params loaded
-                    and pName in self.params  # Parameter listed
-                    and hasattr(
-                        self.params[pName], "__len__"
-                    )  # Parameter has a list of values
-                    and len(self.params[pName])
-                    == 3  # 3 params for value, description, unit
-                    and self.params[pName][2] != ""  # Unit value is not empty.
-                )
-                else None
-            )
-            for pName in pNames
-        ]
-        if not self.relabel:
-            return [
-                f"{pName} ({unit})" if unit is not None else pName
-                for pName, unit in zip(pNames, pUnits)
-            ]
+        param_val = self.params[key]
+        if isinstance(param_val, (list, tuple)) and len(param_val) == 3:
+            match self.parser_fn:
+                case self.parse_asc_202403:
+                    # In .asc, desc, val, unit
+                    return param_val[2]
+                case self.parse_mda_2024_03:
+                    # In .mda, desc, unit, val
+                    return param_val[1]
+                case _:
+                    raise ValueError(
+                        f"Unknown parser function '{self.parser_fn}' for parameter '{key}'. \
+                        Cannot determine unit position."
+                    )
         else:
-            relabel_names = []
-            for pName, unit in zip(pNames, pUnits):
-                if unit is not None:
-                    relabel_names.append(
-                        f"{self.RELABELS[pName]} ({unit})"
-                        if pName in self.RELABELS
-                        else f"{pName} ({unit})"
-                    )
-                else:
-                    relabel_names.append(
-                        self.RELABELS[pName] if pName in self.RELABELS else pName
-                    )
-            return relabel_names
+            raise ValueError(f"No unit found for parameter '{key}'.")
+
+    @override
+    def param_value(self, key: str) -> Any:
+        """
+        The associated value for the given parameter of the SXR beamline.
+
+        Parameters
+        ----------
+        key : str
+            The parameter key to retrieve the value for.
+
+        Returns
+        -------
+        Any
+            The value associated with the given parameter key.
+
+        Raises
+        ------
+        ValueError
+            If the parameter does not define a value.
+        """
+        param_val = self.params[key]
+        if isinstance(param_val, (list, tuple)):
+            if len(param_val) == 3:
+                match self.parser_fn:
+                    case self.parse_asc_202403:
+                        # In .asc, desc, val, unit
+                        return param_val[1]
+                    case self.parse_mda_2024_03:
+                        # In .mda, desc, unit, val
+                        return param_val[2]
+                    case _:
+                        raise ValueError(
+                            f"Unknown parser function '{self.parser_fn}' \
+                            for parameter '{key}'. Cannot determine value position."
+                        )
+            elif len(param_val) == 2:
+                # First element is the desc, second the value.
+                return param_val[1]
+        elif param_val is not None:
+            # If the parameter value is not a list or tuple, return it directly.
+            return param_val
+        raise ValueError(f"No value found for parameter '{key}'.")
 
 
 if __name__ == "__main__":

@@ -222,7 +222,7 @@ RELABELS = {
     # MEX2SLT03:HCENTRE.OFF
     "MEX2STG01MOT01.RBV": "Sample X",
     "MEX2STG01MOT02.RBV": "Sample Y",
-    "MEX2STG01MOT03.RBV": "Sample Z",
+    ("MEX2STG01MOT03.RBV", "Z", "Phi"): "Phi/Z",
     # MEX2STG01:XHAT.RBV
     # MEX2STG01:ZHAT.RBV
     # MEX2ES01MOT01.RBV
@@ -260,9 +260,8 @@ RELABELS = {
     # MEX2SSCAN01:PHASE_IN_USE
     # MEX2SSCAN01:PHASE_USES_KSPACE
     # MEX2SSCAN01:PHASE_USES_SQTIME
-    # MEX2SSCAN01:TOTAL_NUMBER_OF_POINTS
     # MEX2SSCAN01:MODE
-    # MEX2SSCAN01:EDGE_ENERGY
+    # MEX2SSCAN01:TOTAL_NUMBER_OF_POINTS
     "MEX2SSCAN01:SIMPLE_START_1_VALUE": "E1",
     # MEX2SSCAN01:SIMPLE_STEP_1_VALUE
     "MEX2SSCAN01:SIMPLE_END_1_VALUE": "E2",
@@ -305,10 +304,10 @@ RELABELS = {
     # "SampleDrain": "Sample Drain",
     #### XDI Names ####
     "ROI_AD_AVG": "ROI Average",
-    "ROI.start_bin": "Fluorescence Start Bin",
-    "ROI.end_bin": "Fluorescence End Bin",
-    "Element.symbol": "Element",
-    "Element.edge": "Absorption Edge",
+    "ROI.start_bin": "MCA Start Bin",
+    "ROI.end_bin": "MCA End Bin",
+    ("Element.symbol",): "Element",
+    ("Element.edge", "MEX2SSCAN01:EDGE_ENERGY"): "Absorption Edge",
     # Parameters
     ("MEX2SSCAN01:saveData_comment1", "Comment 1", "Sample", "Name"): "Sample Name",
     "MEX2SSCAN01:saveData_comment2": "Comment 2",
