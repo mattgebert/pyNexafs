@@ -75,9 +75,10 @@ class directorySelector(QtWidgets.QWidget):
 
         # Folder path
         self.path_edit = QtWidgets.QLineEdit()
-        self.path_edit.setText(self._path)
+        self.path_edit.setText(self._display_path(self._path, editing=False))
         self.path_edit.setAccessibleName("Directory")
         self.path_edit.setAccessibleDescription(self._EDIT_DESC)
+        self.path_edit.installEventFilter(self)
 
         # Folder select button
         self.path_select_btn = QtWidgets.QPushButton("Browse")
@@ -94,6 +95,20 @@ class directorySelector(QtWidgets.QWidget):
         # Connections
         self.path_edit.editingFinished.connect(self.validate_edit_path)
         self.refresh_btn.clicked.connect(self.refresh)
+
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        """Show full path only while path edit is actively being edited."""
+        if obj is self.path_edit:
+            if event.type() == QtCore.QEvent.Type.FocusIn:
+                self.path_edit.setText(self._display_path(self._path, editing=True))
+                self.path_edit.setCursorPosition(len(self.path_edit.text()))
+            elif event.type() == QtCore.QEvent.Type.FocusOut:
+                self.path_edit.setText(self._display_path(self._path, editing=False))
+                self.path_edit.setCursorPosition(0)
+                # The displayed value is the last known-valid path in compact form,
+                # so clear any transient invalid-entry styling on defocus.
+                self.path_edit.setStyleSheet(self._path_edit_default_stylesheet)
+        return super().eventFilter(obj, event)
 
     @property
     def path(self) -> str:
@@ -146,7 +161,16 @@ class directorySelector(QtWidgets.QWidget):
         Updates if valid. Otherwise reset entry to the last valid path.
         """
 
-        path = self._format_path(self.path_edit.text())
+        compact_display_path = self._display_path(self._path, editing=False)
+        entered_text = self.path_edit.text()
+
+        # If the line edit currently shows the compact display value,
+        # do not re-validate it as a filesystem path.
+        if entered_text == compact_display_path:
+            self.path_edit.setText(compact_display_path)
+            return
+
+        path = self._format_path(entered_text)
 
         if path and directorySelector.validate_path(path):
             # Valid path, update the path and emit a change signal.
@@ -154,9 +178,10 @@ class directorySelector(QtWidgets.QWidget):
             # self.new_path.emit(True)
             self.new_path.emit(True)  # Emit signal to trigger a data refresh.
             self.path_edit.setStyleSheet(self._path_edit_default_stylesheet)
+            self.path_edit.setText(self._display_path(self._path, editing=False))
         else:
             # Invalid path, reset the text to the original path.
-            self.path_edit.setText(self._path)
+            self.path_edit.setText(self._display_path(self._path, editing=False))
             self.path_edit.setStyleSheet(self._STYLESHEET_INVALID)
 
     @staticmethod
@@ -187,6 +212,30 @@ class directorySelector(QtWidgets.QWidget):
         if not formatted_path.endswith(slashes):
             formatted_path += slashes
         return formatted_path
+
+    @staticmethod
+    def _display_path(path: str, editing: bool) -> str:
+        """Return full path while editing, else a compact drive/.../tail form."""
+        full_path = directorySelector._format_path(path)
+        if editing:
+            return full_path
+
+        trimmed = full_path.rstrip(os.sep)
+        if trimmed == "":
+            return full_path
+
+        drive, path_without_drive = os.path.splitdrive(trimmed)
+        # Keep only the final 14 chars of the path tail (excluding drive),
+        # preserving separators where possible.
+        tail_source = path_without_drive.lstrip(os.sep)
+        tail = tail_source if len(tail_source) <= 14 else tail_source[-14:]
+        tail_display = f"{tail}{os.sep}"
+
+        if drive:
+            return f"{drive}{os.sep}...{os.sep}{tail_display}"
+        if full_path.startswith(os.sep):
+            return f"{os.sep}...{os.sep}{tail_display}"
+        return f"...{os.sep}{tail_display}"
 
     def select_path(self) -> None:
         """

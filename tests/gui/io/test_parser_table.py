@@ -15,6 +15,7 @@ from pyNexafs.gui.widgets.io.parser_ui.parser_table import (
     ParserTableModel,
     ParserTableView,
 )
+from pyNexafs.gui.widgets.io.parser_ui.parser_ui import ParserTableViewerWidget
 import pyNexafs.gui.widgets.io.parser_ui.parser_table as parser_table_module
 from pyNexafs.parsers.au.aus_sync import MEX2_NEXAFS, SXR_NEXAFS
 
@@ -632,3 +633,32 @@ class TestParserTableView:
 
         with pytest.raises(ValueError, match="must accept at least one parameter"):
             view.menu_functions = [three_args]
+
+
+class TestParserTableViewerWidget:
+    """Integration tests for ParserTableViewerWidget-specific controls."""
+
+    def test_show_cached_tooltip_count_after_path_change(
+        self, qapp, sxr_data_dir, tmp_path
+    ):
+        """Switching from SXR to a temp dir should report all prior cached files as outside current path."""
+        widget = ParserTableViewerWidget(init_path=sxr_data_dir, init_parser=SXR_NEXAFS)
+        model = widget.table_view.files_model
+
+        # Cache is populated from the initial SXR directory.
+        cached_before_switch = len(model.parsed)
+        assert cached_before_switch > 0
+
+        # Switch to a new empty directory.
+        widget.path_selector.path = str(tmp_path)
+        widget.path_selector.new_path.emit(True)
+
+        # Existing cache entries should still be available.
+        assert len(model.parsed) == cached_before_switch
+
+        # Tooltip should report the same number as outside the current path.
+        tooltip = widget.show_cached_toggle.toolTip()
+        assert (
+            f"{cached_before_switch} cached file(s) are outside the current path."
+            in tooltip
+        )

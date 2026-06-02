@@ -166,11 +166,13 @@ class ParserDataModel:
             files = [f for f in files if any(f.endswith(ext) for ext in filters)]
 
         if parser is None:
-            self._filelist = tuple(files)
+            self._filelist = tuple(
+                os.path.abspath(os.path.join(load_path, f)) for f in files
+            )
         else:
             # Collect the list of files
             self._filelist = tuple(
-                f
+                os.path.abspath(os.path.join(load_path, f))
                 for f in files
                 if any(f.endswith(ext) for ext in parser.ALLOWED_EXTENSIONS)
             )
@@ -181,8 +183,8 @@ class ParserDataModel:
                 self.progress_bar.setValue(0)
 
             # Parse each file.
-            for i, filename in enumerate(self._filelist):
-                filepath = os.path.join(load_path, filename)
+            for i, filepath in enumerate(self._filelist):
+                filepath = self._canonical_path(filepath)
                 if (
                     filepath in self.parsed
                     and self.parsed[filepath] is not None
@@ -212,15 +214,37 @@ class ParserDataModel:
     @property
     def filelist(self) -> tuple[str, ...]:
         """
-        The list of files scanned in the current path.
+        The list of filepaths scanned in the current path.
 
-        `load_path` already filters files based on the current parser selection, but `filetype_filters` can be used to further filter to a specific subset of file types, if desired.
+        `load_path` already filters files based on the current parser selection,
+        but `filetype_filters` can be used to further filter to a specific subset
+        of file types, if desired.
+
+        Can also use `ParserDataModel.show_cached` to include files that have already
+        been parsed and cached in `self._parsed` when determining the file list.
+        These files are appended after the files within the current path.
 
         Returns
         -------
         tuple[str, ...]
-            A tuple containing the list of files scanned in the current path.
+            A tuple containing the list of filepaths scanned in the current path.
         """
+        if self._show_cached:
+            filelist = []
+            for f in self._filelist:
+                if self.filetype_filters is None or f.endswith(
+                    tuple(self.filetype_filters)
+                ):
+                    filelist.append(f)
+
+            for filepath in self.parsed:
+                if filepath not in filelist:
+                    if self.filetype_filters is None or filepath.endswith(
+                        tuple(self.filetype_filters)
+                    ):
+                        filelist.append(filepath)
+            return tuple(filelist)
+
         return tuple(
             f
             for f in self._filelist
@@ -229,6 +253,32 @@ class ParserDataModel:
                 or any(f.endswith(ext) for ext in self.filetype_filters)
             )
         )
+
+    @property
+    def show_cached(self) -> bool:
+        """
+        Whether to show cached files in the file list or not.
+
+        If True, files that have already been parsed and cached in `self._parsed` will be included in the file list returned by `self.filelist`, even if they are not within the current path. These files are appended after the files within the current path.
+
+        Parameters
+        ----------
+        show_cached : bool
+            Whether to include cached files in the file list returned by `self.filelist`.
+
+        Returns
+        -------
+        bool
+            True if cached files are included in the file list, False otherwise.
+        """
+        return self._show_cached
+
+    @show_cached.setter
+    def show_cached(self, show: bool):
+        if show != self._show_cached:
+            self._show_cached = show
+            self.make_param_selection_possible()
+            self.construct_table()
 
     @property
     def filetype_filters(self) -> list[str] | None:
@@ -333,8 +383,7 @@ class ParserDataModel:
                         if param not in possible_params:
                             possible_params.append(param)
         else:
-            for filename in self._filelist:
-                filepath = os.path.join(self._path, filename)
+            for filepath in self._filelist:
                 if filepath in self.parsed:
                     load_status, parser_instance = self.parsed[filepath]
                     if (
@@ -402,10 +451,10 @@ class ParserDataModel:
         full_update: bool = False
         """Whether this method is generating all table data (True), or just a subset of rows (False)."""
         if filepaths is None:
-            filepaths = [
-                os.path.join(self._path, filename) for filename in list(self._filelist)
-            ]
+            filepaths = list(self._filelist)
             full_update = True
+        else:
+            filepaths = [self._canonical_path(filepath) for filepath in filepaths]
 
         # Collect and collate the data
         parser_instance: parserBase | None = None
@@ -413,7 +462,6 @@ class ParserDataModel:
         if parser is not None:
             new_data_parser: list[data_row_parser] = []
             for i, filepath in enumerate(filepaths):
-                filename = os.path.basename(filepath)
                 if filepath in self.parsed:
                     # The file has already been parsed, use cached result.
                     parser_instance = self.parsed[filepath][1]
@@ -475,8 +523,8 @@ class ParserDataModel:
                 elif os.path.normpath(os.path.dirname(filepath)) == os.path.normpath(
                     self._path
                 ):
-                    if os.path.basename(filepath) in self.filelist:
-                        row_num = self.filelist.index(os.path.basename(filepath))
+                    if filepath in self.filelist:
+                        row_num = self.filelist.index(filepath)
                     else:
                         # Find the next available row number in the row_data.
                         idx = 0
@@ -506,7 +554,7 @@ class ParserDataModel:
                             idx = row_num + 1
                     row_num = idx
 
-                row_data_parsed = [load_status, row_num, filename]
+                row_data_parsed = [load_status, row_num, self._canonical_path(filepath)]
                 for key in param_sel:
                     if key in specials:
                         value = specials_data[key]
@@ -533,7 +581,6 @@ class ParserDataModel:
         else:
             new_data_no_parser: list[data_row_no_parser] = []
             for i, filepath in enumerate(filepaths):
-                filename = os.path.basename(filepath)
                 filesize = os.path.getsize(filepath)
                 modified = os.path.getmtime(filepath)
                 created = os.path.getctime(filepath)
@@ -556,7 +603,7 @@ class ParserDataModel:
                 }
                 row_data_no_parser: data_row_no_parser = (
                     i,
-                    filename,
+                    self._canonical_path(filepath),
                     filesize,
                     modified,
                     created,
@@ -625,7 +672,27 @@ class ParserDataModel:
         data_row_type
             A tuple containing the load status, file index number (alphabetical), filename, and the parameters specified in `param_selection` for the specified file. The load status is excluded if no parser is set for the model.
         """
-        return self._construct_data_rows(filepaths=[filepath], with_headers=False)[0]
+        return self._construct_data_rows(
+            filepaths=[self._canonical_path(filepath)], with_headers=False
+        )[0]
+
+    @staticmethod
+    def _canonical_path(filepath: str) -> str:
+        """Return an absolute, normalized path for stable comparisons."""
+        return os.path.normpath(os.path.abspath(filepath))
+
+    def row_filepath(self, row_idx: int) -> str | None:
+        """Return the full filepath represented by a table row."""
+        if row_idx < 0 or row_idx >= len(self._data):
+            return None
+
+        row = self._data[row_idx]
+        filepath_col = 2 if self.parser is not None else 1
+        if filepath_col < len(row):
+            filepath = row[filepath_col]
+            if isinstance(filepath, str):
+                return self._canonical_path(filepath)
+        return None
 
     @property
     def param_selection(self) -> list[str] | None:
@@ -784,6 +851,8 @@ class ParserTableModel(ParserDataModel, QtCore.QAbstractTableModel):
         ValueError
             If the file is not currently parsed and cached, or if the file is not a valid file or no parser is set, and therefore cannot be reloaded.
         """
+        filepath = self._canonical_path(filepath)
+
         if filepath not in self.parsed:
             raise ValueError(
                 f"File '{filepath}' is not currently parsed and cached, cannot reload."
@@ -831,22 +900,16 @@ class ParserTableModel(ParserDataModel, QtCore.QAbstractTableModel):
             # self.beginRemoveRows(QtCore.QModelIndex(), index.row(), index.row())
             row = index.row()
             old_data = self._data[row]
-            if self.parser is not None:
-                filename = old_data[2]  # Get the filename from the old data row.
-                assert isinstance(filename, str)
-            else:
-                filename = old_data[1]  # Get the filename from the old data row.
-                assert isinstance(filename, str)
-            filepath = os.path.join(
-                self._path, filename
-            )  # Get the filepath from the old data row.
+            filepath = self.row_filepath(row)
+            if filepath is None:
+                raise ValueError(f"Could not resolve filepath for row {row}.")
 
-            assert (
-                os.path.basename(filepath) == old_data[2]
-                if self.parser is not None
-                else old_data[1]
+            data_filepath = old_data[2] if self.parser is not None else old_data[1]
+            assert isinstance(data_filepath, str)
+            assert self._canonical_path(filepath) == self._canonical_path(
+                data_filepath
             ), (
-                f"The filename in the data row ({old_data[2] if self.parser is not None else old_data[1]}) does not match the filename from the filepath ({os.path.basename(filepath)}), cannot reload."
+                f"The filepath in the data row ({data_filepath}) does not match the row filepath ({filepath}), cannot reload."
             )
 
             # Reload the file and update the data row with the new information.
@@ -878,14 +941,14 @@ class ParserTableModel(ParserDataModel, QtCore.QAbstractTableModel):
         """
         if index.isValid():
             row = index.row()
+            filepath = self.row_filepath(row)
             self.beginRemoveRows(QtCore.QModelIndex(), row, row)
             # Remove the row
-            data = self._data.pop(row)
+            self._data.pop(row)
             # Remove the file from the files list
-            filename = data[2] if self.parser is not None else data[1]
-            if filename in self._filelist:
+            if filepath in self._filelist:
                 # Remove it
-                self._filelist = tuple(f for f in self._filelist if f != filename)
+                self._filelist = tuple(f for f in self._filelist if f != filepath)
             # Remove the row from cache if it exists in the cache.
             self.endRemoveRows()
 
@@ -998,14 +1061,17 @@ class ParserTableModel(ParserDataModel, QtCore.QAbstractTableModel):
                     case _:
                         raise ValueError(f"Incorrect data match for {dat}")
                 if role == QtCore.Qt.ItemDataRole.ToolTipRole:
-                    filename = self._data[row_idx][2]
-                    assert isinstance(filename, str)
-                    filepath = os.path.join(
-                        self._path, filename
-                    )  # Get the filepath from the data row.
-                    parser_instance = self.parsed[filepath][1]
-                    parser_method = parser_instance.parser_fn_name
-                    return f"{dat.name.lower().replace('_', ' ').capitalize()} - {parser_method}"
+                    filepath = self.row_filepath(row_idx)
+                    if filepath is None:
+                        return dat.name.lower().replace("_", " ").capitalize()
+
+                    if filepath in self.parsed:
+                        parser_instance = self.parsed[filepath][1]
+                        parser_method = parser_instance.parser_fn_name
+                        parser_cls = parser_instance.__class__
+                        return f"{dat.name.lower().replace('_', ' ').capitalize()}: {parser_cls.__name__}.{parser_method}"
+
+                    return dat.name.lower().replace("_", " ").capitalize()
                 return val
             else:
                 return None
@@ -1016,6 +1082,15 @@ class ParserTableModel(ParserDataModel, QtCore.QAbstractTableModel):
                 QtCore.Qt.ItemDataRole.DisplayRole | QtCore.Qt.ItemDataRole.ToolTipRole
             ):
                 val = self._data[row_idx][col_idx]
+
+                filename_col = 2 if parser is not None else 1
+                if col_idx == filename_col:
+                    filepath = self.row_filepath(row_idx)
+                    if filepath is not None:
+                        if role == QtCore.Qt.ItemDataRole.DisplayRole:
+                            return os.path.basename(filepath)
+                        return os.path.normpath(filepath)
+
                 # Special formatting for bytes and datetime parameters, if the column index matches the corresponding sets.
                 if col_idx in self.column_idxs_datetime and isinstance(
                     val, datetime.datetime
@@ -1280,16 +1355,10 @@ class ParserTableView(QtWidgets.QTableView):
         index = self.indexAt(arg__1.pos())
         if index.isValid():
             source_index = self.proxy_model.mapToSource(index)
-            filename = (
-                self.files_model._data[source_index.row()][
-                    2
-                ]  # Filename is the third column (after load status and index).
-                if self.files_model.parser is not None
-                else self.files_model._data[source_index.row()][
-                    1
-                ]  # Filename is the second column
-            )
-            assert isinstance(filename, str)
+            filepath = self.files_model.row_filepath(source_index.row())
+            if filepath is None:
+                return
+            filename = os.path.basename(filepath)
 
             # Setup the actions:
             label_filename = QtWidgets.QLabel(text=filename)
@@ -1318,10 +1387,18 @@ class ParserTableView(QtWidgets.QTableView):
             action_reload_full.triggered.connect(
                 lambda: self.files_model.reload(source_index, header_only=False)
             )
+            action_open_location = QtGui.QAction(
+                parent=self,
+                text="Show file location",
+            )
+            action_open_location.triggered.connect(
+                lambda: os.startfile(os.path.dirname(filepath))
+            )
 
             # Create the context menu and add the actions:
             context.addAction(action_filename)
             context.addSeparator()
+            context.addAction(action_open_location)
             context.addAction(action_reload)
             context.addAction(action_reload_full)
             context.addAction(action_delete)
