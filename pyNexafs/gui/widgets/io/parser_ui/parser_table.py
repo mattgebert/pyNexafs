@@ -7,7 +7,6 @@ from typing import overload, override, Any
 from pyNexafs.gui.config import QtCore, QtWidgets, QtGui
 from typing import Literal
 from pyNexafs.parsers import parserBase
-from abc import abstractmethod
 import typing
 import os
 import datetime
@@ -151,19 +150,21 @@ class ParserDataModel:
         # Check for new changes
         curr_path = self._path
         if path is not None:
-            if curr_path is not None and os.path.abspath(path) == os.path.abspath(
+            if curr_path is not None and os.path.abspath(path) != os.path.abspath(
                 curr_path
             ):
-                return  # No change in path, do nothing.
-            # Update the path.
-            self.path = path  # This will validate the path and set it to the model.
-            self.layoutAboutToChange()  # Signal the view that the layout is about to change, to prepare for the new data.
+                # Update the path.
+                self.path = path  # This will validate the path and set it to the model.
 
         # Get the current path and parser from the model.
         load_path = self.path  # Get the current path from the model.
         parser = self.parser  # Get the current parser from the model.
 
         files = os.listdir(load_path)
+        filters = self.filetype_filters
+        if filters is not None:
+            files = [f for f in files if any(f.endswith(ext) for ext in filters)]
+
         if parser is None:
             self._filelist = tuple(files)
         else:
@@ -208,8 +209,6 @@ class ParserDataModel:
         # Create the table data and headers based on the current filelist and parser settings.
         self.construct_table()
 
-        self.layoutChange()
-
     @property
     def filelist(self) -> tuple[str, ...]:
         """
@@ -250,6 +249,13 @@ class ParserDataModel:
 
     @filetype_filters.setter
     def filetype_filters(self, filetype_filters: list[str] | None):
+        old_filters = self._filetype_filters
+        if old_filters is not None and filetype_filters is not None:
+            old_set = set(old_filters)
+            new_set = set(filetype_filters)
+            if old_set == new_set:
+                return  # No change in filters, do nothing.
+        # Otherwise, update, and reload.
         self._filetype_filters = filetype_filters
         self.load_path()  # Reload the path to update the file list based on the new filetype filters.
 
@@ -393,10 +399,13 @@ class ParserDataModel:
                     if key not in param_sel:
                         param_sel.append(key)
 
+        full_update: bool = False
+        """Whether this method is generating all table data (True), or just a subset of rows (False)."""
         if filepaths is None:
             filepaths = [
                 os.path.join(self._path, filename) for filename in list(self._filelist)
             ]
+            full_update = True
 
         # Collect and collate the data
         parser_instance: parserBase | None = None
@@ -458,7 +467,46 @@ class ParserDataModel:
                     "created": created,
                 }
 
-                row_data_parsed = [load_status, i, filename]
+                # Don't assume row number is the iteration
+                if full_update:
+                    # "Full update" implies the iteration number is the row number.
+                    row_num = i
+                # dirnames match:
+                elif os.path.normpath(os.path.dirname(filepath)) == os.path.normpath(
+                    self._path
+                ):
+                    if os.path.basename(filepath) in self.filelist:
+                        row_num = self.filelist.index(os.path.basename(filepath))
+                    else:
+                        # Find the next available row number in the row_data.
+                        idx = 0
+                        data_rows = (
+                            self._data + new_data_parser
+                        )  # Combine existing data with new data to find the next available row number.
+                        for row in data_rows:
+                            # Get row type:
+                            if isinstance(row[0], loadStatus):
+                                # Row with parser loading information, row number is in the second column.
+                                assert isinstance(row[1], int), (
+                                    "Row number should be an integer."
+                                )
+                                row_num = row[1]
+                            else:
+                                # Row without parser loading information, row number is in the first column.
+                                row_num = row[0]
+                            if row_num >= idx:
+                                idx = row_num + 1
+                        row_num = idx
+                else:
+                    # Find the next available row number in the row_data.
+                    idx = 0
+                    for row in new_data_parser:
+                        row_num = row[1]
+                        if row_num >= idx:
+                            idx = row_num + 1
+                    row_num = idx
+
+                row_data_parsed = [load_status, row_num, filename]
                 for key in param_sel:
                     if key in specials:
                         value = specials_data[key]
@@ -651,32 +699,6 @@ class ParserDataModel:
         else:
             self._param_selection_default = None
         return
-
-    @abstractmethod
-    def layoutAboutToChange(
-        self,
-        # parents: list[QtCore.QPersistentModelIndex] = [],
-        # hint: QtCore.QAbstractTableModel.LayoutChangeHint = QtCore.QAbstractTableModel.LayoutChangeHint.NoLayoutChangeHint
-    ) -> None:
-        """
-        Abstract method to signal a `layoutAboutToBeChanged` event to the implementing view.
-        """
-        raise NotImplementedError(
-            "The layoutAboutToChange method must be implemented by the subclass to signal a layoutAboutToChange event to the view."
-        )
-
-    @abstractmethod
-    def layoutChange(
-        self,
-        # parents: list[QtCore.QPersistentModelIndex] = [],
-        # hint: QtCore.QAbstractTableModel.LayoutChangeHint = QtCore.QAbstractTableModel.LayoutChangeHint.NoLayoutChangeHint
-    ) -> None:
-        """
-        Abstract method to signal a `layoutChanged` event to the implementing view.
-        """
-        raise NotImplementedError(
-            "The layoutChanged method must be implemented by the subclass to signal a layoutChanged event to the view."
-        )
 
 
 class ParserTableModel(ParserDataModel, QtCore.QAbstractTableModel):
@@ -1016,9 +1038,7 @@ class ParserTableModel(ParserDataModel, QtCore.QAbstractTableModel):
                 # convert to string
                 try:
                     val = str(val)
-                    # print(f"Converted value to string: {val}")
                 except Exception:
-                    # print(f"Error converting to string: {e}")
                     return ""
                 return val
 
@@ -1407,14 +1427,11 @@ if __name__ == "__main__":
         parser_cls=parser,
     )
 
-    # Check if "Sample Name" is available in the parser params
-    parser_instances = view.files_model.parsed
-    xdi_files = [filename for filename in filelist if ".asc" in filename]
-    file = os.path.join(path, xdi_files[0])
-    parser_instance = parser_instances[file][1]
-
-    # Apply filters
-    view.filters = ("Imaging", [".mda"])  # No filters, show all files.
+    # # Check if "Sample Name" is available in the parser params
+    # parser_instances = view.files_model.parsed
+    # xdi_files = [filename for filename in filelist if ".asc" in filename]
+    # file = os.path.join(path, xdi_files[0])
+    # parser_instance = parser_instances[file][1]
 
     view.show()
     app.exec()
