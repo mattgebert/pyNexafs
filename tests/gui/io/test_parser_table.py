@@ -512,6 +512,37 @@ class TestParserTableView:
         view = ParserTableView(path=mex2_data_dir, parser_cls=MEX2_NEXAFS)
         assert view.proxy_model.rowCount() == view.files_model.rowCount()
 
+    def test_view_filters_propagate_and_exclude_expected_sxr_items(
+        self, qapp, sxr_data_dir
+    ):
+        """Text + filetype filters should propagate and exclude non-matching SXR rows."""
+        view = ParserTableView(path=sxr_data_dir, parser_cls=SXR_NEXAFS)
+
+        total_rows = view.proxy_model.rowCount()
+        assert total_rows > 0
+
+        # Apply text filter first. In this dataset, "90" appears across two scans,
+        # each with both .asc and .mda files.
+        view.filters = ("90", None)
+        rows_90 = view.proxy_model.rowCount()
+        assert rows_90 == 4
+
+        # Then apply filetype filtering as well; this should exclude the .asc rows.
+        view.filters = ("90", [".mda"])
+        rows_90_mda = view.proxy_model.rowCount()
+        assert rows_90_mda == 2
+
+        for proxy_row in range(rows_90_mda):
+            src_idx = view.proxy_model.mapToSource(view.proxy_model.index(proxy_row, 0))
+            filename = view.files_model._data[src_idx.row()][2]
+            assert isinstance(filename, str)
+            assert filename.endswith(".mda")
+
+        # Filetype-only filter should keep exactly half of SXR files (4 of 8).
+        view.filters = (None, [".mda"])
+        rows_mda_only = view.proxy_model.rowCount()
+        assert rows_mda_only * 2 == total_rows
+
     def test_view_reload_file(self, qapp, mex2_data_dir):
         """ParserTableView.reload_file should update the underlying model."""
         view = ParserTableView(path=mex2_data_dir, parser_cls=MEX2_NEXAFS)
